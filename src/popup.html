@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Settings</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        padding: 14px;
+        background: #f3f5f2;
+        color: #111;
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .panel {
+        border: 2px solid #111;
+        background: #fff;
+        box-shadow: 4px 4px 0 #111;
+        padding: 12px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        line-height: 1.2;
+      }
+
+      form {
+        display: grid;
+        gap: 10px;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      input {
+        border: 2px solid #111;
+        border-radius: 0;
+        padding: 7px 8px;
+        font-size: 12px;
+      }
+
+      button {
+        border: 2px solid #111;
+        background: #19b84a;
+        color: #111;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+
+      .status {
+        min-height: 16px;
+        margin: 0;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="panel">
+      <h1>Quick Provider Settings</h1>
+      <form id="popup-settings-form">
+        <label>
+          Base URL
+          <input id="base_url" name="base_url" type="url" placeholder="https://api.example.com/v1" required />
+        </label>
+
+        <label>
+          API Key
+          <input id="api_key" name="api_key" type="password" autocomplete="off" required />
+        </label>
+
+        <label>
+          Model
+          <input id="model" name="model" type="text" placeholder="qwen-mt-turbo" required />
+        </label>
+
+        <button type="submit">Save</button>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
