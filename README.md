@@ -16,7 +16,7 @@ https://github.com/user-attachments/assets/a11618dc-b0d9-4e21-b8f1-ac6ddacdd537
 | 单个单词音标 | ✅ | ❌ |
 | 单个单词释义 | ✅ | ❌ |
 | 单个单词场景理解 | ✅ | ❌ |
-| 流式输出 | ❌ | ✅ |
+| 流式输出 | ❌ | 部分支持 `flash, lite` |
 | 拖动调整翻译结果卡片宽度 | ✅ | ✅ |
 
 <img src="https://oss.0x0.asia/single-word.png" />

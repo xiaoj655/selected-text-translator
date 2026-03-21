@@ -37,6 +37,8 @@ export const TRANSLATION_EVENT_STATUS = {
   ERROR: 'error'
 };
 
+const QWEN_MT_STREAMING_MODELS = new Set(['qwen-mt-flash', 'qwen-mt-lite']);
+
 export function containsChineseCharacters(text) {
   return /[\u3400-\u9fff]/u.test(text);
 }
@@ -46,7 +48,11 @@ export function getTargetLanguage(text) {
 }
 
 export function isQwenMtModel(model) {
-  return String(model || '').toLowerCase().includes('qwen-mt');
+  return normalizeModelName(model).includes('qwen-mt');
+}
+
+export function isQwenMtStreamingModel(model) {
+  return QWEN_MT_STREAMING_MODELS.has(normalizeModelName(model));
 }
 
 export function usesStructuredOutputForModel(model) {
@@ -56,7 +62,7 @@ export function usesStructuredOutputForModel(model) {
 export function buildQwenMtRequest({ model, text, targetLanguage }) {
   return {
     model,
-    stream: true,
+    stream: isQwenMtStreamingModel(model),
     messages: [
       {
         role: 'user',
@@ -342,10 +348,14 @@ function pushInvalidField(fields, field) {
 }
 
 function shouldDisableThinkingForModel(model) {
-  const normalized = String(model || '').trim().toLowerCase();
+  const normalized = normalizeModelName(model);
   if (!normalized.startsWith('qwen')) {
     return false;
   }
 
   return !normalized.includes('qwen-mt');
+}
+
+function normalizeModelName(model) {
+  return String(model || '').trim().toLowerCase();
 }
