@@ -340,7 +340,7 @@
     if (status === TRANSLATION_EVENT_STATUS.STREAM) {
       const partial = String(payload.translatedText || '').trim();
       if (partial) {
-        renderSuccessCard(state.activeSelection.text, partial);
+        renderSuccessCard(state.activeSelection.text, partial, null);
         debugLog('stream_progress', {
           selectionId,
           requestId,
@@ -355,11 +355,13 @@
     if (status === TRANSLATION_EVENT_STATUS.SUCCESS) {
       const translatedText = String(payload.translatedText || '').trim();
       if (translatedText) {
-        renderSuccessCard(state.activeSelection.text, translatedText);
+        const lexicalDetails = normalizeLexicalDetails(payload.lexicalDetails);
+        renderSuccessCard(state.activeSelection.text, translatedText, lexicalDetails);
         debugLog('request_success', {
           selectionId,
           requestId,
-          translatedLength: translatedText.length
+          translatedLength: translatedText.length,
+          lexicalFields: summarizeLexicalDetails(lexicalDetails)
         });
       } else {
         renderStatusCard('Translation returned no text.');
@@ -405,7 +407,7 @@
     positionCard(state.activeSelection.rect);
   }
 
-  function renderSuccessCard(sourceText, translatedText) {
+  function renderSuccessCard(sourceText, translatedText, lexicalDetails) {
     const card = ensureCard();
     card.classList.remove('stt-card--status');
     card.classList.add('stt-card--result');
@@ -421,8 +423,218 @@
     translationBlock.textContent = translatedText;
 
     card.append(sourceBlock, translationBlock);
+
+    const lexicalBlock = buildLexicalBlock(sourceText, lexicalDetails);
+    if (lexicalBlock) {
+      card.append(lexicalBlock);
+    }
+
     ensureCardResizeHandle();
     positionCard(state.activeSelection.rect);
+  }
+
+  function buildLexicalBlock(sourceText, lexicalDetails) {
+    if (!isSingleWordInput(sourceText)) {
+      return null;
+    }
+
+    const normalized = normalizeLexicalDetails(lexicalDetails);
+    if (!normalized) {
+      return null;
+    }
+
+    const lexicalBlock = document.createElement('div');
+    lexicalBlock.className = 'stt-card-block stt-card-block--lexical';
+    let hasContent = false;
+
+    if (normalized.phonetic) {
+      lexicalBlock.append(createLexicalRow('Phonetic', normalized.phonetic));
+      hasContent = true;
+    }
+
+    if (Array.isArray(normalized.definitions) && normalized.definitions.length > 0) {
+      lexicalBlock.append(createDefinitionsSection(normalized.definitions));
+      hasContent = true;
+    }
+
+    if (normalized.contextual_analysis) {
+      lexicalBlock.append(createLexicalRow('Context', normalized.contextual_analysis));
+      hasContent = true;
+    }
+
+    return hasContent ? lexicalBlock : null;
+  }
+
+  function createLexicalRow(label, value) {
+    const row = document.createElement('div');
+    row.className = 'stt-lexical-row';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'stt-lexical-label';
+    labelEl.textContent = `${label}:`;
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'stt-lexical-value';
+    valueEl.textContent = value;
+
+    row.append(labelEl, valueEl);
+    return row;
+  }
+
+  function createDefinitionsSection(definitions) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stt-lexical-row stt-lexical-row--definitions';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'stt-lexical-label';
+    labelEl.textContent = 'Definitions:';
+
+    const list = document.createElement('ul');
+    list.className = 'stt-definition-list';
+    for (const definition of definitions) {
+      const item = document.createElement('li');
+      item.className = 'stt-definition-item';
+
+      const parts = [];
+      if (definition.pos) {
+        parts.push(`[${definition.pos}]`);
+      }
+      parts.push(definition.meaning);
+
+      if (definition.example) {
+        parts.push(`(${definition.example.source} -> ${definition.example.target})`);
+      }
+
+      item.textContent = parts.join(' ');
+      list.append(item);
+    }
+
+    wrapper.append(labelEl, list);
+    return wrapper;
+  }
+
+  function normalizeLexicalDetails(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const normalized = {};
+    const phonetic = normalizeOptionalString(value.phonetic);
+    if (phonetic) {
+      normalized.phonetic = phonetic;
+    }
+
+    const definitions = normalizeDefinitions(value.definitions);
+    if (definitions) {
+      normalized.definitions = definitions;
+    }
+
+    const contextualAnalysis = normalizeOptionalString(
+      value.contextual_analysis ?? value.contextualAnalysis
+    );
+    if (contextualAnalysis) {
+      normalized.contextual_analysis = contextualAnalysis;
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : null;
+  }
+
+  function normalizeDefinitions(value) {
+    if (!Array.isArray(value) || value.length === 0) {
+      return null;
+    }
+
+    const normalized = [];
+    for (const item of value) {
+      const normalizedItem = normalizeDefinitionItem(item);
+      if (normalizedItem) {
+        normalized.push(normalizedItem);
+      }
+    }
+
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  function normalizeDefinitionItem(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const meaning = normalizeOptionalString(value.meaning);
+    if (!meaning) {
+      return null;
+    }
+
+    const normalized = {
+      meaning
+    };
+
+    const pos = normalizeOptionalString(value.pos);
+    if (pos) {
+      normalized.pos = pos;
+    }
+
+    if (value.example !== undefined) {
+      const example = normalizeDefinitionExample(value.example);
+      if (!example) {
+        return null;
+      }
+      normalized.example = example;
+    }
+
+    return normalized;
+  }
+
+  function normalizeDefinitionExample(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const source = normalizeOptionalString(value.source);
+    const target = normalizeOptionalString(value.target);
+    if (!source || !target) {
+      return null;
+    }
+
+    return {
+      source,
+      target
+    };
+  }
+
+  function normalizeOptionalString(value) {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim();
+    return normalized || null;
+  }
+
+  function isSingleWordInput(text) {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+      return false;
+    }
+
+    const tokens = normalized.split(/\s+/u).filter(Boolean);
+    return tokens.length === 1;
+  }
+
+  function summarizeLexicalDetails(lexicalDetails) {
+    if (!lexicalDetails) {
+      return {
+        phonetic: false,
+        definitions: 0,
+        contextualAnalysis: false
+      };
+    }
+
+    return {
+      phonetic: Boolean(lexicalDetails.phonetic),
+      definitions: Array.isArray(lexicalDetails.definitions) ? lexicalDetails.definitions.length : 0,
+      contextualAnalysis: Boolean(lexicalDetails.contextual_analysis)
+    };
   }
 
   function ensureCard() {
@@ -818,6 +1030,44 @@
 
       .stt-card-block--translation {
         background: #f7f7f7;
+      }
+
+      .stt-card-block--lexical {
+        border-top: 1px solid #d4d4d4;
+        background: #fcfcfc;
+      }
+
+      .stt-lexical-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .stt-lexical-row:first-child {
+        margin-top: 0;
+      }
+
+      .stt-lexical-label {
+        flex: 0 0 auto;
+        font-weight: 600;
+      }
+
+      .stt-lexical-value {
+        flex: 1 1 auto;
+      }
+
+      .stt-lexical-row--definitions {
+        display: block;
+      }
+
+      .stt-definition-list {
+        margin: 4px 0 0;
+        padding-left: 18px;
+      }
+
+      .stt-definition-item {
+        margin: 2px 0;
       }
 
       .stt-card-resize-handle {

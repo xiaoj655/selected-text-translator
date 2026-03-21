@@ -6,9 +6,10 @@ import {
   buildQwenMtRequest,
   createSelectedTextDiagnostics,
   extractDeltaContent,
-  extractGenericTranslation,
+  extractGenericResponse,
   getTargetLanguage,
-  isQwenMtModel
+  isSingleWordInput,
+  usesStructuredOutputForModel
 } from './translation-contracts.js';
 import { readProviderSettings } from './provider-settings.js';
 
@@ -70,7 +71,7 @@ async function handleStartTranslation({ tabId, payload }) {
   }
 
   const targetLanguage = getTargetLanguage(text);
-  const qwenMt = isQwenMtModel(settings.model);
+  const usesStructuredOutput = usesStructuredOutputForModel(settings.model);
 
   debugLog('request_start', {
     selectionId,
@@ -90,15 +91,15 @@ async function handleStartTranslation({ tabId, payload }) {
 
   try {
     const endpoint = normalizeEndpoint(settings.baseUrl);
-    const requestBody = qwenMt
-      ? buildQwenMtRequest({
+    const requestBody = usesStructuredOutput
+      ? buildGenericRequest({
+          model: settings.model,
+          text
+        })
+      : buildQwenMtRequest({
           model: settings.model,
           text,
           targetLanguage
-        })
-      : buildGenericRequest({
-          model: settings.model,
-          text
         });
 
     debugLog('request_payload', {
@@ -131,32 +132,38 @@ async function handleStartTranslation({ tabId, payload }) {
       );
     }
 
-    const translation = qwenMt
-      ? await consumeStream({
+    const translationResult = usesStructuredOutput
+      ? await consumeNonStreamResponse({
           response,
-          tabId,
           selectionId,
-          requestId
+          requestId,
+          sourceText: text
         })
-      : await consumeNonStreamResponse({
-          response,
-          selectionId,
-          requestId
-        });
+      : {
+          translation: await consumeStream({
+            response,
+            tabId,
+            selectionId,
+            requestId
+          }),
+          lexicalDetails: null
+        };
 
     emitEvent(tabId, {
       status: TRANSLATION_EVENT_STATUS.SUCCESS,
       selectionId,
       requestId,
       sourceText: text,
-      translatedText: translation
+      translatedText: translationResult.translation,
+      lexicalDetails: translationResult.lexicalDetails
     });
 
     debugLog('request_success', {
       selectionId,
       requestId,
       elapsedMs: Date.now() - startedAt,
-      translatedLength: translation.length
+      translatedLength: translationResult.translation.length,
+      lexicalFields: summarizeLexicalDetails(translationResult.lexicalDetails)
     });
   } catch (error) {
     const message = normalizeErrorMessage(error);
@@ -250,7 +257,7 @@ async function consumeStream({ response, tabId, selectionId, requestId }) {
   return finalTranslation;
 }
 
-async function consumeNonStreamResponse({ response, selectionId, requestId }) {
+async function consumeNonStreamResponse({ response, selectionId, requestId, sourceText }) {
   const rawResponseText = await safeReadText(response);
   if (!rawResponseText.trim()) {
     throw new Error('No translated text returned by endpoint.');
@@ -264,31 +271,56 @@ async function consumeNonStreamResponse({ response, selectionId, requestId }) {
       selectionId,
       requestId,
       stage: 'response_json',
+      expectedResponseFormat: 'json_object',
+      possibleResponseFormatIncompatibility: true,
       responseText: truncate(rawResponseText, 2200)
     });
-    throw new Error('Generic-model response is not valid JSON.');
+    throw new Error(
+      'Generic-model response is not valid JSON. This endpoint may be incompatible with response_format=json_object.'
+    );
   }
 
   const choice = Array.isArray(json?.choices) ? json.choices[0] : null;
-  const content = String(choice?.message?.content || '').trim();
+  const content = readNonStreamMessageContent(choice);
 
   if (!content) {
     throw new Error('No translated text returned by endpoint.');
   }
 
-  const translation = extractGenericTranslation(content);
-  if (!translation) {
+  const singleWordInput = isSingleWordInput(sourceText);
+  const parsedContent = extractGenericResponse(content, {
+    allowLexicalFields: singleWordInput
+  });
+  if (!parsedContent.translation) {
     debugLog('generic_json_parse_failed', {
       selectionId,
       requestId,
-      stage: 'translation_field',
+      stage: parsedContent.parseError || 'translation_field',
+      expectedResponseFormat: 'json_object',
+      possibleResponseFormatIncompatibility:
+        parsedContent.parseError === 'invalid_json' || parsedContent.parseError === 'non_object',
+      invalidFields: parsedContent.invalidFields,
+      sourceTextIsSingleWord: singleWordInput,
       responseText: truncate(rawResponseText, 2200),
       responseContent: truncate(content, 2200)
     });
-    throw new Error('Generic-model response is missing a valid translation field.');
+    throw new Error(buildGenericResponseFormatError(parsedContent.parseError));
   }
 
-  return translation;
+  if (parsedContent.invalidFields.length > 0) {
+    debugLog('generic_optional_fields_ignored', {
+      selectionId,
+      requestId,
+      sourceTextIsSingleWord: singleWordInput,
+      invalidFields: parsedContent.invalidFields,
+      responseContent: truncate(content, 2200)
+    });
+  }
+
+  return {
+    translation: parsedContent.translation,
+    lexicalDetails: parsedContent.lexicalDetails
+  };
 }
 
 function emitEvent(tabId, payload) {
@@ -340,6 +372,11 @@ function sanitizeRequestBodyForLog(requestBody) {
   const normalized = {
     ...requestBody
   };
+  if (requestBody.response_format && typeof requestBody.response_format === 'object') {
+    normalized.response_format = {
+      ...requestBody.response_format
+    };
+  }
 
   if (Array.isArray(requestBody.messages)) {
     normalized.messages = requestBody.messages.map((message) => {
@@ -361,6 +398,55 @@ function sanitizeRequestBodyForLog(requestBody) {
   }
 
   return normalized;
+}
+
+function readNonStreamMessageContent(choice) {
+  const content = choice?.message?.content;
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    const joined = content
+      .map((part) => {
+        if (typeof part?.text === 'string') {
+          return part.text;
+        }
+        return '';
+      })
+      .join('');
+    return joined.trim();
+  }
+
+  return '';
+}
+
+function buildGenericResponseFormatError(parseError) {
+  if (parseError === 'invalid_json' || parseError === 'non_object') {
+    return 'Generic-model response format mismatch: expected a JSON object in choices[0].message.content for response_format=json_object.';
+  }
+
+  if (parseError === 'missing_translation') {
+    return 'Generic-model response format invalid: missing required non-empty "translation" string.';
+  }
+
+  return 'Generic-model response format invalid.';
+}
+
+function summarizeLexicalDetails(lexicalDetails) {
+  if (!lexicalDetails || typeof lexicalDetails !== 'object') {
+    return {
+      phonetic: false,
+      definitions: 0,
+      contextualAnalysis: false
+    };
+  }
+
+  return {
+    phonetic: Boolean(lexicalDetails.phonetic),
+    definitions: Array.isArray(lexicalDetails.definitions) ? lexicalDetails.definitions.length : 0,
+    contextualAnalysis: Boolean(lexicalDetails.contextual_analysis)
+  };
 }
 
 async function initDebugLoggingSetting() {

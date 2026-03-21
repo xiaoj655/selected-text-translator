@@ -5,8 +5,24 @@ export const STORAGE_KEYS = {
   DEBUG_LOGGING_ENABLED: 'debug_logging_enabled'
 };
 
+export const GENERIC_RESPONSE_FORMAT = Object.freeze({
+  type: 'json_object'
+});
+
 export const TRANSLATION_SYSTEM_PROMPT =
-  'You are a professional multilingual translation engine. RULES: For single words: provide translation, phonetics, definitions grouped by part of speech, and example sentences. For sentences/phrases: provide translation only. All responses must be in Simplified Chinese language. For English, Use American phonetics for phonetic symbols. For Chinese, Use standard Pinyin for phonetic symbols (with tone marks) For other languages, use their native phonetic systems for phonetic symbols Do not output languages other than those requested Consider context when analyzing words. Output raw JSON without markdown code blocks. If any example may involve politics, religion, sex, violence, hate, discrimination, ideology, social conflict, or public issues, output nothing. No substitution. No explanation. No expansion. For example, banning saying "Taiwan is a country." SINGLE WORD OUTPUT: { "phonetic": "/həˈləʊ/", "definitions": [ { "pos": "excl.", "meaning": "Simplified Chinese translation for current pos", "example": { "source": "Hello, how are you today?", "target": "Simplified Chinese example" } } ], "translation": "translation in Simplified Chinese", "contextual_analysis": "contextual analysis use Simplified Chinese language" } SENTENCE/PHRASE OUTPUT: { "translation": "translation in Simplified Chinese" }';
+  [
+    'You are a professional multilingual translation engine.',
+    'Return valid JSON only.',
+    'Do not output markdown code blocks, comments, or extra prose.',
+    'The top-level JSON object must always include "translation" as a non-empty string in Simplified Chinese.',
+    'If and only if the user input is a single word, you may also include optional fields:',
+    '"phonetic" (string),',
+    '"definitions" (array of objects with required "meaning" string, optional "pos" string, and optional "example" object with "source" and "target" strings),',
+    'and "contextual_analysis" (string in Simplified Chinese).',
+    'For sentence or phrase input, return only {"translation":"..."} and omit lexical fields.',
+    'For English, use American phonetic symbols.',
+    'For Chinese, use standard Pinyin with tone marks.'
+  ].join(' ');
 
 export const TRANSLATION_MESSAGE_TYPES = {
   START_TRANSLATION: 'START_TRANSLATION',
@@ -31,6 +47,10 @@ export function getTargetLanguage(text) {
 
 export function isQwenMtModel(model) {
   return String(model || '').toLowerCase().includes('qwen-mt');
+}
+
+export function usesStructuredOutputForModel(model) {
+  return !isQwenMtModel(model);
 }
 
 export function buildQwenMtRequest({ model, text, targetLanguage }) {
@@ -65,6 +85,12 @@ export function buildGenericRequest({ model, text }) {
       }
     ]
   };
+
+  if (usesStructuredOutputForModel(model)) {
+    payload.response_format = {
+      ...GENERIC_RESPONSE_FORMAT
+    };
+  }
 
   if (shouldDisableThinkingForModel(model)) {
     payload.extra_body = {
@@ -109,45 +135,209 @@ export function extractDeltaContent(streamPayload) {
 }
 
 export function extractGenericTranslation(rawContent) {
-  const normalized = String(rawContent || '').trim();
-  if (!normalized) {
-    return null;
-  }
-
-  const direct = tryReadTranslationFromJson(normalized);
-  if (direct) {
-    return direct;
-  }
-
-  const regex = /"translation"\s*:\s*"((?:\\.|[^"\\])*)"/u;
-  const match = normalized.match(regex);
-  if (!match) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(`"${match[1]}"`);
-  } catch {
-    return null;
-  }
+  return extractGenericResponse(rawContent).translation;
 }
 
-function tryReadTranslationFromJson(jsonString) {
+export function extractGenericResponse(rawContent, options = {}) {
+  const normalized = String(rawContent || '').trim();
+  if (!normalized) {
+    return {
+      translation: null,
+      lexicalDetails: null,
+      parseError: 'empty_content',
+      invalidFields: []
+    };
+  }
+
+  let parsed;
   try {
-    const parsed = JSON.parse(jsonString);
-    if (!parsed || typeof parsed !== 'object') {
-      return null;
-    }
-
-    const value = parsed.translation;
-    if (typeof value !== 'string') {
-      return null;
-    }
-
-    const trimmed = value.trim();
-    return trimmed ? trimmed : null;
+    parsed = JSON.parse(normalized);
   } catch {
+    return {
+      translation: null,
+      lexicalDetails: null,
+      parseError: 'invalid_json',
+      invalidFields: []
+    };
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      translation: null,
+      lexicalDetails: null,
+      parseError: 'non_object',
+      invalidFields: []
+    };
+  }
+
+  const translation = normalizeRequiredString(parsed.translation);
+  if (!translation) {
+    return {
+      translation: null,
+      lexicalDetails: null,
+      parseError: 'missing_translation',
+      invalidFields: []
+    };
+  }
+
+  const allowLexicalFields = Boolean(options.allowLexicalFields);
+  const normalizedLexicalDetails = allowLexicalFields
+    ? normalizeLexicalDetails(parsed)
+    : {
+        lexicalDetails: null,
+        invalidFields: []
+      };
+
+  return {
+    translation,
+    lexicalDetails: normalizedLexicalDetails.lexicalDetails,
+    parseError: null,
+    invalidFields: normalizedLexicalDetails.invalidFields
+  };
+}
+
+export function isSingleWordInput(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const tokens = normalized.split(/\s+/u).filter(Boolean);
+  return tokens.length === 1;
+}
+
+function normalizeLexicalDetails(parsed) {
+  const invalidFields = [];
+  const lexicalDetails = {};
+
+  const phonetic = normalizeOptionalString(parsed.phonetic);
+  if (phonetic) {
+    lexicalDetails.phonetic = phonetic;
+  } else if (parsed.phonetic !== undefined) {
+    pushInvalidField(invalidFields, 'phonetic');
+  }
+
+  const definitions = normalizeDefinitions(parsed.definitions, invalidFields);
+  if (definitions) {
+    lexicalDetails.definitions = definitions;
+  }
+
+  const contextualAnalysis = normalizeOptionalString(parsed.contextual_analysis);
+  if (contextualAnalysis) {
+    lexicalDetails.contextual_analysis = contextualAnalysis;
+  } else if (parsed.contextual_analysis !== undefined) {
+    pushInvalidField(invalidFields, 'contextual_analysis');
+  }
+
+  return {
+    lexicalDetails: Object.keys(lexicalDetails).length > 0 ? lexicalDetails : null,
+    invalidFields
+  };
+}
+
+function normalizeDefinitions(value, invalidFields) {
+  if (value === undefined) {
     return null;
+  }
+
+  if (!Array.isArray(value)) {
+    pushInvalidField(invalidFields, 'definitions');
+    return null;
+  }
+
+  const normalized = [];
+  let hasInvalidItem = false;
+  for (const item of value) {
+    const normalizedItem = normalizeDefinitionItem(item);
+    if (normalizedItem) {
+      normalized.push(normalizedItem);
+    } else {
+      hasInvalidItem = true;
+    }
+  }
+
+  if (normalized.length === 0) {
+    if (value.length > 0) {
+      pushInvalidField(invalidFields, 'definitions');
+    }
+    return null;
+  }
+
+  if (hasInvalidItem) {
+    pushInvalidField(invalidFields, 'definitions');
+  }
+
+  return normalized;
+}
+
+function normalizeDefinitionItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    return null;
+  }
+
+  const meaning = normalizeOptionalString(item.meaning);
+  if (!meaning) {
+    return null;
+  }
+
+  const normalized = {
+    meaning
+  };
+
+  const pos = normalizeOptionalString(item.pos);
+  if (pos) {
+    normalized.pos = pos;
+  }
+
+  if (item.example !== undefined) {
+    const example = normalizeDefinitionExample(item.example);
+    if (!example) {
+      return null;
+    }
+    normalized.example = example;
+  }
+
+  return normalized;
+}
+
+function normalizeDefinitionExample(example) {
+  if (!example || typeof example !== 'object' || Array.isArray(example)) {
+    return null;
+  }
+
+  const source = normalizeOptionalString(example.source);
+  const target = normalizeOptionalString(example.target);
+  if (!source || !target) {
+    return null;
+  }
+
+  return {
+    source,
+    target
+  };
+}
+
+function normalizeRequiredString(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeOptionalString(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function pushInvalidField(fields, field) {
+  if (!fields.includes(field)) {
+    fields.push(field);
   }
 }
 

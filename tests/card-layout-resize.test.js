@@ -56,5 +56,8 @@ test('positioning uses effective rendered width after width application', () => 
 test('loading, status, and result states all preserve resize affordance', () => {
   assert.match(contentSource, /function renderLoadingCard\(message\)[\s\S]*ensureCardResizeHandle\(\);/);
   assert.match(contentSource, /function renderStatusCard\(message\)[\s\S]*ensureCardResizeHandle\(\);/);
-  assert.match(contentSource, /function renderSuccessCard\(sourceText, translatedText\)[\s\S]*ensureCardResizeHandle\(\);/);
+  assert.match(
+    contentSource,
+    /function renderSuccessCard\(sourceText, translatedText, lexicalDetails\)[\s\S]*ensureCardResizeHandle\(\);/
+  );
 });
