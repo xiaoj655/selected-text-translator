@@ -4,6 +4,17 @@ Selected Text Translator 是一款基于语言模型的 Chrome 翻译插件。
 
 https://github.com/user-attachments/assets/a11618dc-b0d9-4e21-b8f1-ac6ddacdd537
 
+## 功能
+
+| 功能项 | 非 `qwen-mt` 系列模型 | `qwen-mt` 系列模型 |
+| --- | --- | --- |
+| 单个单词音标 | 有 | 无 |
+| 单个单词释义 | 有 | 无 |
+| 单个单词场景理解 | 有 | 无 |
+| 流式输出 | 无 | 有 |
+
+<img src="https://oss.0x0.asia/single-word.png" />
+
 ## 使用方式
 
 ### 安装插件
