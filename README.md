@@ -17,6 +17,13 @@ https://github.com/user-attachments/assets/a11618dc-b0d9-4e21-b8f1-ac6ddacdd537
 
 ## 使用方式
 
+### 获取代码
+
+两种方式，任选其一：
+
+- 在 github 页面下载 zip 包，然后解压
+- `git clone https://github.com/xiaoj655/selected-text-translator.git --depth=1`
+
 ### 安装插件
 
 1. 进入 [Chrome 插件管理页面](chrome://extensions/) 确保开启了开发者模式 (Developer mode)
