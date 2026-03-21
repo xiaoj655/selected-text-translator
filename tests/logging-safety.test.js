@@ -48,6 +48,10 @@ test('request payload debug log includes prompt and redacts user content', () =>
     backgroundSource,
     /body:\s*sanitizeRequestBodyForLog\(requestBody\)/
   );
+  assert.match(
+    backgroundSource,
+    /normalized\.response_format\s*=\s*\{\s*\.\.\.requestBody\.response_format/s
+  );
   assert.match(backgroundSource, /if \(role === 'system'\)/);
   assert.match(
     backgroundSource,

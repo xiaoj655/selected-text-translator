@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  GENERIC_RESPONSE_FORMAT,
   buildGenericRequest,
   buildQwenMtRequest,
   createSelectedTextDiagnostics,
+  extractGenericResponse,
   extractGenericTranslation,
   getTargetLanguage,
   isQwenMtModel,
+  isSingleWordInput,
+  usesStructuredOutputForModel,
   TRANSLATION_SYSTEM_PROMPT
 } from '../src/translation-contracts.js';
 
@@ -20,6 +24,12 @@ test('isQwenMtModel detects qwen-mt family case-insensitively', () => {
   assert.equal(isQwenMtModel('qwen-mt-turbo'), true);
   assert.equal(isQwenMtModel('QWEN-MT-PLUS'), true);
   assert.equal(isQwenMtModel('gpt-4.1-mini'), false);
+});
+
+test('usesStructuredOutputForModel only enables generic structured mode for non-qwen-mt models', () => {
+  assert.equal(usesStructuredOutputForModel('gpt-4.1-mini'), true);
+  assert.equal(usesStructuredOutputForModel('qwen3-235b-a22b'), true);
+  assert.equal(usesStructuredOutputForModel('qwen-mt-turbo'), false);
 });
 
 test('buildQwenMtRequest uses translation_options and no system message', () => {
@@ -41,9 +51,10 @@ test('buildQwenMtRequest uses translation_options and no system message', () => 
       content: '你好'
     }
   ]);
+  assert.equal('response_format' in payload, false);
 });
 
-test('buildGenericRequest uses fixed system prompt and omits translation_options', () => {
+test('buildGenericRequest uses fixed system prompt, json_object response_format, and no translation_options', () => {
   const payload = buildGenericRequest({
     model: 'gpt-4.1-mini',
     text: 'hello world'
@@ -55,6 +66,7 @@ test('buildGenericRequest uses fixed system prompt and omits translation_options
   assert.equal(payload.messages[0].content, TRANSLATION_SYSTEM_PROMPT);
   assert.equal(payload.messages[1].role, 'user');
   assert.equal(payload.messages[1].content, 'hello world');
+  assert.deepEqual(payload.response_format, GENERIC_RESPONSE_FORMAT);
   assert.equal('translation_options' in payload, false);
   assert.equal('extra_body' in payload, false);
 });
@@ -77,18 +89,143 @@ test('buildGenericRequest does not set enable_thinking for qwen-mt family', () =
   });
 
   assert.equal('extra_body' in payload, false);
+  assert.equal('response_format' in payload, false);
 });
 
-test('extractGenericTranslation reads full JSON payload', () => {
+test('non-qwen system prompt enforces JSON-only output and required translation contract', () => {
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /Return valid JSON only\./);
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /Do not output markdown code blocks/);
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /must always include "translation"/);
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /"phonetic"/);
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /"definitions"/);
+  assert.match(TRANSLATION_SYSTEM_PROMPT, /"contextual_analysis"/);
+});
+
+test('extractGenericResponse accepts valid structured JSON and lexical optional fields for single-word input', () => {
+  const result = extractGenericResponse(
+    JSON.stringify({
+      translation: '你好',
+      phonetic: '/həˈləʊ/',
+      definitions: [
+        {
+          pos: 'excl.',
+          meaning: '你好',
+          example: {
+            source: 'hello there',
+            target: '你好'
+          }
+        }
+      ],
+      contextual_analysis: '常见问候语。'
+    }),
+    {
+      allowLexicalFields: true
+    }
+  );
+
+  assert.equal(result.parseError, null);
+  assert.equal(result.translation, '你好');
+  assert.deepEqual(result.lexicalDetails, {
+    phonetic: '/həˈləʊ/',
+    definitions: [
+      {
+        pos: 'excl.',
+        meaning: '你好',
+        example: {
+          source: 'hello there',
+          target: '你好'
+        }
+      }
+    ],
+    contextual_analysis: '常见问候语。'
+  });
+  assert.deepEqual(result.invalidFields, []);
+});
+
+test('extractGenericResponse ignores optional lexical fields for non-single-word input', () => {
+  const result = extractGenericResponse(
+    JSON.stringify({
+      translation: '你好世界',
+      phonetic: '/həˈləʊ/',
+      definitions: [
+        {
+          meaning: '你好'
+        }
+      ],
+      contextual_analysis: '问候语。'
+    }),
+    {
+      allowLexicalFields: false
+    }
+  );
+  assert.equal(result.translation, '你好世界');
+  assert.equal(result.lexicalDetails, null);
+  assert.deepEqual(result.invalidFields, []);
+});
+
+test('extractGenericResponse normalizes malformed optional lexical fields without failing translation', () => {
+  const result = extractGenericResponse(
+    JSON.stringify({
+      translation: '你好',
+      phonetic: 123,
+      definitions: [
+        {
+          pos: 'n.',
+          meaning: '你好'
+        },
+        {
+          pos: 'bad-item-without-meaning'
+        }
+      ],
+      contextual_analysis: '  '
+    }),
+    {
+      allowLexicalFields: true
+    }
+  );
+
+  assert.equal(result.parseError, null);
+  assert.equal(result.translation, '你好');
+  assert.deepEqual(result.lexicalDetails, {
+    definitions: [
+      {
+        pos: 'n.',
+        meaning: '你好'
+      }
+    ]
+  });
+  assert.deepEqual(result.invalidFields.sort(), ['contextual_analysis', 'definitions', 'phonetic']);
+});
+
+test('extractGenericResponse fails clearly when required translation field is missing', () => {
+  const result = extractGenericResponse(
+    JSON.stringify({
+      contextual_analysis: '无效响应'
+    }),
+    {
+      allowLexicalFields: true
+    }
+  );
+  assert.equal(result.translation, null);
+  assert.equal(result.parseError, 'missing_translation');
+});
+
+test('extractGenericResponse reports invalid_json when model returns non-JSON content', () => {
+  const result = extractGenericResponse('translation: 你好');
+  assert.equal(result.translation, null);
+  assert.equal(result.parseError, 'invalid_json');
+});
+
+test('extractGenericTranslation returns translation string from valid structured payload', () => {
   const result = extractGenericTranslation('{"translation":"你好世界"}');
   assert.equal(result, '你好世界');
 });
 
-test('extractGenericTranslation can parse translation field from partial JSON stream', () => {
-  const result = extractGenericTranslation(
-    'garbage{"translation":"line\\nwrapped"'
-  );
-  assert.equal(result, 'line\nwrapped');
+test('isSingleWordInput uses whitespace tokenization', () => {
+  assert.equal(isSingleWordInput('hello'), true);
+  assert.equal(isSingleWordInput('你好'), true);
+  assert.equal(isSingleWordInput('hello world'), false);
+  assert.equal(isSingleWordInput('  '), false);
 });
 
 test('createSelectedTextDiagnostics redacts text content to length + preview', () => {

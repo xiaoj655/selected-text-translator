@@ -90,12 +90,20 @@ The extension SHALL request streaming translation output and SHALL update the tr
 - **WHEN** a different selection becomes active while a translation stream is still in progress
 - **THEN** the extension ignores any later stream output from the superseded request
 
-### Requirement: Limit card content to source and translation text
-The extension SHALL render only the selected source text and the translated text inside the translation card in the success state, while allowing minimal transient loading or error states during request handling.
+### Requirement: Limit card content to source text, translation text, and validated single-word lexical details
+The extension SHALL render the selected source text and translated text inside the translation card in the success state. For single-word input, the extension MAY additionally render validated lexical details derived from response fields (`phonetic`, `definitions`, `contextual_analysis`). Loading and error states SHALL remain concise and minimal.
 
-#### Scenario: Card renders only two text regions
-- **WHEN** a translation request succeeds
-- **THEN** the translation card shows the source text and the translated text without extra controls or metadata
+#### Scenario: Sentence or phrase success renders only two text regions
+- **WHEN** a translation request succeeds for sentence or phrase input
+- **THEN** the translation card shows source text and translated text without lexical detail regions
+
+#### Scenario: Single-word success renders validated lexical details
+- **WHEN** a translation request succeeds for single-word input and lexical optional fields are valid
+- **THEN** the translation card shows source text, translated text, and available validated lexical details
+
+#### Scenario: Invalid lexical optional fields are ignored
+- **WHEN** a translation request succeeds for single-word input but lexical optional fields are missing or invalid
+- **THEN** the translation card falls back to showing source text and translated text only
 
 #### Scenario: Loading state stays minimal
 - **WHEN** a translation request is in progress
@@ -150,4 +158,3 @@ The extension SHALL allow the user to directly drag the translation card's resiz
 #### Scenario: Missing or invalid persisted width falls back to default
 - **WHEN** no valid persisted width is available
 - **THEN** the extension renders the translation card using the default width
-
