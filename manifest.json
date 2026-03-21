@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Selected Text Translator",
+  "version": "0.1.0",
+  "description": "Translate selected text with a minimal in-page trigger and card.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "options_page": "src/options.html",
+  "action": {
+    "default_title": "Selected Text Translator",
+    "default_popup": "src/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "assets/icon128.png"
+  }
+}
