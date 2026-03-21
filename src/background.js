@@ -72,6 +72,7 @@ async function handleStartTranslation({ tabId, payload }) {
 
   const targetLanguage = getTargetLanguage(text);
   const usesStructuredOutput = usesStructuredOutputForModel(settings.model);
+  const isQwenMtRequest = !usesStructuredOutput;
 
   debugLog('request_start', {
     selectionId,
@@ -91,15 +92,15 @@ async function handleStartTranslation({ tabId, payload }) {
 
   try {
     const endpoint = normalizeEndpoint(settings.baseUrl);
-    const requestBody = usesStructuredOutput
-      ? buildGenericRequest({
-          model: settings.model,
-          text
-        })
-      : buildQwenMtRequest({
+    const requestBody = isQwenMtRequest
+      ? buildQwenMtRequest({
           model: settings.model,
           text,
           targetLanguage
+        })
+      : buildGenericRequest({
+          model: settings.model,
+          text
         });
 
     debugLog('request_payload', {
@@ -132,22 +133,31 @@ async function handleStartTranslation({ tabId, payload }) {
       );
     }
 
-    const translationResult = usesStructuredOutput
-      ? await consumeNonStreamResponse({
+    const translationResult = isQwenMtRequest
+      ? requestBody.stream
+        ? {
+            translation: await consumeStream({
+              response,
+              tabId,
+              selectionId,
+              requestId
+            }),
+            lexicalDetails: null
+          }
+        : {
+            translation: await consumeQwenMtNonStreamResponse({
+              response,
+              selectionId,
+              requestId
+            }),
+            lexicalDetails: null
+          }
+      : await consumeNonStreamResponse({
           response,
           selectionId,
           requestId,
           sourceText: text
-        })
-      : {
-          translation: await consumeStream({
-            response,
-            tabId,
-            selectionId,
-            requestId
-          }),
-          lexicalDetails: null
-        };
+        });
 
     emitEvent(tabId, {
       status: TRANSLATION_EVENT_STATUS.SUCCESS,
@@ -255,6 +265,40 @@ async function consumeStream({ response, tabId, selectionId, requestId }) {
   }
 
   return finalTranslation;
+}
+
+async function consumeQwenMtNonStreamResponse({ response, selectionId, requestId }) {
+  const rawResponseText = await safeReadText(response);
+  if (!rawResponseText.trim()) {
+    throw new Error('No translated text returned by endpoint.');
+  }
+
+  let json;
+  try {
+    json = JSON.parse(rawResponseText);
+  } catch {
+    debugLog('qwen_non_stream_parse_failed', {
+      selectionId,
+      requestId,
+      stage: 'response_json',
+      responseText: truncate(rawResponseText, 2200)
+    });
+    throw new Error('qwen-mt non-stream response is not valid JSON.');
+  }
+
+  const choice = Array.isArray(json?.choices) ? json.choices[0] : null;
+  const content = readNonStreamMessageContent(choice);
+  if (!content) {
+    debugLog('qwen_non_stream_parse_failed', {
+      selectionId,
+      requestId,
+      stage: 'message_content',
+      responseText: truncate(rawResponseText, 2200)
+    });
+    throw new Error('qwen-mt non-stream response did not include translated content.');
+  }
+
+  return content;
 }
 
 async function consumeNonStreamResponse({ response, selectionId, requestId, sourceText }) {

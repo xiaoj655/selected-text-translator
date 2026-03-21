@@ -10,6 +10,7 @@ import {
   extractGenericTranslation,
   getTargetLanguage,
   isQwenMtModel,
+  isQwenMtStreamingModel,
   isSingleWordInput,
   usesStructuredOutputForModel,
   TRANSLATION_SYSTEM_PROMPT
@@ -26,20 +27,29 @@ test('isQwenMtModel detects qwen-mt family case-insensitively', () => {
   assert.equal(isQwenMtModel('gpt-4.1-mini'), false);
 });
 
+test('isQwenMtStreamingModel only enables stream for qwen-mt-flash and qwen-mt-lite', () => {
+  assert.equal(isQwenMtStreamingModel('qwen-mt-flash'), true);
+  assert.equal(isQwenMtStreamingModel('QWEN-MT-LITE'), true);
+  assert.equal(isQwenMtStreamingModel(' qwen-mt-lite '), true);
+  assert.equal(isQwenMtStreamingModel('qwen-mt-turbo'), false);
+  assert.equal(isQwenMtStreamingModel('qwen-mt-plus'), false);
+  assert.equal(isQwenMtStreamingModel('gpt-4.1-mini'), false);
+});
+
 test('usesStructuredOutputForModel only enables generic structured mode for non-qwen-mt models', () => {
   assert.equal(usesStructuredOutputForModel('gpt-4.1-mini'), true);
   assert.equal(usesStructuredOutputForModel('qwen3-235b-a22b'), true);
   assert.equal(usesStructuredOutputForModel('qwen-mt-turbo'), false);
 });
 
-test('buildQwenMtRequest uses translation_options and no system message', () => {
+test('buildQwenMtRequest enables streaming for qwen-mt-flash and keeps qwen-mt contract', () => {
   const payload = buildQwenMtRequest({
-    model: 'qwen-mt-turbo',
+    model: 'qwen-mt-flash',
     text: '你好',
     targetLanguage: 'English'
   });
 
-  assert.equal(payload.model, 'qwen-mt-turbo');
+  assert.equal(payload.model, 'qwen-mt-flash');
   assert.equal(payload.stream, true);
   assert.deepEqual(payload.translation_options, {
     source_lang: 'auto',
@@ -52,6 +62,21 @@ test('buildQwenMtRequest uses translation_options and no system message', () => 
     }
   ]);
   assert.equal('response_format' in payload, false);
+});
+
+test('buildQwenMtRequest disables streaming for non-whitelisted qwen-mt models', () => {
+  const payload = buildQwenMtRequest({
+    model: 'qwen-mt-turbo',
+    text: '你好',
+    targetLanguage: 'English'
+  });
+
+  assert.equal(payload.stream, false);
+  assert.deepEqual(payload.translation_options, {
+    source_lang: 'auto',
+    target_lang: 'English'
+  });
+  assert.equal(payload.messages[0].role, 'user');
 });
 
 test('buildGenericRequest uses fixed system prompt, json_object response_format, and no translation_options', () => {
