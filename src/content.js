@@ -23,7 +23,9 @@
   const VIEWPORT_MARGIN_PX = 8;
   const LOG_PREFIX = '[selected-text-translation]';
   const DEBUG_LOGGING_KEY = 'debug_logging_enabled';
+  const DISABLED_URL_PATTERNS_KEY = 'disabled_url_patterns';
   let debugLoggingEnabled = false;
+  let urlBlacklist = [];
 
   const state = {
     selectionCounter: 0,
@@ -42,6 +44,7 @@
   ensureStyles();
   void initDebugLoggingSetting();
   void initCardWidthSetting();
+  void initUrlBlacklistSetting();
   bindListeners();
 
   function bindListeners() {
@@ -69,6 +72,11 @@
   }
 
   function refreshSelection() {
+    if (isUrlBlacklisted()) {
+      clearActiveSelection('url_blacklisted');
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
       clearActiveSelection('selection_empty');
@@ -1144,6 +1152,46 @@
       const next = changes?.[DEBUG_LOGGING_KEY]?.newValue;
       if (typeof next === 'boolean') {
         debugLoggingEnabled = next;
+      }
+    });
+  }
+
+  function isUrlBlacklisted() {
+    if (urlBlacklist.length === 0) {
+      return false;
+    }
+
+    const currentUrl = window.location.href;
+    return urlBlacklist.some((pattern) => currentUrl.startsWith(pattern));
+  }
+
+  async function initUrlBlacklistSetting() {
+    try {
+      const saved = await chrome.storage.sync.get([DISABLED_URL_PATTERNS_KEY]);
+      const patterns = saved?.[DISABLED_URL_PATTERNS_KEY];
+      if (Array.isArray(patterns)) {
+        urlBlacklist = patterns.filter((p) => typeof p === 'string' && p.length > 0);
+      }
+    } catch {}
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'sync') {
+        return;
+      }
+
+      if (!changes || !(DISABLED_URL_PATTERNS_KEY in changes)) {
+        return;
+      }
+
+      const nextPatterns = changes[DISABLED_URL_PATTERNS_KEY]?.newValue;
+      if (Array.isArray(nextPatterns)) {
+        urlBlacklist = nextPatterns.filter((p) => typeof p === 'string' && p.length > 0);
+      } else {
+        urlBlacklist = [];
+      }
+
+      if (isUrlBlacklisted()) {
+        clearActiveSelection('url_blacklisted');
       }
     });
   }

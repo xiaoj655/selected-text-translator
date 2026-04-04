@@ -82,6 +82,100 @@
         margin: 0;
         font-size: 12px;
       }
+
+      .blacklist-section {
+        margin-top: 24px;
+      }
+
+      .blacklist-description {
+        font-size: 13px;
+        color: #555;
+        margin: 0 0 12px;
+        line-height: 1.5;
+      }
+
+      .blacklist-list {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .blacklist-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: #f7f7f7;
+        border: 1px solid #ddd;
+      }
+
+      .blacklist-item-pattern {
+        flex: 1;
+        font-size: 13px;
+        word-break: break-all;
+      }
+
+      .blacklist-item.editing .blacklist-item-pattern {
+        display: none;
+      }
+
+      .blacklist-item-edit-input {
+        flex: 1;
+        display: none;
+        padding: 4px 6px;
+        font-size: 13px;
+        border: 2px solid #111;
+      }
+
+      .blacklist-item.editing .blacklist-item-edit-input {
+        display: block;
+      }
+
+      .blacklist-item-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .blacklist-item.editing .blacklist-item-actions {
+        display: none;
+      }
+
+      .blacklist-item-actions button {
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+
+      .blacklist-item-edit-actions {
+        display: none;
+        gap: 4px;
+      }
+
+      .blacklist-item.editing .blacklist-item-edit-actions {
+        display: flex;
+      }
+
+      .blacklist-item-edit-actions button {
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+
+      .blacklist-add-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .blacklist-add-row input {
+        flex: 1;
+      }
+
+      .blacklist-empty {
+        font-size: 13px;
+        color: #888;
+        font-style: italic;
+        margin: 0;
+        padding: 8px 0;
+      }
     </style>
   </head>
   <body>
@@ -112,6 +206,19 @@
         <button id="disable-logs" class="secondary" type="button">One-click disable logs</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </form>
+    </section>
+
+    <section class="panel blacklist-section">
+      <h1>URL Blacklist</h1>
+      <p class="blacklist-description">
+        The extension will not show the translation trigger on URLs that match any of these prefixes.
+      </p>
+      <div id="blacklist-list" class="blacklist-list"></div>
+      <div class="blacklist-add-row">
+        <input id="blacklist-input" type="url" placeholder="https://example.com/path" />
+        <button id="blacklist-add" type="button">Add</button>
+      </div>
+      <button id="blacklist-add-current" class="secondary" type="button">Add Current Page</button>
     </section>
 
     <script src="options.js" type="module"></script>

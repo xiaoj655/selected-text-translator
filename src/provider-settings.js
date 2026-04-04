@@ -79,3 +79,34 @@ export async function saveProviderSettings(input = {}) {
     ...validation
   };
 }
+
+export async function readDisabledUrlPatterns() {
+  const values = await chrome.storage.sync.get([STORAGE_KEYS.DISABLED_URL_PATTERNS]);
+  const patterns = values?.[STORAGE_KEYS.DISABLED_URL_PATTERNS];
+
+  if (!Array.isArray(patterns)) {
+    return [];
+  }
+
+  return patterns.filter((p) => typeof p === 'string' && p.length > 0);
+}
+
+export async function saveDisabledUrlPatterns(patterns = []) {
+  if (!Array.isArray(patterns)) {
+    return {
+      ok: false,
+      error: 'Patterns must be an array'
+    };
+  }
+
+  const validPatterns = patterns.filter((p) => typeof p === 'string' && p.length > 0);
+
+  await chrome.storage.sync.set({
+    [STORAGE_KEYS.DISABLED_URL_PATTERNS]: validPatterns
+  });
+
+  return {
+    ok: true,
+    patterns: validPatterns
+  };
+}

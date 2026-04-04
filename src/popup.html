@@ -60,10 +60,75 @@
         cursor: pointer;
       }
 
+      button.secondary {
+        background: #efefef;
+      }
+
       .status {
         min-height: 16px;
         margin: 0;
         font-size: 11px;
+      }
+
+      .blacklist-section {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #ddd;
+      }
+
+      .blacklist-info {
+        font-size: 11px;
+        color: #555;
+        margin: 0 0 8px;
+      }
+
+      .blacklist-current {
+        font-size: 11px;
+        word-break: break-all;
+        background: #f7f7f7;
+        padding: 6px 8px;
+        margin: 0 0 8px;
+        border: 1px solid #ddd;
+      }
+
+      .blacklist-buttons {
+        display: flex;
+        gap: 6px;
+      }
+
+      .page-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .page-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .page-status.enabled .page-status-dot {
+        background: #19b84a;
+      }
+
+      .page-status.enabled .page-status-text {
+        color: #17663e;
+      }
+
+      .page-status.disabled .page-status-dot {
+        background: #c43f2f;
+      }
+
+      .page-status.disabled .page-status-text {
+        color: #c43f2f;
+      }
+
+      .page-status.hidden {
+        display: none;
       }
     </style>
   </head>
@@ -89,6 +154,22 @@
         <button type="submit">Save</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </form>
+
+      <section class="blacklist-section">
+        <p class="blacklist-info">Quickly disable translation on the current page:</p>
+        <div id="page-status" class="page-status hidden">
+          <span class="page-status-dot"></span>
+          <span class="page-status-text">Loading...</span>
+        </div>
+        <p id="current-url" class="blacklist-current">Loading...</p>
+        <div id="disable-buttons" class="blacklist-buttons">
+          <button id="disable-current" type="button">Disable on this page</button>
+          <button id="disable-current-subpath" class="secondary" type="button">Disable on this path</button>
+        </div>
+        <div id="enable-button" class="blacklist-buttons" style="display: none;">
+          <button id="enable-current" type="button">Enable on this page</button>
+        </div>
+      </section>
     </section>
 
     <script src="popup.js" type="module"></script>
