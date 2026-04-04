@@ -2,7 +2,8 @@ export const STORAGE_KEYS = {
   BASE_URL: 'base_url',
   API_KEY: 'api_key',
   MODEL: 'model',
-  DEBUG_LOGGING_ENABLED: 'debug_logging_enabled'
+  DEBUG_LOGGING_ENABLED: 'debug_logging_enabled',
+  DISABLED_URL_PATTERNS: 'disabled_url_patterns'
 };
 
 export const GENERIC_RESPONSE_FORMAT = Object.freeze({

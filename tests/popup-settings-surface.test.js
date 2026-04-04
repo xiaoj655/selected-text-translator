@@ -22,7 +22,7 @@ test('popup contains provider input fields and status region', () => {
 test('popup script uses shared provider-settings helpers', () => {
   assert.match(
     popupJsSource,
-    /import\s*\{\s*readProviderSettings,\s*saveProviderSettings\s*\}\s*from\s*'\.\/provider-settings\.js'/
+    /import\s*\{\s*readProviderSettings,\s*saveProviderSettings,\s*readDisabledUrlPatterns,\s*saveDisabledUrlPatterns\s*\}\s*from\s*'\.\/provider-settings\.js'/
   );
   assert.match(popupJsSource, /const settings = await readProviderSettings\(\)/);
   assert.match(popupJsSource, /const result = await saveProviderSettings\(/);
@@ -31,7 +31,7 @@ test('popup script uses shared provider-settings helpers', () => {
 test('options script reuses shared provider-settings helpers and keeps debug toggle', () => {
   assert.match(
     optionsSource,
-    /import\s*\{\s*readProviderSettings,\s*saveProviderSettings\s*\}\s*from\s*'\.\/provider-settings\.js'/
+    /import\s*\{\s*readProviderSettings,\s*saveProviderSettings,\s*readDisabledUrlPatterns,\s*saveDisabledUrlPatterns\s*\}\s*from\s*'\.\/provider-settings\.js'/
   );
   assert.match(optionsSource, /const \[providerSettings, saved\] = await Promise\.all\(\[/);
   assert.match(optionsSource, /const result = await saveProviderSettings\(/);
