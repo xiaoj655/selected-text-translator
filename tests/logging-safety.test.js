@@ -59,9 +59,10 @@ test('request payload debug log includes prompt and redacts user content', () =>
   );
 });
 
-test('generic JSON parse failures are logged with response text', () => {
+test('generic JSON parse failures log lengths without response content', () => {
   assert.match(backgroundSource, /debugLog\('generic_json_parse_failed'/);
-  assert.match(backgroundSource, /responseText:\s*truncate\(rawResponseText,\s*2200\)/);
+  assert.match(backgroundSource, /responseLength:\s*rawResponseText\.length/);
+  assert.doesNotMatch(backgroundSource, /responseText:|responseContent:/);
 });
 
 test('debug logs are controlled by debug_logging_enabled switch', () => {

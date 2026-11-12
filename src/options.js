@@ -1,3 +1,5 @@
+import { bindConnectionControls } from './connection-controls.js'
+import { createReadingControls } from './settings-controls.js'
 import { STORAGE_KEYS } from './translation-contracts.js';
 import {
   readProviderSettings,
@@ -20,6 +22,7 @@ const blacklistAddButton = document.getElementById('blacklist-add');
 const blacklistAddCurrentButton = document.getElementById('blacklist-add-current');
 
 let blacklistPatterns = [];
+let readingControls = null;
 
 void init();
 
@@ -36,7 +39,13 @@ async function init() {
     return;
   }
 
-  await loadSettings();
+  try {
+    await loadSettings();
+    readingControls = await createReadingControls();
+  } catch {
+    setStatus('Unable to load settings. Please reopen this page.', '#c43f2f');
+  }
+  bindConnectionControls();
   form.addEventListener('submit', onSubmit);
   disableLogsButton.addEventListener('click', onDisableLogs);
 
@@ -65,40 +74,49 @@ async function loadSettings() {
   apiKeyInput.value = providerSettings.apiKey;
   modelInput.value = providerSettings.model;
   const debugEnabled = saved?.[STORAGE_KEYS.DEBUG_LOGGING_ENABLED];
-  debugLoggingInput.checked = typeof debugEnabled === 'boolean' ? debugEnabled : true;
+  debugLoggingInput.checked = typeof debugEnabled === 'boolean' ? debugEnabled : false;
 }
 
 async function onSubmit(event) {
   event.preventDefault();
 
-  const result = await saveProviderSettings({
-    baseUrl: baseUrlInput.value,
-    apiKey: apiKeyInput.value,
-    model: modelInput.value
-  });
+  try {
+    if (readingControls && !(await readingControls.persist()).ok) return;
+    const result = await saveProviderSettings({
+      baseUrl: baseUrlInput.value,
+      apiKey: apiKeyInput.value,
+      model: modelInput.value
+    });
 
-  if (!result.ok) {
-    setStatus('All fields are required.', '#c43f2f');
-    return;
+    if (!result.ok) {
+      setStatus('All fields are required.', '#c43f2f');
+      return;
+    }
+
+    baseUrlInput.value = result.settings.baseUrl;
+    apiKeyInput.value = result.settings.apiKey;
+    modelInput.value = result.settings.model;
+
+    await chrome.storage.sync.set({
+      [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: debugLoggingInput.checked
+    });
+
+    setStatus('Settings saved.', '#17663e');
+  } catch {
+    setStatus('Unable to save settings. Please try again.', '#c43f2f');
   }
-
-  baseUrlInput.value = result.settings.baseUrl;
-  apiKeyInput.value = result.settings.apiKey;
-  modelInput.value = result.settings.model;
-
-  await chrome.storage.sync.set({
-    [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: debugLoggingInput.checked
-  });
-
-  setStatus('Settings saved.', '#17663e');
 }
 
 async function onDisableLogs() {
-  debugLoggingInput.checked = false;
-  await chrome.storage.sync.set({
-    [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: false
-  });
-  setStatus('Debug logging disabled.', '#17663e');
+  try {
+    debugLoggingInput.checked = false;
+    await chrome.storage.sync.set({
+      [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: false
+    });
+    setStatus('Debug logging disabled.', '#17663e');
+  } catch {
+    setStatus('操作失败，请重试。', '#c43f2f');
+  }
 }
 
 function setStatus(text, color) {
@@ -107,8 +125,12 @@ function setStatus(text, color) {
 }
 
 async function loadBlacklist() {
-  blacklistPatterns = await readDisabledUrlPatterns();
-  renderBlacklist();
+  try {
+    blacklistPatterns = await readDisabledUrlPatterns();
+    renderBlacklist();
+  } catch {
+    setStatus('操作失败，请重试。', '#c43f2f');
+  }
 }
 
 function renderBlacklist() {
@@ -140,7 +162,7 @@ function createBlacklistItemEl(index, pattern) {
 
   const patternEl = document.createElement('span');
   patternEl.className = 'blacklist-item-pattern';
-  patternEl.textContent = pattern;
+  patternEl.textContent = pattern.startsWith('=') ? `${pattern.slice(1)}（仅此页）` : pattern;
 
   const editInput = document.createElement('input');
   editInput.type = 'text';
@@ -201,48 +223,62 @@ function cancelEditing(itemEl, originalPattern) {
 }
 
 async function saveEdit(index, newPattern) {
-  const trimmed = String(newPattern || '').trim();
-  if (!trimmed) {
-    return;
-  }
+  try {
+    const trimmed = String(newPattern || '').trim();
+    if (!trimmed) {
+      return;
+    }
 
-  blacklistPatterns[index] = trimmed;
-  const result = await saveDisabledUrlPatterns(blacklistPatterns);
-  if (result.ok) {
-    renderBlacklist();
+    blacklistPatterns[index] = trimmed;
+    const result = await saveDisabledUrlPatterns(blacklistPatterns);
+    if (result.ok) {
+      renderBlacklist();
+    }
+  } catch {
+    setStatus('操作失败，请重试。', '#c43f2f');
   }
 }
 
 async function deletePattern(index) {
-  blacklistPatterns.splice(index, 1);
-  const result = await saveDisabledUrlPatterns(blacklistPatterns);
-  if (result.ok) {
-    renderBlacklist();
+  try {
+    blacklistPatterns.splice(index, 1);
+    const result = await saveDisabledUrlPatterns(blacklistPatterns);
+    if (result.ok) {
+      renderBlacklist();
+    }
+  } catch {
+    setStatus('操作失败，请重试。', '#c43f2f');
   }
 }
 
 async function onBlacklistAdd() {
-  const value = String(blacklistInputEl.value || '').trim();
-  if (!value) {
-    return;
-  }
+  try {
+    const value = String(blacklistInputEl.value || '').trim();
+    if (!value) {
+      return;
+    }
 
-  if (!value.startsWith('http://') && !value.startsWith('https://')) {
-    blacklistInputEl.value = '';
-    return;
-  }
+    if (!/^=?https?:\/\//.test(value)) {
+      blacklistInputEl.value = '';
+      return;
+    }
 
-  blacklistPatterns.push(value);
-  const result = await saveDisabledUrlPatterns(blacklistPatterns);
-  if (result.ok) {
-    blacklistInputEl.value = '';
-    renderBlacklist();
+    blacklistPatterns.push(value);
+    const result = await saveDisabledUrlPatterns(blacklistPatterns);
+    if (result.ok) {
+      blacklistInputEl.value = '';
+      renderBlacklist();
+    }
+  } catch {
+    setStatus('操作失败，请重试。', '#c43f2f');
   }
 }
 
 async function onBlacklistAddCurrent() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const tab = tabs.find((item) => item.active && /^https?:\/\//.test(item.url || ''))
+      || tabs.filter((item) => /^https?:\/\//.test(item.url || '')).sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
     if (!tab || !tab.url) {
       return;
     }

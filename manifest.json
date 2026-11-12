@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Selected Text Translator",
-  "version": "0.1.0",
-  "description": "Translate selected text with a minimal in-page trigger and card.",
+  "version": "0.3.0",
+  "description": "Read with context: translate, listen, and discover meaning through gentle English hints.",
   "permissions": [
-    "storage"
+    "storage",
+    "tts"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -31,5 +32,13 @@
   ],
   "icons": {
     "128": "assets/icon128.png"
+  },
+  "commands": {
+    "open-reading-assistant": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Open the reading assistant for selected text"
+    }
   }
 }

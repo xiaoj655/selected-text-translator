@@ -102,9 +102,8 @@ test('buildGenericRequest disables thinking for non-qwen-mt models starting with
     text: 'hello world'
   });
 
-  assert.deepEqual(payload.extra_body, {
-    enable_thinking: false
-  });
+  assert.equal(payload.enable_thinking, false);
+  assert.equal('extra_body' in payload, false);
 });
 
 test('buildGenericRequest does not set enable_thinking for qwen-mt family', () => {
@@ -246,17 +245,21 @@ test('extractGenericTranslation returns translation string from valid structured
   assert.equal(result, '你好世界');
 });
 
-test('isSingleWordInput uses whitespace tokenization', () => {
+test('isSingleWordInput recognizes words without treating punctuation or URLs as vocabulary', () => {
   assert.equal(isSingleWordInput('hello'), true);
   assert.equal(isSingleWordInput('你好'), true);
   assert.equal(isSingleWordInput('hello world'), false);
+  assert.equal(isSingleWordInput('well-known'), true);
+  assert.equal(isSingleWordInput("don't"), true);
+  assert.equal(isSingleWordInput('Hello,world!'), false);
+  assert.equal(isSingleWordInput('https://example.com'), false);
+  assert.equal(isSingleWordInput('12345'), false);
   assert.equal(isSingleWordInput('  '), false);
 });
 
-test('createSelectedTextDiagnostics redacts text content to length + preview', () => {
+test('createSelectedTextDiagnostics excludes all selected text', () => {
   const value = createSelectedTextDiagnostics('0123456789012345678901234567890123456789');
   assert.deepEqual(value, {
-    length: 40,
-    preview: '012345678901234567890123456789012345'
+    length: 40
   });
 });

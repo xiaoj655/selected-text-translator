@@ -3,6 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node scripts/verify-browser.mjs",
+    "test:live": "node scripts/verify-live.mjs",
+    "test:live:browser": "node scripts/verify-live-browser.mjs",
+    "package:extension": "python3 scripts/package-extension.py"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0"
   }
 }

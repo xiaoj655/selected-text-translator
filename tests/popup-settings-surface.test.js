@@ -46,5 +46,5 @@ test('background uses shared provider settings for translation requests', () => 
   assert.match(backgroundSource, /const settings = await readProviderSettings\(\)/);
   assert.match(backgroundSource, /normalizeEndpoint\(settings\.baseUrl\)/);
   assert.match(backgroundSource, /Authorization:\s*`Bearer \$\{settings\.apiKey\}`/);
-  assert.match(backgroundSource, /model:\s*settings\.model/);
+  assert.match(backgroundSource, /let model = settings\.model/);
 });

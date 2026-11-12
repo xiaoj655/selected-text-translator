@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Selected · 我的表达本</title>
+    <link rel="stylesheet" href="settings.css" />
+    <link rel="stylesheet" href="library.css" />
+  </head>
+  <body class="library">
+    <header class="library-header">
+      <a class="brand" href="options.html" aria-label="Selected 设置">
+        <span class="brand-mark" aria-hidden="true">Aa</span>
+        <span><span class="brand-name">Selected.</span><span class="brand-note">Keep the words that stay with you</span></span>
+      </a>
+      <div class="backup-actions">
+        <button id="import-vocabulary" class="secondary" type="button">导入备份</button>
+        <button id="export-vocabulary" class="secondary" type="button">导出备份 ↗</button>
+        <input id="import-vocabulary-file" class="hidden" type="file" accept="application/json,.json" aria-label="选择表达本备份" />
+      </div>
+    </header>
+    <main>
+      <div class="intro-row">
+        <div><p class="eyebrow">YOUR LITTLE BOOK OF ENGLISH</p><h1>把遇见，变成记得。</h1>
+          <p class="library-intro">收藏阅读中遇到的词与表达，带着原来的语境，再认识一次。</p></div>
+        <p id="library-count" class="library-count" aria-live="polite"></p>
+      </div>
+      <nav class="library-tabs" aria-label="表达本视图">
+        <button id="all-tab" type="button" aria-pressed="true">全部收藏 <span id="all-count">0</span></button>
+        <button id="review-tab" type="button" aria-pressed="false">到期复习 <span id="due-count">0</span></button>
+      </nav>
+      <p id="library-status" class="library-status" role="status" aria-live="polite"></p>
+      <section id="all-view" aria-label="全部收藏">
+        <label class="search-label"><span>找一个词或一段语境</span><input id="vocabulary-search" type="search" placeholder="搜索收藏的单词、表达或原句…" autocomplete="off" /></label>
+        <div id="entry-list" class="entry-list"></div>
+        <button id="load-more" class="secondary hidden" type="button">再看一些</button>
+      </section>
+      <section id="review-view" class="hidden" aria-label="到期复习">
+        <p class="review-help">先想一想它在原句中的意思，再揭晓。不用输入，按你的真实感觉选择。</p>
+        <div id="review-card"></div>
+      </section>
+    </main>
+    <footer class="library-footer"><span>留在这台设备，随时可以导出。</span><a href="options.html">阅读设置 ↗</a></footer>
+    <script src="library.js" type="module"></script>
+  </body>
+</html>

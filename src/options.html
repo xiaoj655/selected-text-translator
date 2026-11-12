@@ -1,226 +1,50 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Translation Settings</title>
-    <style>
-      :root {
-        color-scheme: light;
-      }
-
-      body {
-        margin: 0;
-        padding: 24px;
-        background: #f3f5f2;
-        color: #111;
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-      }
-
-      .panel {
-        max-width: 520px;
-        background: #fff;
-        border: 2px solid #111;
-        box-shadow: 6px 6px 0 #111;
-        padding: 18px;
-      }
-
-      h1 {
-        margin: 0 0 16px;
-        font-size: 20px;
-      }
-
-      form {
-        display: grid;
-        gap: 12px;
-      }
-
-      label {
-        display: grid;
-        gap: 6px;
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      input {
-        border: 2px solid #111;
-        border-radius: 0;
-        padding: 9px 10px;
-        font-size: 13px;
-      }
-
-      input[type='checkbox'] {
-        width: 16px;
-        height: 16px;
-        margin: 0;
-        padding: 0;
-      }
-
-      button {
-        border: 2px solid #111;
-        background: #19b84a;
-        color: #111;
-        font-size: 13px;
-        font-weight: 700;
-        padding: 10px 12px;
-        cursor: pointer;
-      }
-
-      button.secondary {
-        background: #efefef;
-      }
-
-      .toggle-label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 600;
-      }
-
-      .status {
-        min-height: 18px;
-        margin: 0;
-        font-size: 12px;
-      }
-
-      .blacklist-section {
-        margin-top: 24px;
-      }
-
-      .blacklist-description {
-        font-size: 13px;
-        color: #555;
-        margin: 0 0 12px;
-        line-height: 1.5;
-      }
-
-      .blacklist-list {
-        display: grid;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-
-      .blacklist-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        background: #f7f7f7;
-        border: 1px solid #ddd;
-      }
-
-      .blacklist-item-pattern {
-        flex: 1;
-        font-size: 13px;
-        word-break: break-all;
-      }
-
-      .blacklist-item.editing .blacklist-item-pattern {
-        display: none;
-      }
-
-      .blacklist-item-edit-input {
-        flex: 1;
-        display: none;
-        padding: 4px 6px;
-        font-size: 13px;
-        border: 2px solid #111;
-      }
-
-      .blacklist-item.editing .blacklist-item-edit-input {
-        display: block;
-      }
-
-      .blacklist-item-actions {
-        display: flex;
-        gap: 4px;
-      }
-
-      .blacklist-item.editing .blacklist-item-actions {
-        display: none;
-      }
-
-      .blacklist-item-actions button {
-        padding: 4px 8px;
-        font-size: 12px;
-      }
-
-      .blacklist-item-edit-actions {
-        display: none;
-        gap: 4px;
-      }
-
-      .blacklist-item.editing .blacklist-item-edit-actions {
-        display: flex;
-      }
-
-      .blacklist-item-edit-actions button {
-        padding: 4px 8px;
-        font-size: 12px;
-      }
-
-      .blacklist-add-row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-
-      .blacklist-add-row input {
-        flex: 1;
-      }
-
-      .blacklist-empty {
-        font-size: 13px;
-        color: #888;
-        font-style: italic;
-        margin: 0;
-        padding: 8px 0;
-      }
-    </style>
+    <title>Selected · 设置</title>
+    <link rel="stylesheet" href="settings.css" />
   </head>
-  <body>
-    <section class="panel">
-      <h1>Selected Text Translation</h1>
-      <form id="settings-form">
-        <label>
-          Base URL
-          <input id="base_url" name="base_url" type="url" placeholder="https://api.example.com/v1" required />
-        </label>
-
-        <label>
-          API Key
-          <input id="api_key" name="api_key" type="password" autocomplete="off" required />
-        </label>
-
-        <label>
-          Model
-          <input id="model" name="model" type="text" placeholder="qwen-mt-turbo" required />
-        </label>
-
-        <label class="toggle-label">
-          <input id="debug_logging_enabled" name="debug_logging_enabled" type="checkbox" />
-          Enable debug logging
-        </label>
-
-        <button type="submit">Save settings</button>
-        <button id="disable-logs" class="secondary" type="button">One-click disable logs</button>
-        <p id="status" class="status" role="status" aria-live="polite"></p>
-      </form>
-    </section>
-
-    <section class="panel blacklist-section">
-      <h1>URL Blacklist</h1>
-      <p class="blacklist-description">
-        The extension will not show the translation trigger on URLs that match any of these prefixes.
-      </p>
-      <div id="blacklist-list" class="blacklist-list"></div>
-      <div class="blacklist-add-row">
-        <input id="blacklist-input" type="url" placeholder="https://example.com/path" />
-        <button id="blacklist-add" type="button">Add</button>
+  <body class="options">
+    <header class="brand"><span class="brand-mark" aria-hidden="true">Aa</span><div><div class="brand-name">Selected.</div><div class="brand-note">A little closer to understanding</div></div></header>
+    <h1>让阅读，按你的节奏。</h1>
+    <p class="intro">快速读懂，或多想一步。把翻译、声音和英文提示调成你喜欢的样子。</p>
+    <form id="settings-form">
+      <div class="settings-grid">
+        <section class="panel">
+          <div class="panel-heading"><h2>连接模型</h2><span class="step">01 / CONNECT</span></div>
+          <label class="field">API 地址<input id="base_url" name="base_url" type="url" placeholder="https://api.example.com/v1" required /></label>
+          <label class="field">API Key<input id="api_key" name="api_key" type="password" autocomplete="off" required /></label>
+          <button id="discover-models" type="button" class="secondary">检测连接并获取模型</button><p id="connection-status" class="status help" role="status" aria-live="polite"></p><datalist id="provider-models"></datalist><datalist id="learning-models"></datalist>
+        <label class="field">翻译模型<input id="model" list="provider-models" name="model" type="text" placeholder="qwen-mt-flash" required /></label>
+          <label class="field">学习模型<input id="learning_model" list="learning-models" type="text" placeholder="可用的通用模型名称" /><span class="help">用于音标与英文引导，共用 API 地址和密钥。翻译使用通用模型时可留空；qwen-mt 需要另外填写。</span></label>
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><h2>阅读与声音</h2><span class="step">02 / MAKE IT YOURS</span></div>
+          <label class="field">默认模式<select id="reading_mode"><option value="translate">直接翻译</option><option value="guide">英文引导 · 逐层提示</option></select><span class="help">引导模式先给英文线索，点击后才揭晓答案。</span></label>
+          <label class="field">朗读音色<select id="speech_voice"><option value="">自动选择</option></select></label>
+          <div class="row"><label class="field">语速<select id="speech_rate"><option value="0.75">慢速 · 0.75×</option><option value="0.9" selected>舒缓 · 0.9×</option><option value="1">正常 · 1×</option><option value="1.2">稍快 · 1.2×</option></select></label><button id="preview-speech" type="button" class="secondary">▷ 试听</button></div>
+          <p id="speech-status" class="status help" role="status" aria-live="polite"></p>
+          <p class="help">声音由系统或已安装的语音引擎提供。网络音色会标注「在线」。</p>
+        </section>
       </div>
-      <button id="blacklist-add-current" class="secondary" type="button">Add Current Page</button>
+      <div class="row save-row"><div><button type="submit">保存设置</button><p id="status" class="status" role="status" aria-live="polite"></p></div><span class="help">划词 → 悬停或点击 → 开始阅读</span></div>
+      <section class="panel">
+        <div class="panel-heading"><h2>调试日志</h2><span class="step">ADVANCED</span></div>
+        <div class="row" style="justify-content: space-between"><label class="toggle-label"><input id="debug_logging_enabled" name="debug_logging_enabled" type="checkbox" />启用调试日志</label><button id="disable-logs" type="button" class="secondary">关闭日志</button></div>
+        <p class="help" style="margin-top: 10px">默认关闭。开启后只记录请求状态与长度，不记录选区正文。</p>
+      </section>
+    </form>
+    <section class="panel blacklist-section">
+      <div class="panel-heading"><h2>停用的网站与路径</h2><span class="step">QUIET SPACES</span></div>
+      <p class="blacklist-description">在这些地址及其子路径下隐藏阅读入口。支持完整的 http / https 地址。</p>
+      <div id="blacklist-list"></div>
+      <div class="blacklist-add-row"><input id="blacklist-input" type="url" aria-label="要停用的地址" placeholder="https://example.com/path" /><button id="blacklist-add" type="button">添加</button></div>
+      <button id="blacklist-add-current" type="button" class="text-button">添加当前网页</button>
     </section>
-
+    <a href="library.html" style="display: inline-block; margin-top: 18px">我的表达本与复习 ↗</a>
+    <footer class="footer"><span>SELECTED TEXT TRANSLATOR</span><span>Keep your place. Find your meaning.</span></footer>
     <script src="options.js" type="module"></script>
   </body>
 </html>

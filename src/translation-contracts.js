@@ -15,7 +15,8 @@ export const TRANSLATION_SYSTEM_PROMPT =
     'You are a professional multilingual translation engine.',
     'Return valid JSON only.',
     'Do not output markdown code blocks, comments, or extra prose.',
-    'The top-level JSON object must always include "translation" as a non-empty string in Simplified Chinese.',
+    'The top-level JSON object must always include "translation" as a non-empty string.',
+    'If the input contains Chinese, translate into English. Otherwise translate into Simplified Chinese.',
     'If and only if the user input is a single word, you may also include optional fields:',
     '"phonetic" (string),',
     '"definitions" (array of objects with required "meaning" string, optional "pos" string, and optional "example" object with "source" and "target" strings),',
@@ -100,9 +101,7 @@ export function buildGenericRequest({ model, text }) {
   }
 
   if (shouldDisableThinkingForModel(model)) {
-    payload.extra_body = {
-      enable_thinking: false
-    };
+    payload.enable_thinking = false;
   }
 
   return payload;
@@ -111,8 +110,7 @@ export function buildGenericRequest({ model, text }) {
 export function createSelectedTextDiagnostics(text) {
   const normalized = String(text || '');
   return {
-    length: normalized.length,
-    preview: normalized.slice(0, 36)
+    length: normalized.length
   };
 }
 
@@ -209,8 +207,7 @@ export function isSingleWordInput(text) {
     return false;
   }
 
-  const tokens = normalized.split(/\s+/u).filter(Boolean);
-  return tokens.length === 1;
+  return /^[\p{L}]+(?:['’\-][\p{L}]+)*$/u.test(normalized);
 }
 
 function normalizeLexicalDetails(parsed) {
