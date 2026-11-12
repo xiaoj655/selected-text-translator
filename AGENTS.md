@@ -23,7 +23,7 @@ node --test tests/translation-contracts.test.js
 node --test --test-name-pattern="getTargetLanguage" tests/translation-contracts.test.js
 ```
 
-This is a Chrome extension—no build step required. Load the `src/` directory directly via Chrome's developer mode.
+This is a Chrome extension—no build step required. Load the repository root (containing `manifest.json`) via Chrome's developer mode.
 
 ## Code Style Guidelines
 
@@ -107,3 +107,14 @@ This is a Chrome extension—no build step required. Load the `src/` directory d
 - Use `clamp()` helper for boundary calculations
 - DOM creation uses `document.createElement()` + `className` + `appendChild`
 - CSS injected via `<style>` element with `style.textContent`
+
+## Iteration Workflow
+
+- Work in small, useful slices: fix one user-visible problem, verify it, then expand scope.
+- Reuse `scripts/verify-browser.mjs`; do not rebuild the browser harness or reinstall existing tools each iteration.
+- During implementation, run focused behavior tests. Run the full suite and browser flow at integration checkpoints.
+- Delegate independent work with narrow file ownership and only the context it needs. Inspect the integrated result.
+- Real API tests are opt-in (`test:live`, `test:live:browser`) and may incur provider charges.
+- Read test credentials from environment variables or a private configuration file outside the repository.
+- Never include credentials in screenshots, test reports, fixtures, commits, or extension archives.
+- Package with `npm run package:extension`; keep generated archives and previews in ignored `dist/`.

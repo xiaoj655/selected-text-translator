@@ -18,7 +18,7 @@ test('single-word guard keeps sentence and phrase rendering translation-only', (
 
 test('lexical section renders phonetic, definitions, and contextual analysis fields when valid', () => {
   assert.match(contentSource, /stt-card-block--lexical/);
-  assert.match(contentSource, /createLexicalRow\('Phonetic',\s*normalized\.phonetic\)/);
+  assert.match(contentSource, /createEl\('span', 'stt-phonetic', phonetic\)/);
   assert.match(contentSource, /createDefinitionsSection\(normalized\.definitions\)/);
   assert.match(contentSource, /createLexicalRow\('Context',\s*normalized\.contextual_analysis\)/);
 });
