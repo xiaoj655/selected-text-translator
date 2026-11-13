@@ -1,4 +1,5 @@
 import { getDueEntries, scheduleReview } from './vocabulary-store.js'
+import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
 
 const allTabEl = document.getElementById('all-tab')
 const reviewTabEl = document.getElementById('review-tab')
@@ -12,8 +13,14 @@ const exportEl = document.getElementById('export-vocabulary')
 const importEl = document.getElementById('import-vocabulary')
 const importFileEl = document.getElementById('import-vocabulary-file')
 const statusEl = document.getElementById('library-status')
+const stopSpeechEl = document.getElementById('stop-library-speech')
+const undoNoticeEl = document.getElementById('undo-notice')
+const undoMessageEl = document.getElementById('undo-message')
+const undoEl = document.getElementById('undo-removal')
 const state = { entries: [], mode: 'all', visibleCount: 30, reviewQueue: [], reviewIndex: 0,
-  isRevealed: false, isBusy: false, refreshPending: false, shouldRefresh: false, dueTimerId: null }
+  isRevealed: false, isBusy: false, refreshPending: false, shouldRefresh: false, dueTimerId: null,
+  reviewEntryId: '', lastRemovedEntry: null, isUndoBusy: false }
+const libraryAudio = createLibraryAudio({ send, onChange: updateSpeechControls, onStatus: setStatus })
 
 void init()
 
@@ -54,7 +61,17 @@ async function init() {
     exportEl.addEventListener('click', () => void downloadBackup())
     importEl.addEventListener('click', () => importFileEl.click())
     importFileEl.addEventListener('change', () => void restoreBackup())
+    undoEl.addEventListener('click', () => void undoRemoval())
+    stopSpeechEl.addEventListener('click', () => void libraryAudio.stop())
+    document.addEventListener('keydown', handleReviewKeydown)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) void libraryAudio.stop()
+    })
+    window.addEventListener('pagehide', () => void libraryAudio.stop())
     window.addEventListener('focus', () => void refresh())
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === 'SPEECH_EVENT') libraryAudio.handleEvent(message.payload)
+    })
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== 'local' || !changes.vocabulary_entries || state.refreshPending) return
       state.refreshPending = true
@@ -74,6 +91,9 @@ async function refresh() {
     if (state.isBusy) { state.shouldRefresh = true; return }
     state.shouldRefresh = false
     state.entries = Array.isArray(response.entries) ? response.entries : []
+    if (!state.entries.some((entry) => libraryAudio.getActiveKey().startsWith(`${entry.id}:`))) {
+      void libraryAudio.stop()
+    }
     updateCounts()
     if (state.mode === 'review') renderReview()
     else renderList()
@@ -101,6 +121,9 @@ function scheduleDueRefresh() {
 
 function selectView(mode) {
   if (state.mode === mode || state.isBusy) return
+  void libraryAudio.stop()
+  state.lastRemovedEntry = null
+  renderUndoNotice()
   state.mode = mode
   allTabEl.setAttribute('aria-pressed', String(mode === 'all'))
   reviewTabEl.setAttribute('aria-pressed', String(mode === 'review'))
@@ -109,6 +132,7 @@ function selectView(mode) {
   setStatus()
   if (mode === 'review') {
     startReviewSession()
+    reviewCardEl.querySelector('.review-reveal')?.focus({ preventScroll: true })
   } else renderList()
 }
 
@@ -129,13 +153,23 @@ function renderList() {
   const query = searchEl.value.trim().toLocaleLowerCase('en-US')
   const entries = state.entries.filter((entry) => `${entry.text} ${entry.context} ${entry.meaning}`
     .toLocaleLowerCase('en-US').includes(query))
+  const visibleEntries = entries.slice(0, state.visibleCount)
+  const openIds = new Set(Array.from(listEl.querySelectorAll('.entry-card[open]'), (el) => el.dataset.entryId))
+  if (!visibleEntries.some((entry) => libraryAudio.getActiveKey().startsWith(`${entry.id}:`))) {
+    void libraryAudio.stop()
+  }
   listEl.replaceChildren()
   if (!entries.length) {
     listEl.appendChild(createEmptyState(query ? '还没有找到这个词。' : '从一次阅读里的心动开始。',
       query ? '换一个单词、表达或原句试试。' : '在阅读卡片中保存词与表达，它们会带着语境留在这里。'))
   }
-  for (const entry of entries.slice(0, state.visibleCount)) listEl.appendChild(createEntryCard(entry))
+  for (const entry of visibleEntries) {
+    const cardEl = createEntryCard(entry)
+    cardEl.open = openIds.has(entry.id)
+    listEl.appendChild(cardEl)
+  }
   loadMoreEl.classList.toggle('hidden', entries.length <= state.visibleCount)
+  updateSpeechControls()
 }
 
 function createContext(entry) {
@@ -146,19 +180,69 @@ function appendAnswer(containerEl, entry) {
   containerEl.append(createEl('span', 'answer-label', 'WHAT IT MEANS HERE'),
     createEl('p', 'entry-meaning', entry.meaning))
   if (entry.explanation) containerEl.appendChild(createEl('p', 'entry-explanation', entry.explanation))
+  if (entry.usage) {
+    containerEl.append(createEl('span', 'answer-label', 'A WAY TO USE IT'), createEl('p', 'entry-usage', entry.usage))
+  }
   if (entry.example) {
     containerEl.append(createEl('span', 'answer-label', 'MAKE IT YOURS'), createEl('p', 'entry-example', entry.example))
+    const text = getEntrySpeechTargets(entry).example
+    if (text) containerEl.appendChild(createSpeechButton(entry, 'example', text, '读例句'))
   }
+}
+
+function createSpeechButton(entry, target, text, label) {
+  const key = `${entry.id}:${target}`
+  const buttonEl = createButton('', () => void libraryAudio.toggle(key, text), 'secondary library-speech-button')
+  buttonEl.dataset.speechKey = key
+  buttonEl.dataset.speechTarget = target
+  buttonEl.dataset.idleLabel = `▷ ${label}`
+  buttonEl.disabled = !text
+  if (text) buttonEl.title = text
+  else buttonEl.title = '这段内容超过 1200 字，暂时无法朗读。'
+  updateSpeechButton(buttonEl)
+  return buttonEl
+}
+
+function createSpeechControls(entry) {
+  const controlsEl = createEl('div', 'library-speech-controls')
+  const targets = getEntrySpeechTargets(entry)
+  const wordLabel = /^\p{L}+(?:['’-]\p{L}+)*$/u.test(String(entry.text || '').trim()) ? '读词' : '朗读选区'
+  controlsEl.appendChild(createSpeechButton(entry, 'word', targets.word, wordLabel))
+  if (targets.context) {
+    controlsEl.appendChild(createSpeechButton(entry, 'context', targets.context, targets.contextLabel))
+  }
+  return controlsEl
+}
+
+function updateSpeechButton(buttonEl) {
+  const isActive = libraryAudio.getActiveKey() === buttonEl.dataset.speechKey
+  buttonEl.textContent = isActive ? '■ 停止' : buttonEl.dataset.idleLabel
+  buttonEl.setAttribute('aria-pressed', String(isActive))
+}
+
+function updateSpeechControls() {
+  for (const buttonEl of document.querySelectorAll('.library-speech-button')) updateSpeechButton(buttonEl)
+  const key = libraryAudio.getActiveKey()
+  const viewEl = state.mode === 'review' ? reviewCardEl : listEl
+  const hasVisibleControl = Array.from(viewEl.querySelectorAll('.library-speech-button')).some((buttonEl) => {
+    const cardEl = buttonEl.closest('.entry-card')
+    return buttonEl.dataset.speechKey === key && (!cardEl || cardEl.open)
+  })
+  stopSpeechEl.classList.toggle('hidden', !key || hasVisibleControl)
 }
 
 function createEntryCard(entry) {
   const cardEl = createEl('details', 'entry-card')
   cardEl.dataset.entryId = entry.id
+  cardEl.addEventListener('toggle', () => {
+    if (!cardEl.open && libraryAudio.getActiveKey().startsWith(`${entry.id}:`)) void libraryAudio.stop()
+  })
   const summaryEl = createEl('summary')
   summaryEl.append(createEl('span', 'entry-title', entry.text),
     createEl('span', 'entry-meta', new Date(entry.createdAt).toLocaleDateString()))
   const bodyEl = createEl('div', 'entry-body')
   if (entry.phonetic) bodyEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
+  bodyEl.appendChild(createSpeechControls(entry))
   bodyEl.append(createEl('span', 'context-label', 'WHERE YOU MET IT'), createContext(entry))
   appendAnswer(bodyEl, entry)
   const actionsEl = createEl('div', 'entry-actions')
@@ -182,18 +266,51 @@ function createEntryCard(entry) {
 }
 
 async function removeEntry(id, buttonEl) {
+  const originalEntry = state.entries.find((entry) => entry.id === id)
+  if (libraryAudio.getActiveKey().startsWith(`${id}:`)) void libraryAudio.stop()
   buttonEl.disabled = true
   try {
     const response = await send('VOCABULARY_REMOVE', { id })
     if (!response.ok) { setStatus(response.message || '移除失败，请重试。', true); return }
+    state.lastRemovedEntry = response.entry || originalEntry || null
+    renderUndoNotice()
     state.entries = state.entries.filter((entry) => entry.id !== id)
     updateCounts()
     renderList()
-    setStatus('已从表达本移除。')
+    setStatus()
   } catch {
     setStatus('移除失败，请重试。', true)
   } finally {
     buttonEl.disabled = false
+  }
+}
+
+function renderUndoNotice() {
+  const entry = state.lastRemovedEntry
+  undoNoticeEl.classList.toggle('hidden', !entry)
+  undoMessageEl.textContent = entry ? `已移除“${entry.text}”。` : ''
+  undoEl.disabled = state.isUndoBusy
+  undoEl.textContent = state.isUndoBusy ? '正在恢复…' : '撤销'
+}
+
+async function undoRemoval() {
+  const entry = state.lastRemovedEntry
+  if (!entry || state.isUndoBusy) return
+  state.isUndoBusy = true
+  renderUndoNotice()
+  try {
+    const response = await send('VOCABULARY_IMPORT', {
+      data: { version: 2, exportedAt: Date.now(), entries: [entry] },
+    })
+    if (!response.ok) { setStatus(response.message || '恢复失败，请再次点击撤销。', true); return }
+    if (state.lastRemovedEntry === entry) state.lastRemovedEntry = null
+    await refresh()
+    setStatus('已恢复表达和原有复习进度。')
+  } catch {
+    setStatus('恢复失败，请再次点击撤销。', true)
+  } finally {
+    state.isUndoBusy = false
+    renderUndoNotice()
   }
 }
 
@@ -208,8 +325,10 @@ function getCurrentReviewEntry() {
 }
 
 function renderReview() {
-  reviewCardEl.replaceChildren()
   const entry = getCurrentReviewEntry()
+  if (state.reviewEntryId !== (entry?.id || '')) void libraryAudio.stop()
+  state.reviewEntryId = entry?.id || ''
+  reviewCardEl.replaceChildren()
   if (!entry) {
     const hasReviewed = state.reviewQueue.length > 0
     const emptyEl = createEmptyState(hasReviewed ? '今天的这一小步，完成了。' : '现在没有到期的表达。',
@@ -219,6 +338,7 @@ function renderReview() {
       emptyEl.appendChild(createButton('开始下一轮', startReviewSession, 'review-reveal'))
     }
     reviewCardEl.appendChild(emptyEl)
+    updateSpeechControls()
     return
   }
   const cardEl = createEl('article', 'review-panel')
@@ -228,13 +348,10 @@ function renderReview() {
   if (entry.text.length > 70) wordEl.classList.add('passage')
   cardEl.appendChild(wordEl)
   if (entry.phonetic) cardEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
+  cardEl.appendChild(createSpeechControls(entry))
   cardEl.append(createEl('span', 'context-label', 'REMEMBER THE MOMENT'), createContext(entry))
   if (!state.isRevealed) {
-    cardEl.appendChild(createButton('想到了，揭晓释义', () => {
-      state.isRevealed = true
-      renderReview()
-      reviewCardEl.querySelector('.review-answer')?.focus({ preventScroll: true })
-    }, 'review-reveal'))
+    cardEl.appendChild(createButton('想到了，揭晓释义', revealReviewAnswer, 'review-reveal'))
   } else {
     const answerEl = createEl('section', 'review-answer')
     answerEl.tabIndex = -1
@@ -251,14 +368,54 @@ function renderReview() {
     cardEl.append(answerEl, ratingEl)
   }
   reviewCardEl.appendChild(cardEl)
+  updateSpeechControls()
+}
+
+function revealReviewAnswer() {
+  if (state.isBusy || state.isRevealed || !getCurrentReviewEntry()) return
+  state.isRevealed = true
+  renderReview()
+  reviewCardEl.querySelector('.review-answer')?.focus({ preventScroll: true })
+}
+
+function handleReviewKeydown(event) {
+  if (state.mode !== 'review' || state.isBusy || event.repeat || event.isComposing) return
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const targetEl = event.target instanceof Element ? event.target : null
+  if (targetEl?.closest('input, textarea, select, button, summary, a[href], [role="button"]')
+    || targetEl?.isContentEditable) return
+  const entry = getCurrentReviewEntry()
+  if (!entry) return
+  if ((event.code === 'Space' || event.key === ' ') && !state.isRevealed) {
+    event.preventDefault()
+    revealReviewAnswer()
+  } else if (state.isRevealed && ['1', '2'].includes(event.key)) {
+    event.preventDefault()
+    void rateEntry(entry.id, event.key === '1' ? 'again' : 'good')
+  }
 }
 
 async function rateEntry(id, rating) {
   if (state.isBusy || !state.isRevealed) return
+  const entry = state.entries.find((item) => item.id === id)
+  if (!entry) return
+  void libraryAudio.stop()
   state.isBusy = true
   renderReview()
   try {
-    const response = await send('VOCABULARY_REVIEW', { id, rating })
+    const response = await send('VOCABULARY_REVIEW', {
+      id,
+      rating,
+      expectedDueAt: entry.dueAt,
+      expectedReviewCount: entry.reviewCount,
+    })
+    if (!response.ok && response.code === 'review-changed' && response.entry) {
+      state.entries = state.entries.map((item) => item.id === id ? response.entry : item)
+      state.isRevealed = false
+      updateCounts()
+      setStatus('该表达已在另一处复习，已同步进度。')
+      return
+    }
     if (!response.ok) { setStatus(response.message || '保存复习进度失败，请重试。', true); return }
     state.entries = state.entries.map((entry) => entry.id === id ? response.entry : entry)
     state.reviewIndex++

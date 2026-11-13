@@ -10,7 +10,8 @@ function normalizeString(value, limit) {
 }
 
 function getEntryKey(entry) {
-  return `${entry.text.toLocaleLowerCase('en-US').replace(/\s+/gu, ' ')}\n${entry.meaning.toLocaleLowerCase('en-US').replace(/\s+/gu, ' ')}`
+  const meaning = entry.meaning.toLocaleLowerCase('en-US').replace(/\s+/gu, ' ').replace(/(?<!\.)[.。]$/u, '').trim()
+  return `${entry.text.toLocaleLowerCase('en-US').replace(/\s+/gu, ' ')}\n${meaning}`
 }
 
 function makeEntryId(key) {
@@ -52,11 +53,20 @@ export function normalizeVocabularyEntry(input, now = 0) {
     text,
     meaning,
     context: normalizeString(input.context, 2400),
+    usage: normalizeString(input.usage, 500),
     explanation: normalizeString(input.explanation, 2500),
     example: normalizeString(input.example, 1000),
     phonetic: normalizeString(input.phonetic, 160),
     sourceUrl: normalizeSourceUrl(input.sourceUrl),
   }
+  const context = String(input.context || '')
+  const trimOffset = context.length - context.trimStart().length
+  const start = Number.isInteger(input.contextStart) ? input.contextStart - trimOffset : null
+  const end = Number.isInteger(input.contextEnd) ? input.contextEnd - trimOffset : null
+  const hasSpan = start !== null && end !== null && start >= 0 && end > start
+    && end <= entry.context.length && entry.context.slice(start, end) === text
+  entry.contextStart = hasSpan ? start : null
+  entry.contextEnd = hasSpan ? end : null
   return {
     id: normalizeString(input.id, 160) || makeEntryId(getEntryKey(entry)),
     ...entry,
@@ -142,6 +152,9 @@ export function saveVocabulary(input) {
       text: input?.text,
       meaning: input?.meaning,
       context: input?.context,
+      contextStart: input?.contextStart,
+      contextEnd: input?.contextEnd,
+      usage: input?.usage,
       explanation: input?.explanation,
       example: input?.example,
       phonetic: input?.phonetic,
@@ -149,7 +162,27 @@ export function saveVocabulary(input) {
     }, now)
     const entries = await readEntries()
     const index = entries.findIndex((entry) => getEntryKey(entry) === getEntryKey(incoming))
-    if (index !== -1) return { ok: true, entry: entries[index], alreadySaved: true }
+    if (index !== -1) {
+      const previous = entries[index]
+      const enriched = { ...previous }
+      for (const key of ['usage', 'explanation', 'example', 'phonetic', 'sourceUrl']) {
+        if (!enriched[key] && incoming[key]) enriched[key] = incoming[key]
+      }
+      if (!enriched.context && incoming.context) {
+        enriched.context = incoming.context
+        enriched.contextStart = incoming.contextStart
+        enriched.contextEnd = incoming.contextEnd
+      } else if (enriched.context === incoming.context && enriched.contextStart === null) {
+        enriched.contextStart = incoming.contextStart
+        enriched.contextEnd = incoming.contextEnd
+      }
+      if (JSON.stringify(previous) !== JSON.stringify(enriched)) {
+        enriched.updatedAt = now
+        entries[index] = enriched
+        await writeEntries(entries)
+      }
+      return { ok: true, entry: entries[index], alreadySaved: true }
+    }
     entries.push(incoming)
     await writeEntries(entries)
     return { ok: true, entry: incoming, alreadySaved: false }
@@ -159,19 +192,25 @@ export function saveVocabulary(input) {
 export function removeVocabulary(id) {
   return enqueueMutation(async () => {
     const entries = await readEntries()
+    const removed = entries.find((entry) => entry.id === id)
     const remaining = entries.filter((entry) => entry.id !== id)
     if (remaining.length === entries.length) throw new Error('This vocabulary entry was not found.')
     await writeEntries(remaining)
-    return { ok: true }
+    return { ok: true, entry: removed }
   })
 }
 
-export function reviewVocabulary(id, rating) {
+export function reviewVocabulary(id, rating, { expectedDueAt, expectedReviewCount } = {}) {
   return enqueueMutation(async () => {
     const entries = await readEntries()
     const index = entries.findIndex((entry) => entry.id === id)
     if (index === -1) throw new Error('This vocabulary entry was not found.')
-    const entry = scheduleReview(entries[index], rating, Date.now())
+    const current = entries[index]
+    if ((expectedDueAt !== undefined && expectedDueAt !== current.dueAt)
+      || (expectedReviewCount !== undefined && expectedReviewCount !== current.reviewCount)) {
+      return { ok: false, code: 'review-changed', message: 'This expression was already reviewed elsewhere.', entry: current }
+    }
+    const entry = scheduleReview(current, rating, Date.now())
     entries[index] = entry
     await writeEntries(entries)
     return { ok: true, entry }
@@ -182,7 +221,7 @@ export async function exportVocabulary() {
   try {
     const result = await listVocabulary()
     if (!result.ok) return result
-    return { ok: true, data: { version: 1, exportedAt: Date.now(), entries: result.entries } }
+    return { ok: true, data: { version: 2, exportedAt: Date.now(), entries: result.entries } }
   } catch (error) {
     return { ok: false, message: normalizeStorageError(error) }
   }
@@ -191,7 +230,7 @@ export async function exportVocabulary() {
 function validateBackupEntry(input) {
   const limits = { id: 160, text: 12000, meaning: 2000, context: 2400,
     explanation: 2500, example: 1000, phonetic: 160, sourceUrl: 2048 }
-  const metadata = ['createdAt', 'updatedAt', 'dueAt', 'reviewCount', 'intervalDays']
+  const metadata = ['createdAt', 'updatedAt', 'dueAt', 'reviewCount', 'intervalDays', 'contextStart', 'contextEnd', 'usage']
   if (!input || typeof input !== 'object' || Array.isArray(input)
     || Object.keys(input).some((key) => !Object.hasOwn(limits, key) && !metadata.includes(key))) {
     throw new Error('Invalid vocabulary backup: an entry has an unsupported format.')
@@ -210,15 +249,23 @@ function validateBackupEntry(input) {
     || (input.sourceUrl && !normalizeSourceUrl(input.sourceUrl))) {
     throw new Error('Invalid vocabulary backup: an entry has invalid learning progress or source data.')
   }
-  return normalizeVocabularyEntry(input)
+  if (input.usage !== undefined && (typeof input.usage !== 'string' || input.usage.length > 500)) {
+    throw new Error('Invalid vocabulary backup: an entry has invalid usage data.')
+  }
+  const normalized = normalizeVocabularyEntry(input)
+  const hasLocation = input.contextStart != null || input.contextEnd != null
+  if (hasLocation && normalized.contextStart === null) {
+    throw new Error('Invalid vocabulary backup: an entry has an invalid context position.')
+  }
+  return normalized
 }
 
 function validateBackup(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data) || data.version !== 1
+  if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, 2].includes(data.version)
     || !Number.isSafeInteger(data.exportedAt) || data.exportedAt < 0 || data.exportedAt > 8640000000000000
     || !Array.isArray(data.entries) || data.entries.length > MAX_ENTRIES
     || Object.keys(data).some((key) => !['version', 'exportedAt', 'entries'].includes(key))) {
-    throw new Error('Invalid vocabulary backup. Choose a Selected version 1 JSON backup with up to 2,000 entries.')
+    throw new Error('Invalid vocabulary backup. Choose a Selected version 1 or 2 JSON backup with up to 2,000 entries.')
   }
   let serialized
   try {

@@ -11,7 +11,9 @@ const ACTIONS = Object.freeze({
   VOCABULARY_LIST: () => listVocabulary(),
   VOCABULARY_SAVE: (payload) => saveVocabulary(payload),
   VOCABULARY_REMOVE: (payload) => removeVocabulary(payload?.id),
-  VOCABULARY_REVIEW: (payload) => reviewVocabulary(payload?.id, payload?.rating),
+  VOCABULARY_REVIEW: (payload) => reviewVocabulary(payload?.id, payload?.rating, {
+    expectedDueAt: payload?.expectedDueAt, expectedReviewCount: payload?.expectedReviewCount,
+  }),
   VOCABULARY_EXPORT: () => exportVocabulary(),
   VOCABULARY_IMPORT: (payload) => importVocabulary(payload?.data),
 })
