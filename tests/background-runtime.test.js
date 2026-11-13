@@ -5,13 +5,14 @@ import { setTimeout as wait } from 'node:timers/promises'
 const guide = { hints: ['Look at her reaction.', 'Is she eager?', 'Something holds her back.'],
   answer: { meaning: 'Hesitant.', explanation: 'She has doubts.', example: 'I was reluctant to leave.' } }
 
-async function withBackground({ fetchImpl, storageFailure = false, learningModel = 'generic' } = {}, callback) {
+async function withBackground({ fetchImpl, storageFailure = false, learningModel = 'generic',
+  model = 'qwen-mt-flash' } = {}, callback) {
   const previous = { chrome: globalThis.chrome, fetch: globalThis.fetch }
   const listeners = []
   const events = []
   const requests = []
   const storageListeners = []
-  const storage = { base_url: 'https://api.example.com/v1', api_key: 'test-token', model: 'qwen-mt-flash',
+  const storage = { base_url: 'https://api.example.com/v1', api_key: 'test-token', model,
     learning_model: learningModel }
   globalThis.chrome = {
     runtime: { lastError: null, onMessage: { addListener(fn) { listeners.push(fn) } } },
@@ -84,6 +85,62 @@ test('qwen SSE parser retains the last event even without a trailing newline', a
       send({ ...payload, kind: 'translate' })
       await waitFor(() => events.some((event) => event.payload.status === 'success'))
       assert.equal(events.at(-1).payload.translatedText, '你好')
+    })
+})
+
+test('generic translation receives the exact selection context and keeps single-word lexical output', async () => {
+  const result = { translation: '唱片', phonetic: '/ˈrɛkərd/',
+    definitions: [{ pos: 'noun', meaning: '唱片' }] }
+  await withBackground({ model: 'generic', fetchImpl: () => Response.json({
+    choices: [{ message: { content: JSON.stringify(result) } }],
+  }) }, async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, kind: 'translate', text: 'record',
+      context: 'The band will record a new record tomorrow. 他们很期待。', contextStart: 27, contextEnd: 33 })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    const source = JSON.parse(requests[0].body.messages[1].content)
+    assert.equal(source.selectedText, 'record')
+    assert.equal(source.contextStart, 27)
+    assert.equal(source.selectedOccurrence.before, 'The band will record a new ')
+    assert.equal(source.targetLanguage, 'Chinese')
+    assert.match(source.surroundingContext, /他们很期待/)
+    assert.equal(events.at(-1).payload.sourceText, 'record')
+    assert.equal(events.at(-1).payload.translatedText, '唱片')
+    assert.equal(events.at(-1).payload.lexicalDetails.phonetic, result.phonetic)
+  })
+})
+
+test('qwen translation forwards distinct occurrences without adding unsupported message roles', async () => {
+  const context = 'The band will record a new record tomorrow.'
+  await withBackground({ fetchImpl: () => new Response(
+    'data: {"choices":[{"delta":{"content":"译文"}}]}',
+  ) }, async ({ send, waitFor, events, requests }) => {
+    for (const start of [14, 27]) {
+      send({ ...payload, requestId: `record-${start}`, kind: 'translate', text: 'record',
+        context, contextStart: start, contextEnd: start + 6 })
+      await waitFor(() => events.some((event) => event.payload.requestId === `record-${start}`
+        && event.payload.status === 'success'))
+    }
+    assert.equal(requests.length, 2)
+    for (const [index, start] of [14, 27].entries()) {
+      const body = requests[index].body
+      assert.equal(body.messages.length, 1)
+      assert.equal(body.messages[0].role, 'user')
+      assert.match(body.messages[0].content, new RegExp(`"contextStart":${start}`))
+      assert.equal(body.translation_options.target_lang, 'Chinese')
+      assert.equal(body.stream, true)
+      assert.equal('response_format' in body, false)
+    }
+    assert.notEqual(requests[0].body.messages[0].content, requests[1].body.messages[0].content)
+    assert.equal(events.at(-1).payload.sourceText, 'record')
+  })
+})
+
+test('qwen translation without usable context retains the plain-text request', async () => {
+  await withBackground({ fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"不情愿的"}}]}') },
+    async ({ send, waitFor, events, requests }) => {
+      send({ ...payload, kind: 'translate', context: '' })
+      await waitFor(() => events.some((event) => event.payload.status === 'success'))
+      assert.equal(requests[0].body.messages[0].content, 'reluctant')
     })
 })
 

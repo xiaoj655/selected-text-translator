@@ -14,6 +14,14 @@ const requests = []
 let shouldFailPronunciation = false
 let shouldDelayGuide = false
 let shouldFailGuide = false
+
+function readSourceData(payload) {
+  const content = payload.messages.at(-1).content || ''
+  const marker = '\nSource data:\n'
+  if (content.includes(marker)) return JSON.parse(content.slice(content.indexOf(marker) + marker.length))
+  return content.startsWith('{') ? JSON.parse(content) : { selectedText: content }
+}
+
 const guide = {
   phonetic: '/rɪˈlʌktənt/',
   hints: [
@@ -34,14 +42,24 @@ const server = createServer(async (request, response) => {
     const payload = JSON.parse(body)
     requests.push(payload)
     const prompt = payload.messages[0].content
+    const selected = readSourceData(payload)
     if (shouldFailGuide && prompt.includes('reading tutor') && !prompt.includes('Never include definitions')) {
       response.writeHead(503)
       response.end('Unavailable')
       return
     }
-    if (payload.stream) {
-      response.writeHead(200, { 'Content-Type': 'text/event-stream' })
-      response.end('data: {"choices":[{"delta":{"content":"不情愿的；犹豫的"}}]}')
+    if (payload.stream || prompt.includes('professional multilingual translation engine')) {
+      const isRecord = selected.selectedText === 'record'
+      const isNoun = selected.contextStart === 27
+      const translation = isRecord ? isNoun ? '唱片' : '录制' : '不情愿的；犹豫的'
+      if (payload.stream) {
+        response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+        response.end(`data: ${JSON.stringify({ choices: [{ delta: { content: translation } }] })}`)
+        return
+      }
+      const result = { translation, phonetic: isRecord ? isNoun ? '/ˈrɛkərd/' : '/rɪˈkɔrd/' : '/rɪˈlʌktənt/' }
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }))
       return
     }
     if (prompt.includes('Never include definitions') && shouldFailPronunciation) {
@@ -50,7 +68,6 @@ const server = createServer(async (request, response) => {
       return
     }
     if (shouldDelayGuide) await new Promise((resolve) => setTimeout(resolve, 200))
-    const selected = JSON.parse(payload.messages.at(-1).content || '{}')
     const recordGuide = {
       phonetic: shouldDelayGuide ? '/ˈrɛk.ɚd/' : '/ˈrɛkərd/',
       hints: [
@@ -225,9 +242,21 @@ try {
   assert.equal(await second.getByRole('button', { name: '引导理解', exact: true }).getAttribute('aria-pressed'), 'true')
   assert.equal(requests.length, callsBeforeModeSwitch)
   await second.close()
+  await selectText('record', '#repeated', 0)
+  await page.locator('.stt-trigger').click()
+  await page.locator('.stt-card-block--translation').waitFor()
+  assert.equal(await page.locator('.stt-card-block--translation').textContent(), '录制')
+  const verbSource = readSourceData(requests.findLast((request) => request.stream))
+  assert.equal(verbSource.contextStart, 14)
+  assert.equal(verbSource.selectedOccurrence.before, 'The band will ')
   await selectText('record', '#repeated', 1)
   await page.locator('.stt-trigger').click()
   await page.locator('.stt-card-block--translation').waitFor()
+  assert.equal(await page.locator('.stt-card-block--translation').textContent(), '唱片')
+  const nounSource = readSourceData(requests.findLast((request) => request.stream))
+  assert.equal(nounSource.contextStart, 27)
+  assert.equal(nounSource.targetLanguage, 'Chinese')
+  assert.equal(nounSource.selectedOccurrence.before, 'The band will record a new ')
   await page.locator('.stt-phonetic').waitFor()
   await page.getByRole('button', { name: '引导理解', exact: true }).click()
   await page.locator('.stt-hint').first().waitFor()
@@ -418,6 +447,26 @@ try {
   assert.equal('api_key' in exported, false)
   await library.setViewportSize({ width: 420, height: 850 })
   assert.equal(await library.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  await worker.evaluate(async () => {
+    await chrome.storage.sync.set({ model: 'test-generic', reading_mode: 'translate' })
+  })
+  const genericPage = await context.newPage()
+  genericPage.on('pageerror', (error) => errors.push(error.message))
+  await genericPage.goto(origin)
+  await selectText('record', '#repeated', 1, genericPage)
+  await genericPage.locator('.stt-trigger').click()
+  await genericPage.locator('.stt-card-block--translation').waitFor()
+  assert.equal(await genericPage.locator('.stt-card-block--translation').textContent(), '唱片')
+  assert.equal(await genericPage.locator('.stt-phonetic').textContent(), '/ˈrɛkərd/')
+  const genericRequest = requests.findLast((request) => request.model === 'test-generic')
+  assert.equal(readSourceData(genericRequest).contextStart, 27)
+  assert.equal(readSourceData(genericRequest).selectedText, 'record')
+  assert.equal(genericRequest.messages[0].role, 'system')
+  assert.equal(genericRequest.response_format.type, 'json_object')
+  await genericPage.close()
+  await worker.evaluate(async () => {
+    await chrome.storage.sync.set({ model: 'qwen-mt-flash', reading_mode: 'guide' })
+  })
   const settings = await context.newPage()
   settings.on('pageerror', (error) => errors.push(error.message))
   await settings.goto(`chrome-extension://${extensionId}/src/options.html`)
@@ -463,7 +512,7 @@ try {
   })
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } finally {
   await context?.close()
   await new Promise((resolve) => server.close(resolve))

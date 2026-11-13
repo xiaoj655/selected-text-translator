@@ -11,7 +11,6 @@ import {
   createSelectedTextDiagnostics,
   extractDeltaContent,
   extractGenericResponse,
-  getTargetLanguage,
   isSingleWordInput,
   usesStructuredOutputForModel,
 } from './translation-contracts.js'
@@ -133,14 +132,15 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       }
     }
     if (controller.signal.aborted) return
-    const targetLanguage = getTargetLanguage(text)
     const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
     const requestBody = kind !== 'translate'
       ? buildReadingRequest({ model, text, context: payload?.context,
           contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind })
       : isQwenMtRequest
-        ? buildQwenMtRequest({ model, text, targetLanguage })
-        : buildGenericRequest({ model, text })
+        ? buildQwenMtRequest({ model, text, context: payload?.context,
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
+        : buildGenericRequest({ model, text, context: payload?.context,
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
     const endpoint = normalizeEndpoint(settings.baseUrl)
     try {
       cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
