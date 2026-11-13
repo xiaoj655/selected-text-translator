@@ -686,6 +686,9 @@
     return {
       text: selection.text,
       context: selection.context,
+      contextStart: selection.contextStart,
+      contextEnd: selection.contextEnd,
+      usage: state.mode === 'guide' ? guide?.answer?.usage || '' : '',
       meaning,
       explanation: state.mode === 'guide' ? guide?.answer?.explanation : '',
       example: state.mode === 'guide' ? guide?.answer?.example : '',

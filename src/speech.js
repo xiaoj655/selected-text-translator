@@ -6,12 +6,13 @@ const FINAL_SPEECH_EVENTS = new Set(['end', 'interrupted', 'cancelled', 'error']
 let activeSpeech = null
 let pendingSpeech = null
 
-function matchesSpeech(speech, { tabId, frameId, speechId }) {
-  return Boolean(speech && speech.tabId === tabId && speech.frameId === frameId && speech.speechId === speechId)
+function matchesSpeech(speech, { tabId, frameId, speechId, clientId = '', documentId = '' }) {
+  return Boolean(speech && speech.tabId === tabId && speech.frameId === frameId && speech.speechId === speechId
+    && (speech.clientId || '') === clientId && (speech.documentId || '') === documentId)
 }
 
 export function handleSpeechMessage(message, sender, sendResponse) {
-  if (!['SPEAK_TEXT', 'STOP_SPEECH', 'GET_SPEECH_VOICES', 'PREVIEW_SPEECH'].includes(message?.type)) return false
+  if (!['SPEAK_TEXT', 'SPEAK_LIBRARY_TEXT', 'STOP_SPEECH', 'GET_SPEECH_VOICES', 'PREVIEW_SPEECH'].includes(message?.type)) return false
   if (message.type === 'GET_SPEECH_VOICES') {
     void getVoices(sendResponse)
     return true
@@ -19,9 +20,18 @@ export function handleSpeechMessage(message, sender, sendResponse) {
   const tabId = sender?.tab?.id
   const frameId = sender?.frameId || 0
   const speechId = String(message.payload?.speechId || '')
+  const isLibrary = message.type === 'SPEAK_LIBRARY_TEXT'
+    || (message.type === 'STOP_SPEECH' && Boolean(message.payload?.clientId))
+  const clientId = isLibrary ? String(message.payload?.clientId || '') : ''
+  const documentId = isLibrary ? String(sender.documentId || '') : ''
+  if (isLibrary && (!clientId || clientId.length > 100
+    || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL('src/library.html'))) {
+    sendResponse({ ok: false, message: 'Open your vocabulary book to use this speech control.' })
+    return false
+  }
   if (message.type === 'STOP_SPEECH') {
     try {
-      const owner = { tabId, frameId, speechId }
+      const owner = { tabId, frameId, speechId, clientId, documentId }
       if (matchesSpeech(pendingSpeech, owner)) pendingSpeech = null
       if (matchesSpeech(activeSpeech, owner)) {
         activeSpeech = null
@@ -34,7 +44,7 @@ export function handleSpeechMessage(message, sender, sendResponse) {
     return false
   }
   if (message.type === 'SPEAK_TEXT' && typeof tabId !== 'number') return false
-  void startSpeech({ message, tabId, frameId, speechId, sendResponse })
+  void startSpeech({ message, tabId, frameId, speechId, clientId, documentId, sendResponse })
   return true
 }
 
@@ -72,13 +82,13 @@ function restorePreviousSpeech(speech, previousSpeech) {
   if (activeSpeech === speech) activeSpeech = previousSpeech && !previousSpeech.isFinished ? previousSpeech : null
 }
 
-async function startSpeech({ message, tabId, frameId, speechId, sendResponse }) {
+async function startSpeech({ message, tabId, frameId, speechId, clientId, documentId, sendResponse }) {
   const text = String(message.payload?.text || '').trim()
   if (!text || !speechId || text.length > 12000) {
     sendResponse({ ok: false, message: 'Select up to 12,000 characters to read aloud.' })
     return
   }
-  const speech = { tabId, frameId, speechId, isFinished: false }
+  const speech = { tabId, frameId, speechId, clientId, documentId, isFinished: false }
   pendingSpeech = speech
   let previousSpeech = null
   try {
@@ -109,15 +119,20 @@ async function startSpeech({ message, tabId, frameId, speechId, sendResponse }) 
           speech.isFinished = true
           if (activeSpeech === speech) activeSpeech = null
         }
-        if (typeof tabId !== 'number') return
-        chrome.tabs.sendMessage(tabId, {
+        const notification = {
           type: 'SPEECH_EVENT',
           payload: {
             speechId,
+            ...(clientId ? { clientId } : {}),
             status: event.type,
             message: event.type === 'error' ? 'Unable to speak. Check the installed system voices.' : '',
           },
-        }, { frameId }, () => { void chrome.runtime.lastError })
+        }
+        if (clientId) {
+          chrome.runtime.sendMessage(notification, () => { void chrome.runtime.lastError })
+        } else if (typeof tabId === 'number') {
+          chrome.tabs.sendMessage(tabId, notification, { frameId }, () => { void chrome.runtime.lastError })
+        }
       },
     }, () => {
       const error = chrome.runtime.lastError

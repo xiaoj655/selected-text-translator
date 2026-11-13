@@ -8,7 +8,11 @@ async function withSpeech(callback) {
   const events = []
   let stops = 0
   globalThis.chrome = {
-    runtime: { lastError: null },
+    runtime: {
+      lastError: null,
+      getURL(path) { return `chrome-extension://selected-test/${path}` },
+      sendMessage(message, done) { events.push({ route: 'runtime', message }); done() },
+    },
     storage: { sync: { async get() { return { speech_voice: 'English', speech_rate: 0.75 } } } },
     tts: {
       async getVoices() { return [{ voiceName: 'English', lang: 'en-GB', remote: false }] },
@@ -20,7 +24,10 @@ async function withSpeech(callback) {
   const send = (type, payload, tabId = 1) => new Promise((resolve) => {
     handleSpeechMessage({ type, payload }, { tab: typeof tabId === 'number' ? { id: tabId } : undefined, frameId: 2 }, resolve)
   })
-  try { await callback({ send, spoken, events, getStops: () => stops }) }
+  const sendFrom = (type, payload, sender) => new Promise((resolve) => {
+    handleSpeechMessage({ type, payload }, sender, resolve)
+  })
+  try { await callback({ send, sendFrom, spoken, events, getStops: () => stops }) }
   finally { globalThis.chrome = previous }
 }
 
@@ -182,5 +189,34 @@ test('a stop request from a settings page is harmless when no utterance exists',
   await withSpeech(async ({ send, getStops }) => {
     assert.equal((await send('STOP_SPEECH', { speechId: 'none' }, null)).ok, true)
     assert.equal(getStops(), 0)
+  })
+})
+
+
+test('library speech works without a content tab and routes terminal events by client', async () => {
+  await withSpeech(async ({ sendFrom, spoken, events }) => {
+    const sender = { url: 'chrome-extension://selected-test/src/library.html', documentId: 'library-a' }
+    const payload = { speechId: 'audio-1', clientId: 'client-a', text: 'reluctant' }
+    assert.equal((await sendFrom('SPEAK_LIBRARY_TEXT', payload, sender)).ok, true)
+    spoken[0].onEvent({ type: 'end' })
+    assert.equal(events[0].route, 'runtime')
+    assert.equal(events[0].message.payload.clientId, 'client-a')
+    assert.equal(events[0].message.payload.speechId, 'audio-1')
+  })
+})
+
+test('a library document cannot stop another document and webpages cannot invoke library speech', async () => {
+  await withSpeech(async ({ sendFrom, getStops, spoken }) => {
+    const senderA = { url: 'chrome-extension://selected-test/src/library.html', documentId: 'library-a' }
+    const senderB = { ...senderA, documentId: 'library-b' }
+    const payload = { speechId: 'shared-id', clientId: 'client-b', text: 'record' }
+    await sendFrom('SPEAK_LIBRARY_TEXT', payload, senderB)
+    assert.equal((await sendFrom('STOP_SPEECH', payload, senderA)).ok, true)
+    assert.equal(getStops(), 0)
+    const denied = await sendFrom('SPEAK_LIBRARY_TEXT', payload, { url: 'https://example.com', tab: { id: 7 } })
+    assert.equal(denied.ok, false)
+    assert.equal(spoken.length, 1)
+    await sendFrom('STOP_SPEECH', payload, senderB)
+    assert.equal(getStops(), 1)
   })
 })

@@ -118,7 +118,7 @@ test('remove and export operate only on learning entries and omit unrelated sett
     storage.api_key = 'test-secret'
     const saved = await saveVocabulary(sample)
     const exported = await exportVocabulary()
-    assert.equal(exported.data.version, 1)
+    assert.equal(exported.data.version, 2)
     assert.equal(exported.data.entries.length, 1)
     assert.equal(JSON.stringify(exported).includes('test-secret'), false)
     assert.equal((await removeVocabulary(saved.entry.id)).ok, true)
@@ -214,7 +214,7 @@ test('invalid backup entries and conflicting IDs reject the entire import withou
 test('import validates backup version, limits, field types and review metadata before writing', async () => {
   const entry = normalizeVocabularyEntry(sample, NOW)
   const invalidBackups = [
-    { ...createBackup([entry]), version: 2 },
+    { ...createBackup([entry]), version: 3 },
     { ...createBackup([entry]), api_key: 'not-a-backup' },
     createBackup(Array.from({ length: 2001 }, () => entry)),
     createBackup([{ ...entry, reviewCount: -1 }]),
@@ -252,4 +252,78 @@ test('an import exceeding the combined storage byte limit leaves the original bo
     assert.equal(calls.length, 0)
     assert.equal((await listVocabulary()).entries.length, original.length)
   }, { initialEntries: original })
+})
+
+test('same-sense punctuation variants enrich missing learning fields without resetting progress', async () => {
+  const original = scheduleReview(normalizeVocabularyEntry({ text: 'record', meaning: '记录。',
+    context: 'The band will record a new record tomorrow.' }, NOW), 'good', NOW)
+  await withStorage(async () => {
+    const saved = await saveVocabulary({ text: 'record', meaning: '记录', usage: 'record + sound',
+      context: original.context, contextStart: 14, contextEnd: 20 })
+    assert.equal(saved.alreadySaved, true)
+    assert.equal(saved.entry.id, original.id)
+    assert.equal(saved.entry.usage, 'record + sound')
+    assert.equal(saved.entry.contextStart, 14)
+    assert.equal(saved.entry.reviewCount, 1)
+    assert.equal(saved.entry.dueAt, original.dueAt)
+    assert.equal((await listVocabulary()).entries.length, 1)
+    await saveVocabulary({ text: 'record', meaning: 'a music album' })
+    assert.equal((await listVocabulary()).entries.length, 2)
+  }, { initialEntries: [original] })
+})
+
+test('two stale pages cannot advance the same review interval twice', async () => {
+  const original = { ...normalizeVocabularyEntry(sample, NOW), dueAt: 0 }
+  await withStorage(async ({ calls }) => {
+    const expected = { expectedDueAt: 0, expectedReviewCount: 0 }
+    const responses = await Promise.all([
+      reviewVocabulary(original.id, 'good', expected),
+      reviewVocabulary(original.id, 'good', expected),
+    ])
+    assert.equal(responses[0].ok, true)
+    assert.equal(responses[1].code, 'review-changed')
+    assert.equal(responses[1].entry.reviewCount, 1)
+    assert.equal(responses[1].entry.intervalDays, 1)
+    assert.equal(calls.length, 1)
+  }, { initialEntries: [original] })
+})
+
+test('usage and exact context positions survive review and backup restoration', async () => {
+  const context = 'The band will record a new record tomorrow.'
+  await withStorage(async () => {
+    const saved = await saveVocabulary({ text: 'record', meaning: 'a music album', context,
+      contextStart: 27, contextEnd: 33, usage: 'a record by + artist' })
+    const reviewed = await reviewVocabulary(saved.entry.id, 'good')
+    assert.equal(reviewed.entry.contextStart, 27)
+    assert.equal(reviewed.entry.contextEnd, 33)
+    assert.equal(reviewed.entry.usage, 'a record by + artist')
+    const backup = await exportVocabulary()
+    assert.equal(backup.data.version, 2)
+    const removed = await removeVocabulary(saved.entry.id)
+    assert.deepEqual(removed.entry, reviewed.entry)
+    assert.equal((await importVocabulary(backup.data)).added, 1)
+    const restored = (await listVocabulary()).entries[0]
+    assert.deepEqual(restored, reviewed.entry)
+  })
+})
+
+test('version 1 backups remain readable and invalid optional metadata is rejected atomically', async () => {
+  const legacy = normalizeVocabularyEntry(sample, NOW)
+  delete legacy.usage
+  delete legacy.contextStart
+  delete legacy.contextEnd
+  await withStorage(async ({ calls }) => {
+    assert.equal((await importVocabulary(createBackup([legacy]))).ok, true)
+    const restored = (await listVocabulary()).entries[0]
+    assert.equal(restored.usage, '')
+    assert.equal(restored.contextStart, null)
+    const invalid = [
+      { ...restored, usage: null },
+      { ...restored, contextStart: 0, contextEnd: 4 },
+      { ...restored, contextStart: 1.5, contextEnd: 5 },
+      { ...restored, contextStart: null, contextEnd: 5 },
+    ]
+    for (const entry of invalid) assert.equal((await importVocabulary(createBackup([entry]))).ok, false)
+    assert.equal(calls.length, 1)
+  })
 })

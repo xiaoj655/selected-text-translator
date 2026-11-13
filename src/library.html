@@ -30,6 +30,11 @@
         <button id="review-tab" type="button" aria-pressed="false">到期复习 <span id="due-count">0</span></button>
       </nav>
       <p id="library-status" class="library-status" role="status" aria-live="polite"></p>
+      <button id="stop-library-speech" class="secondary library-stop-speech hidden" type="button">■ 停止朗读</button>
+      <div id="undo-notice" class="undo-notice hidden" role="status" aria-live="polite">
+        <span id="undo-message"></span>
+        <button id="undo-removal" class="secondary" type="button">撤销</button>
+      </div>
       <section id="all-view" aria-label="全部收藏">
         <label class="search-label"><span>找一个词或一段语境</span><input id="vocabulary-search" type="search" placeholder="搜索收藏的单词、表达或原句…" autocomplete="off" /></label>
         <div id="entry-list" class="entry-list"></div>
@@ -37,6 +42,7 @@
       </section>
       <section id="review-view" class="hidden" aria-label="到期复习">
         <p class="review-help">先想一想它在原句中的意思，再揭晓。不用输入，按你的真实感觉选择。</p>
+        <p class="review-shortcuts">空格揭晓 · 揭晓后按 <kbd>1</kbd> 还不熟 / <kbd>2</kbd> 记住了</p>
         <div id="review-card"></div>
       </section>
     </main>
