@@ -5,11 +5,13 @@ import {
   removeVocabulary,
   reviewVocabulary,
   saveVocabulary,
+  updateVocabulary,
 } from './vocabulary-store.js'
 
 const ACTIONS = Object.freeze({
   VOCABULARY_LIST: () => listVocabulary(),
   VOCABULARY_SAVE: (payload) => saveVocabulary(payload),
+  VOCABULARY_UPDATE: (payload) => updateVocabulary(payload?.id, payload?.changes, payload?.expected),
   VOCABULARY_REMOVE: (payload) => removeVocabulary(payload?.id),
   VOCABULARY_REVIEW: (payload) => reviewVocabulary(payload?.id, payload?.rating, {
     expectedDueAt: payload?.expectedDueAt, expectedReviewCount: payload?.expectedReviewCount,

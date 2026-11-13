@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeVocabularyEntry, getDueEntries, scheduleReview, listVocabulary,
-  saveVocabulary, removeVocabulary, reviewVocabulary, exportVocabulary, importVocabulary, serializeVocabularyBackup } from '../src/vocabulary-store.js'
+  saveVocabulary, removeVocabulary, reviewVocabulary, exportVocabulary, importVocabulary, serializeVocabularyBackup, updateVocabulary } from '../src/vocabulary-store.js'
 
 const NOW = 1700000000000
 const DAY_MS = 86400000
@@ -368,4 +368,91 @@ test('legacy backups at the exact stored-content limit allow the JSON envelope o
     assert.equal(restored.added, entries.length)
     assert.deepEqual((await listVocabulary()).entries, entries)
   })
+})
+
+
+test('correcting learning content preserves identity, source and review history', async () => {
+  const old = scheduleReview(normalizeVocabularyEntry(sample, NOW), 'good', NOW)
+  await withStorage(async () => {
+    const changed = await updateVocabulary(old.id, { meaning: 'Not ready to do something.', usage: 'reluctant to + verb' },
+      { meaning: old.meaning, usage: '' })
+    assert.equal(changed.ok, true)
+    for (const key of ['id', 'createdAt', 'reviewCount', 'intervalDays', 'dueAt', 'text', 'context', 'sourceUrl']) {
+      assert.equal(changed.entry[key], old[key])
+    }
+    assert.equal(changed.entry.usage, 'reluctant to + verb')
+    const backup = await exportVocabulary()
+    await removeVocabulary(old.id)
+    assert.equal((await importVocabulary(backup.data)).ok, true)
+    assert.deepEqual((await listVocabulary()).entries, [changed.entry])
+  }, { initialEntries: [old] })
+})
+
+test('independent edits and reviews merge, while same-field stale edits cannot overwrite', async () => {
+  const old = { ...normalizeVocabularyEntry(sample, NOW), dueAt: 0 }
+  await withStorage(async ({ calls }) => {
+    const results = await Promise.all([
+      updateVocabulary(old.id, { meaning: 'Not ready to do it.' }, { meaning: old.meaning }),
+      reviewVocabulary(old.id, 'good', { expectedDueAt: 0, expectedReviewCount: 0 }),
+      updateVocabulary(old.id, { example: 'She was reluctant to go.' }, { example: old.example }),
+    ])
+    assert.equal(results.every((result) => result.ok), true)
+    const latest = (await listVocabulary()).entries[0]
+    assert.equal(latest.reviewCount, 1)
+    assert.equal(latest.meaning, 'Not ready to do it.')
+    assert.equal(latest.example, 'She was reluctant to go.')
+    const conflicted = await updateVocabulary(old.id, { meaning: 'A stale correction' }, { meaning: old.meaning })
+    assert.equal(conflicted.code, 'entry-changed')
+    assert.equal(conflicted.entry.meaning, latest.meaning)
+    assert.deepEqual(conflicted.conflictingFields, ['meaning'])
+    assert.equal(calls.length, 3)
+  }, { initialEntries: [old] })
+})
+
+test('re-saving an old sense after an edit creates a distinct usable ID', async () => {
+  await withStorage(async () => {
+    const saved = await saveVocabulary(sample)
+    await updateVocabulary(saved.entry.id, { meaning: 'A corrected different sense.' }, { meaning: sample.meaning })
+    const originalSense = await saveVocabulary(sample)
+    assert.notEqual(originalSense.entry.id, saved.entry.id)
+    assert.equal((await listVocabulary()).entries.length, 2)
+    await reviewVocabulary(originalSense.entry.id, 'good')
+    const entries = (await listVocabulary()).entries
+    assert.equal(entries.find((entry) => entry.id === saved.entry.id).reviewCount, 0)
+    assert.equal(entries.find((entry) => entry.id === originalSense.entry.id).reviewCount, 1)
+    await removeVocabulary(saved.entry.id)
+    assert.equal((await listVocabulary()).entries[0].id, originalSense.entry.id)
+  })
+})
+
+test('empty, unsupported, oversized and duplicate edits fail without partial writes', async () => {
+  const first = normalizeVocabularyEntry(sample, NOW)
+  const second = normalizeVocabularyEntry({ ...sample, meaning: 'Another distinct sense.' }, NOW)
+  await withStorage(async ({ calls }) => {
+    const invalid = [
+      [{ meaning: '' }, { meaning: first.meaning }],
+      [{ meaning: 'm'.repeat(2001) }, { meaning: first.meaning }],
+      [{ reviewCount: '100' }, { reviewCount: '0' }],
+      [{ usage: 'a pattern' }, {}],
+      [[], {}],
+    ]
+    for (const [changes, expected] of invalid) {
+      assert.equal((await updateVocabulary(first.id, changes, expected)).code, 'invalid-entry')
+    }
+    assert.equal((await updateVocabulary(first.id, { meaning: second.meaning }, { meaning: first.meaning })).code,
+      'duplicate-entry')
+    assert.equal((await updateVocabulary('missing', { meaning: 'x' }, { meaning: '' })).code, 'entry-missing')
+    assert.equal(calls.length, 0)
+    assert.deepEqual((await listVocabulary()).entries, [first, second])
+  }, { initialEntries: [first, second] })
+})
+
+test('unchanged corrections are a no-op and do not touch stored progress', async () => {
+  const old = normalizeVocabularyEntry(sample, NOW)
+  await withStorage(async ({ calls }) => {
+    const result = await updateVocabulary(old.id, { meaning: ` ${old.meaning} ` }, { meaning: 'older baseline' })
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.entry, old)
+    assert.equal(calls.length, 0)
+  }, { initialEntries: [old] })
 })

@@ -4,6 +4,7 @@ const MAX_STORAGE_BYTES = 4 * 1024 * 1024
 export const MAX_BACKUP_FILE_BYTES = 5 * 1024 * 1024
 const DAY_MS = 86400000
 const REVIEW_INTERVALS = Object.freeze([1, 3, 7, 14, 30])
+const EDITABLE_FIELDS = Object.freeze({ meaning: 2000, explanation: 2500, usage: 500, example: 1000, phonetic: 160 })
 let mutationQueue = Promise.resolve()
 
 function normalizeString(value, limit) {
@@ -184,9 +185,47 @@ export function saveVocabulary(input) {
       }
       return { ok: true, entry: entries[index], alreadySaved: true }
     }
+    const existingIds = new Set(entries.map((entry) => entry.id))
+    const baseId = incoming.id
+    let suffix = 1
+    while (existingIds.has(incoming.id)) incoming.id = `${baseId}-${suffix++}`
     entries.push(incoming)
     await writeEntries(entries)
     return { ok: true, entry: incoming, alreadySaved: false }
+  })
+}
+
+export function updateVocabulary(id, changes, expected) {
+  return enqueueMutation(async () => {
+    const entries = await readEntries()
+    const index = entries.findIndex((entry) => entry.id === id)
+    if (index === -1) return { ok: false, code: 'entry-missing', message: '这条表达已被移除，请同步列表。' }
+    const current = entries[index]
+    const invalid = { ok: false, code: 'invalid-entry', message: '请填写有效的释义，并检查修订内容的长度。' }
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)
+      || !expected || typeof expected !== 'object' || Array.isArray(expected)) return invalid
+    const keys = Object.keys(changes)
+    if (Object.keys(expected).some((key) => !Object.hasOwn(EDITABLE_FIELDS, key))) return invalid
+    if (keys.some((key) => !Object.hasOwn(EDITABLE_FIELDS, key)
+      || typeof changes[key] !== 'string' || typeof expected[key] !== 'string'
+      || changes[key].length > EDITABLE_FIELDS[key])) return invalid
+    const normalized = Object.fromEntries(keys.map((key) => [key, changes[key].trim()]))
+    if ('meaning' in normalized && !normalized.meaning) return invalid
+    const changedKeys = keys.filter((key) => normalized[key] !== current[key])
+    const conflicts = changedKeys.filter((key) => current[key] !== expected[key])
+    if (conflicts.length) {
+      return { ok: false, code: 'entry-changed', message: '这些内容已在另一处更新，草稿尚未覆盖最新内容。',
+        entry: current, conflictingFields: conflicts }
+    }
+    if (!changedKeys.length) return { ok: true, entry: current }
+    const entry = { ...current, ...normalized, updatedAt: Math.max(Date.now(), current.updatedAt) }
+    const key = getEntryKey(entry)
+    if (entries.some((other, otherIndex) => otherIndex !== index && getEntryKey(other) === key)) {
+      return { ok: false, code: 'duplicate-entry', message: '已有相同词义的收藏，未合并或覆盖任何复习进度。' }
+    }
+    entries[index] = entry
+    await writeEntries(entries)
+    return { ok: true, entry }
   })
 }
 

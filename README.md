@@ -23,6 +23,12 @@
 
 表达本内可以朗读词、原句和例句，并查看收藏时保留的用法结构。复习时按空格揭晓，按 `1` 标记「还不熟」、`2` 标记「记住了」；移除条目后可以撤销，保留原有复习进度。新版备份格式为 v2，同时兼容导入 v1 备份。
 
+### 修订学习内容
+
+模型可能判断错义项、写出不准确的搭配或音标。展开收藏条目，点击「修订内容」，可以修改释义、用法与例句；「更多内容」中可校订解释和音标。保存不会重置复习进度，也不会修改原文及来源。
+
+保存只提交实际改动字段，其他页面的独立修改会保留；同一字段发生冲突时，你的草稿会保留，点击「载入最新内容」后才替换草稿。草稿仅在当前页面内保留，硬刷新或关闭前请保存或复制。修订是可选功能，不影响逐层提示或复习流程。
+
 ## 安装
 
 1. 下载或克隆本仓库：
@@ -90,4 +96,4 @@ npm run test:browser
 
 在仓库 [Actions](https://github.com/xiaoj655/selected-text-translator/actions) 中打开成功的运行，从 Artifacts 下载 `selected-text-translator-版本号`，解压下载文件后即可取得插件 ZIP 和校验文件。再将插件 ZIP 解压，在 Chrome 中加载包含 `manifest.json` 的目录。出包产物保存 30 天，浏览器预览保存 7 天。
 
-发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.3.1`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
+发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.4.0`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。

@@ -1,5 +1,7 @@
 import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
 import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
+import { createVocabularyDraft, getVocabularyDraftUpdate, serializeVocabularyDraft,
+  setVocabularyDraftField, syncVocabularyDraft, VOCABULARY_EDIT_FIELDS } from './vocabulary-editor.js'
 
 const allTabEl = document.getElementById('all-tab')
 const reviewTabEl = document.getElementById('review-tab')
@@ -19,7 +21,7 @@ const undoMessageEl = document.getElementById('undo-message')
 const undoEl = document.getElementById('undo-removal')
 const state = { entries: [], mode: 'all', visibleCount: 30, reviewQueue: [], reviewIndex: 0,
   isRevealed: false, isBusy: false, refreshPending: false, shouldRefresh: false, dueTimerId: null,
-  reviewEntryId: '', lastRemovedEntry: null, isUndoBusy: false }
+  reviewEntryId: '', lastRemovedEntry: null, isUndoBusy: false, draft: null, editorEl: null, draftNoticeEl: null }
 const libraryAudio = createLibraryAudio({ send, onChange: updateSpeechControls, onStatus: setStatus })
 
 void init()
@@ -54,6 +56,9 @@ async function send(type, payload = {}) {
 
 async function init() {
   try {
+    state.draftNoticeEl = createEl('section', 'draft-notice hidden')
+    state.draftNoticeEl.setAttribute('aria-label', '未保存的修订')
+    undoNoticeEl.after(state.draftNoticeEl)
     allTabEl.addEventListener('click', () => selectView('all'))
     reviewTabEl.addEventListener('click', () => selectView('review'))
     searchEl.addEventListener('input', () => { state.visibleCount = 30; renderList() })
@@ -91,6 +96,8 @@ async function refresh() {
     if (state.isBusy) { state.shouldRefresh = true; return }
     state.shouldRefresh = false
     state.entries = Array.isArray(response.entries) ? response.entries : []
+    state.draft = syncVocabularyDraft(state.draft, state.entries.find((entry) => entry.id === state.draft?.id))
+    updateEditorControls()
     if (!state.entries.some((entry) => libraryAudio.getActiveKey().startsWith(`${entry.id}:`))) {
       void libraryAudio.stop()
     }
@@ -150,6 +157,7 @@ function createEmptyState(title, text, symbol = 'Aa') {
 }
 
 function renderList() {
+  const editorFocus = getEditorFocus()
   const query = searchEl.value.trim().toLocaleLowerCase('en-US')
   const entries = state.entries.filter((entry) => `${entry.text} ${entry.context} ${entry.meaning}`
     .toLocaleLowerCase('en-US').includes(query))
@@ -165,10 +173,12 @@ function renderList() {
   }
   for (const entry of visibleEntries) {
     const cardEl = createEntryCard(entry)
-    cardEl.open = openIds.has(entry.id)
+    cardEl.open = openIds.has(entry.id) || entry.id === state.draft?.id
     listEl.appendChild(cardEl)
   }
   loadMoreEl.classList.toggle('hidden', entries.length <= state.visibleCount)
+  renderDraftNotice()
+  restoreEditorFocus(editorFocus)
   updateSpeechControls()
 }
 
@@ -231,6 +241,235 @@ function updateSpeechControls() {
   stopSpeechEl.classList.toggle('hidden', !key || hasVisibleControl)
 }
 
+function getEditorFocus() {
+  const activeEl = document.activeElement
+  if (!state.editorEl?.contains(activeEl) || !activeEl.dataset.editField) return null
+  return { field: activeEl.dataset.editField, start: activeEl.selectionStart, end: activeEl.selectionEnd }
+}
+
+function restoreEditorFocus(focus) {
+  if (!focus || !state.editorEl?.isConnected) return
+  const fieldEl = state.editorEl.querySelector(`[data-edit-field="${focus.field}"]`)
+  if (!fieldEl || fieldEl.disabled) return
+  fieldEl.focus({ preventScroll: true })
+  if (focus.start !== null) fieldEl.setSelectionRange(focus.start, focus.end)
+}
+
+function createEditorField(field) {
+  const labelEl = createEl('label', 'editor-field')
+  const headingEl = createEl('span', 'editor-field-heading')
+  const limitEl = createEl('span', 'editor-limit')
+  limitEl.dataset.limitField = field.key
+  limitEl.id = `editor-limit-${field.key}`
+  headingEl.append(createEl('span', '', `${field.label}${field.isRequired ? ' *' : ''}`), limitEl)
+  const inputEl = createEl(field.rows === 1 ? 'input' : 'textarea')
+  inputEl.dataset.editField = field.key
+  inputEl.name = field.key
+  inputEl.maxLength = field.maxLength
+  inputEl.required = !!field.isRequired
+  inputEl.value = state.draft.values[field.key]
+  inputEl.setAttribute('aria-label', field.label)
+  inputEl.setAttribute('aria-describedby', limitEl.id)
+  if (field.rows > 1) inputEl.rows = field.rows
+  inputEl.addEventListener('input', () => {
+    state.draft = setVocabularyDraftField(state.draft, field.key, inputEl.value)
+    if (!['entry-changed', 'entry-missing'].includes(state.draft.code)) {
+      state.draft.code = ''
+      state.draft.message = ''
+    }
+    updateEditorControls()
+  })
+  labelEl.append(headingEl, inputEl)
+  return labelEl
+}
+
+function createEntryEditor() {
+  const formEl = createEl('form', 'entry-editor')
+  formEl.setAttribute('aria-label', '修订学习内容')
+  formEl.append(createEl('h3', '', '让这份理解更贴近你。'),
+    createEl('p', 'editor-help', '只修改学习内容，原文、来源和复习进度会保留。'),
+    createEl('p', 'editor-help editor-draft-help', '草稿仅保留在当前页面，刷新或关闭前请保存或复制。'))
+  const advancedEl = createEl('details', 'editor-advanced')
+  advancedEl.appendChild(createEl('summary', '', '更多内容：补充解释与音标'))
+  advancedEl.addEventListener('toggle', () => {
+    if (state.draft) state.draft.isAdvancedOpen = advancedEl.open
+  })
+  for (const field of VOCABULARY_EDIT_FIELDS) {
+    if (field.isAdvanced) advancedEl.appendChild(createEditorField(field))
+    else formEl.appendChild(createEditorField(field))
+  }
+  formEl.appendChild(advancedEl)
+  const messageEl = createEl('p', 'editor-message')
+  messageEl.setAttribute('role', 'status')
+  messageEl.setAttribute('aria-live', 'polite')
+  const reloadEl = createButton('载入最新内容', reloadDraft, 'secondary editor-reload hidden')
+  const actionsEl = createEl('div', 'editor-actions')
+  const saveEl = createEl('button', 'editor-save', '保存修订')
+  saveEl.type = 'submit'
+  const cancelEl = createButton('取消', cancelDraft, 'secondary editor-cancel')
+  const copyEl = createButton('复制草稿', () => void copyDraft(), 'text-button editor-copy')
+  actionsEl.append(saveEl, cancelEl, copyEl)
+  formEl.append(messageEl, reloadEl, actionsEl)
+  formEl.addEventListener('submit', (event) => { event.preventDefault(); void saveDraft() })
+  return formEl
+}
+
+function updateEditorControls() {
+  const draft = state.draft
+  const formEl = state.editorEl
+  if (!draft || !formEl) return
+  const update = getVocabularyDraftUpdate(draft)
+  const isConflict = draft.code === 'entry-changed'
+  const messageEl = formEl.querySelector('.editor-message')
+  let message = draft.message
+  if (draft.isMissing) message = '这条表达已在其他页面移除。草稿仍保留，可先复制；当前无法保存。'
+  else if (isConflict) message = '这条表达的学习内容已在其他页面修改。你的草稿已保留；可先复制，再载入最新内容。'
+  else if (!update.ok) message = update.message
+  else if (!message && draft.hasExternalChanges) message = '内容已在其他页面更新。草稿已保留，保存时只提交你改动的字段。'
+  messageEl.textContent = message
+  messageEl.dataset.tone = draft.isMissing || draft.code || !update.ok ? 'error' : 'info'
+  for (const field of VOCABULARY_EDIT_FIELDS) {
+    const inputEl = formEl.querySelector(`[data-edit-field="${field.key}"]`)
+    inputEl.disabled = draft.isSaving
+    inputEl.setAttribute('aria-invalid', String(!update.ok && update.field === field.key))
+    formEl.querySelector(`[data-limit-field="${field.key}"]`).textContent =
+      `${draft.values[field.key].length} / ${field.maxLength}`
+  }
+  const saveEl = formEl.querySelector('.editor-save')
+  saveEl.disabled = draft.isSaving || draft.isMissing || isConflict || !update.ok || !update.hasChanges
+  saveEl.textContent = draft.isSaving ? '正在保存…' : '保存修订'
+  formEl.querySelector('.editor-cancel').disabled = draft.isSaving
+  const reloadEl = formEl.querySelector('.editor-reload')
+  reloadEl.classList.toggle('hidden', draft.isMissing || (!draft.hasExternalChanges && !isConflict))
+  reloadEl.disabled = draft.isSaving
+}
+
+function renderDraftNotice() {
+  const noticeEl = state.draftNoticeEl
+  if (!noticeEl) return
+  noticeEl.replaceChildren()
+  const draft = state.draft
+  const isInline = state.mode === 'all' && listEl.contains(state.editorEl)
+  noticeEl.classList.toggle('hidden', !draft || isInline)
+  if (!draft || isInline) return
+  if (state.mode === 'review') {
+    state.editorEl.remove()
+    noticeEl.append(createEl('p', '', '有一份未保存的修订，草稿已为你保留。'),
+      createButton('返回继续修订', showDraft, 'secondary'))
+    return
+  }
+  noticeEl.append(createEl('p', 'draft-notice-label', draft.isMissing ? '保留的修订草稿' : '搜索之外，还有一份修订草稿'),
+    createEl('h2', 'draft-notice-title', draft.text), state.editorEl)
+}
+
+function showDraft() {
+  if (!state.draft) return
+  if (state.mode !== 'all') selectView('all')
+  searchEl.value = ''
+  const index = state.entries.findIndex((entry) => entry.id === state.draft.id)
+  state.visibleCount = Math.max(state.visibleCount, index + 1)
+  renderList()
+  state.editorEl.scrollIntoView({ block: 'center' })
+  state.editorEl.querySelector('[data-edit-field="meaning"]')?.focus({ preventScroll: true })
+}
+
+function beginEdit(entry) {
+  if (state.draft) {
+    if (state.draft.id !== entry.id) setStatus('请先保存或取消当前修订，再编辑另一条表达。', true)
+    showDraft()
+    return
+  }
+  if (libraryAudio.getActiveKey().startsWith(`${entry.id}:`)) void libraryAudio.stop()
+  state.draft = createVocabularyDraft(entry)
+  state.editorEl = createEntryEditor()
+  updateEditorControls()
+  setStatus()
+  renderList()
+  state.editorEl.querySelector('[data-edit-field="meaning"]')?.focus({ preventScroll: true })
+}
+
+function cancelDraft() {
+  if (state.draft?.isSaving) return
+  state.draft = null
+  state.editorEl?.remove()
+  state.editorEl = null
+  setStatus()
+  if (state.mode === 'review') renderReview()
+  else renderList()
+}
+
+function reloadDraft() {
+  const latestEntry = state.draft?.latestEntry
+  if (!latestEntry || state.draft.isSaving) return
+  const isAdvancedOpen = state.draft.isAdvancedOpen
+  state.draft = { ...createVocabularyDraft(latestEntry), isAdvancedOpen }
+  for (const field of VOCABULARY_EDIT_FIELDS) {
+    state.editorEl.querySelector(`[data-edit-field="${field.key}"]`).value = state.draft.values[field.key]
+  }
+  state.editorEl.querySelector('.editor-copy-text')?.remove()
+  updateEditorControls()
+  state.editorEl.querySelector('[data-edit-field="meaning"]')?.focus({ preventScroll: true })
+}
+
+async function copyDraft() {
+  if (!state.draft) return
+  const text = serializeVocabularyDraft(state.draft)
+  try {
+    await navigator.clipboard.writeText(text)
+    setStatus('已复制修订草稿。')
+  } catch {
+    let copyEl = state.editorEl.querySelector('.editor-copy-text')
+    if (!copyEl) {
+      copyEl = createEl('textarea', 'editor-copy-text')
+      copyEl.readOnly = true
+      copyEl.rows = 6
+      copyEl.setAttribute('aria-label', '选中并复制修订草稿')
+      state.editorEl.appendChild(copyEl)
+    }
+    copyEl.value = text
+    copyEl.focus()
+    copyEl.select()
+    setStatus('草稿已选中，可以复制后妥善保留。')
+  }
+}
+
+async function saveDraft() {
+  const draft = state.draft
+  if (!draft || draft.isSaving || draft.isMissing || draft.code === 'entry-changed') return
+  const update = getVocabularyDraftUpdate(draft)
+  if (!update.ok || !update.hasChanges) { updateEditorControls(); return }
+  state.draft = { ...draft, isSaving: true, message: '', code: '' }
+  updateEditorControls()
+  try {
+    const response = await send('VOCABULARY_UPDATE', update.payload)
+    if (!response.ok) {
+      state.draft = { ...state.draft, isSaving: false, code: response.code || 'save-failed',
+        message: response.message || '保存修订失败，草稿已保留，请重试。' }
+      if (response.entry) {
+        state.draft = syncVocabularyDraft(state.draft, response.entry)
+        state.entries = state.entries.map((entry) => entry.id === draft.id ? response.entry : entry)
+      } else if (response.code === 'entry-missing') {
+        state.draft = syncVocabularyDraft(state.draft, null)
+        state.entries = state.entries.filter((entry) => entry.id !== draft.id)
+      }
+      return
+    }
+    state.entries = state.entries.map((entry) => entry.id === draft.id ? response.entry : entry)
+    state.draft = null
+    state.editorEl.remove()
+    state.editorEl = null
+    updateCounts()
+    setStatus('已保存修订，原有复习进度已保留。')
+  } catch {
+    if (state.draft) state.draft = { ...state.draft, isSaving: false,
+      message: '保存修订失败，草稿已保留，请重试。' }
+  } finally {
+    updateEditorControls()
+    if (state.mode === 'review') renderReview()
+    else renderList()
+  }
+}
+
 function createEntryCard(entry) {
   const cardEl = createEl('details', 'entry-card')
   cardEl.dataset.entryId = entry.id
@@ -244,7 +483,9 @@ function createEntryCard(entry) {
   if (entry.phonetic) bodyEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
   bodyEl.appendChild(createSpeechControls(entry))
   bodyEl.append(createEl('span', 'context-label', 'WHERE YOU MET IT'), createContext(entry))
-  appendAnswer(bodyEl, entry)
+  const isEditing = state.draft?.id === entry.id
+  if (isEditing) bodyEl.appendChild(state.editorEl)
+  else appendAnswer(bodyEl, entry)
   const actionsEl = createEl('div', 'entry-actions')
   const sourceEl = createEl('span')
   try {
@@ -259,13 +500,22 @@ function createEntryCard(entry) {
   } catch { }
   const removeEl = createButton('移除', () => void removeEntry(entry.id, removeEl), 'secondary')
   removeEl.setAttribute('aria-label', `移除 ${entry.text}`)
-  actionsEl.append(sourceEl, removeEl)
+  removeEl.disabled = isEditing
+  if (isEditing) removeEl.title = '请先保存或取消这条表达的修订。'
+  const buttonsEl = createEl('div', 'entry-action-buttons')
+  if (!isEditing) buttonsEl.appendChild(createButton('修订内容', () => beginEdit(entry), 'secondary'))
+  buttonsEl.appendChild(removeEl)
+  actionsEl.append(sourceEl, buttonsEl)
   bodyEl.appendChild(actionsEl)
   cardEl.append(summaryEl, bodyEl)
   return cardEl
 }
 
 async function removeEntry(id, buttonEl) {
+  if (state.draft?.id === id) {
+    setStatus('请先保存或取消这条表达的修订，再移除它。', true)
+    return
+  }
   const originalEntry = state.entries.find((entry) => entry.id === id)
   if (libraryAudio.getActiveKey().startsWith(`${id}:`)) void libraryAudio.stop()
   buttonEl.disabled = true
@@ -325,6 +575,7 @@ function getCurrentReviewEntry() {
 }
 
 function renderReview() {
+  renderDraftNotice()
   const entry = getCurrentReviewEntry()
   if (state.reviewEntryId !== (entry?.id || '')) void libraryAudio.stop()
   state.reviewEntryId = entry?.id || ''

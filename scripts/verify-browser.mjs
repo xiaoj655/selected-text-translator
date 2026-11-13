@@ -94,6 +94,10 @@ try {
   await worker.evaluate(async (origin) => {
     await chrome.storage.sync.set({ base_url: `${origin}/v1`, api_key: 'browser-test-token',
       model: 'qwen-mt-flash', learning_model: 'test-tutor', reading_mode: 'guide' })
+    globalThis.vocabularyUpdates = []
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === 'VOCABULARY_UPDATE') globalThis.vocabularyUpdates.push(message.payload)
+    })
     globalThis.speechCalls = []
     globalThis.speechStops = 0
     chrome.tts.getVoices = async () => [{ voiceName: 'Test English', lang: 'en-US', remote: false }]
@@ -241,6 +245,39 @@ try {
   await library.locator('.entry-card').waitFor()
   await library.locator('.entry-card summary').click()
   assert.equal(await library.locator('.entry-usage').textContent(), 'a new record by + artist')
+  await library.getByRole('button', { name: '修订内容', exact: true }).click()
+  const correctedMeaning = 'A group of recorded songs released together.'
+  await library.locator('[data-edit-field="meaning"]').fill(correctedMeaning)
+  await library.locator('#vocabulary-search').fill('not-in-the-book')
+  assert.equal(await library.locator('.draft-notice [data-edit-field="meaning"]').inputValue(), correctedMeaning)
+  await library.locator('#review-tab').click()
+  assert.equal(await library.locator('.entry-editor').count(), 0)
+  assert.doesNotMatch(await library.locator('.draft-notice').textContent(), /A group of recorded/)
+  await library.getByRole('button', { name: '返回继续修订', exact: true }).click()
+  assert.equal(await library.locator('[data-edit-field="meaning"]').inputValue(), correctedMeaning)
+  await worker.evaluate(async () => {
+    const saved = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries
+    saved[0].phonetic = '/ˈrɛk.ərd/'
+    await chrome.storage.local.set({ vocabulary_entries: saved })
+  })
+  await library.waitForFunction(() => document.querySelector('.editor-message')?.textContent.includes('其他页面更新'))
+  assert.equal(await library.locator('[data-edit-field="meaning"]').inputValue(), correctedMeaning)
+  await library.locator('.editor-save').click()
+  await library.locator('.entry-editor').waitFor({ state: 'detached' })
+  assert.equal(await library.locator('.entry-meaning').textContent(), correctedMeaning)
+  const corrected = await worker.evaluate(async () => (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries[0])
+  assert.equal(corrected.id, savedVocabulary[0].id)
+  assert.equal(corrected.reviewCount, savedVocabulary[0].reviewCount)
+  assert.equal(corrected.dueAt, savedVocabulary[0].dueAt)
+  assert.equal(corrected.phonetic, '/ˈrɛk.ərd/')
+  assert.deepEqual(await worker.evaluate(() => Object.keys(vocabularyUpdates[0].changes)), ['meaning'])
+  assert.deepEqual(await worker.evaluate(() => Object.keys(vocabularyUpdates[0].expected)), ['meaning'])
+  await library.getByRole('button', { name: '修订内容', exact: true }).click()
+  await library.locator('[data-edit-field="usage"]').fill('an unsaved pattern')
+  await library.locator('.editor-cancel').click()
+  assert.equal(await worker.evaluate(() => vocabularyUpdates.length), 1)
+  assert.equal(await library.locator('.entry-usage').textContent(), 'a new record by + artist')
+
   await library.locator('.entry-card [data-speech-target="word"]').click()
   await library.locator('.entry-card [data-speech-target="word"][aria-pressed="true"]').waitFor()
   assert.equal(await worker.evaluate(() => speechCalls.at(-1).text), 'record')
@@ -356,7 +393,7 @@ try {
   })
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: guide progression, hidden answers, context, caching, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: guide progression, hidden answers, context, caching, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } finally {
   await context?.close()
   await new Promise((resolve) => server.close(resolve))
