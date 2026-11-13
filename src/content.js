@@ -154,6 +154,7 @@
       ...getSelectionContext(range),
       savedVocabulary: {},
       cache: {},
+      refreshErrors: {},
       hintCount: 1,
       answerRevealed: false,
       rect: cloneRect(rect),
@@ -320,8 +321,9 @@
     }
   }
 
-  async function startTranslationRequest(kind) {
+  async function startTranslationRequest(kind, { forceRefresh = false } = {}) {
     const selectionId = state.activeSelection?.id
+    let requestId = ''
     try {
       await state.settingsReady
       if (!selectionId || state.activeSelection?.id !== selectionId) return
@@ -329,35 +331,41 @@
       kind = kind || state.mode
       if (kind === 'pronunciation') state.activeSelection.pronunciationError = ''
       const cached = state.activeSelection.cache[kind]
-      if (cached) {
+      if (cached && !forceRefresh) {
         renderCurrentCard()
         return
       }
       if (state.activeRequest?.inFlight && state.activeRequest.kind === kind) return
       cancelActiveRequest()
-      const requestId = makeRequestId()
-      state.activeRequest = { selectionId, requestId, kind, inFlight: true }
+      requestId = makeRequestId()
+      state.activeRequest = { selectionId, requestId, kind, forceRefresh, inFlight: true }
+      delete state.activeSelection.refreshErrors[kind]
       state.speechMessage = ''
-      if (kind === 'pronunciation' && state.activeSelection.cache[state.mode]) renderCurrentCard()
+      if ((forceRefresh && cached)
+        || (kind === 'pronunciation' && state.activeSelection.cache[state.mode])) renderCurrentCard()
       else renderLoadingCard(kind === 'guide' ? 'Finding a way into this passage…' : 'Translating…')
       debugLog('request_start', { selectionId, requestId,
         selectedText: createSelectedTextDiagnostics(state.activeSelection.text) })
       chrome.runtime.sendMessage({
         type: TRANSLATION_MESSAGE_TYPES.START_TRANSLATION,
-        payload: { selectionId, requestId, kind, text: state.activeSelection.text,
+        payload: { selectionId, requestId, kind, forceRefresh, text: state.activeSelection.text,
           context: state.activeSelection.context,
           contextStart: state.activeSelection.contextStart, contextEnd: state.activeSelection.contextEnd },
       }, (response) => {
         const error = chrome.runtime.lastError
-        if ((error || !response?.accepted) && state.activeRequest?.requestId === requestId) {
+        if ((error || !response?.accepted) && state.activeRequest?.requestId === requestId
+          && state.activeRequest.inFlight) {
           state.activeRequest.inFlight = false
-          renderStatusCard('Connection lost. Reload this webpage and try again.')
+          const message = 'Connection lost. Reload this webpage and try again.'
+          if (!keepResultOnRefreshError(message)) renderStatusCard(message)
         }
       })
     } catch {
-      if (state.activeSelection?.id === selectionId) {
+      if (state.activeSelection?.id === selectionId
+        && (!requestId || state.activeRequest?.requestId === requestId)) {
         if (state.activeRequest) state.activeRequest.inFlight = false
-        renderStatusCard('Unable to start. Reload this webpage and try again.')
+        const message = 'Unable to start. Reload this webpage and try again.'
+        if (!keepResultOnRefreshError(message)) renderStatusCard(message)
       }
     }
   }
@@ -398,7 +406,7 @@
       return;
     }
 
-    if (!state.activeRequest || requestId !== state.activeRequest.requestId) {
+    if (!state.activeRequest?.inFlight || requestId !== state.activeRequest.requestId) {
       debugLog('stale_event_ignored', {
         selectionId,
         requestId,
@@ -410,12 +418,14 @@
     if (typeof payload.contextSentence === 'string') state.activeSelection.contextSentence = payload.contextSentence;
 
     if (status === TRANSLATION_EVENT_STATUS.STARTED) {
-      if (state.activeRequest.kind === 'pronunciation' && state.activeSelection.cache[state.mode]) renderCurrentCard();
+      if (isRefreshingCurrentResult()
+        || (state.activeRequest.kind === 'pronunciation' && state.activeSelection.cache[state.mode])) renderCurrentCard()
       else renderLoadingCard(state.activeRequest.kind === 'guide' ? 'Finding contextual clues…' : 'Translating…');
       return;
     }
 
     if (status === TRANSLATION_EVENT_STATUS.STREAM) {
+      if (isRefreshingCurrentResult()) return
       const partial = String(payload.translatedText || '').trim();
       if (partial) {
         renderSuccessCard(state.activeSelection.text, partial, null);
@@ -431,15 +441,26 @@
     state.activeRequest.inFlight = false;
 
     if (status === TRANSLATION_EVENT_STATUS.SUCCESS) {
+      delete state.activeSelection.refreshErrors[state.activeRequest.kind]
       if (payload.kind === 'guide' || payload.kind === 'pronunciation') {
         state.activeSelection.cache[payload.kind] = payload.result;
+        if (payload.kind === 'guide' && payload.result?.phonetic) {
+          state.activeSelection.cache.pronunciation = { phonetic: payload.result.phonetic };
+        }
+        if (payload.kind === 'guide' && state.activeRequest.forceRefresh) {
+          state.activeSelection.hintCount = 1
+          state.activeSelection.answerRevealed = false
+        }
         renderCurrentCard();
         return;
       }
-      state.activeSelection.cache[state.mode] = payload;
       const translatedText = String(payload.translatedText || '').trim();
       if (translatedText) {
+        state.activeSelection.cache[state.mode] = payload
         const lexicalDetails = normalizeLexicalDetails(payload.lexicalDetails);
+        if (lexicalDetails?.phonetic) {
+          state.activeSelection.cache.pronunciation = { phonetic: lexicalDetails.phonetic };
+        }
         renderSuccessCard(state.activeSelection.text, translatedText, lexicalDetails);
         if (state.canFetchPhonetic && isSingleWordInput(state.activeSelection.text)
           && !lexicalDetails?.phonetic && !state.activeSelection.cache.guide?.phonetic
@@ -453,12 +474,14 @@
           lexicalFields: summarizeLexicalDetails(lexicalDetails)
         });
       } else {
-        renderStatusCard('Translation returned no text.');
+        const message = 'Translation returned no text.'
+        if (!keepResultOnRefreshError(message)) renderStatusCard(message)
       }
       return;
     }
 
     if (status === TRANSLATION_EVENT_STATUS.MISSING_CONFIGURATION) {
+      if (keepResultOnRefreshError(payload.message || 'Open settings to connect a model.')) return
       if (keepTranslationOnPronunciationError(payload.message)) return;
       renderStatusCard(payload.message || 'Open settings to connect a model.');
       debugLog('missing_configuration', {
@@ -470,6 +493,7 @@
 
     if (status === TRANSLATION_EVENT_STATUS.ERROR) {
       const message = String(payload.message || 'Translation failed.').trim();
+      if (keepResultOnRefreshError(message)) return
       if (keepTranslationOnPronunciationError(message)) return;
       renderStatusCard(message || 'Translation failed.');
       debugLog('request_error', {
@@ -478,6 +502,20 @@
         messageLength: message.length
       });
     }
+  }
+
+  function isRefreshingCurrentResult() {
+    const active = state.activeRequest
+    return Boolean(active?.inFlight && active.forceRefresh && active.kind === state.mode
+      && state.activeSelection?.cache[state.mode])
+  }
+
+  function keepResultOnRefreshError(message) {
+    const active = state.activeRequest
+    if (!active?.forceRefresh || !state.activeSelection?.cache[active.kind]) return false
+    state.activeSelection.refreshErrors[active.kind] = message || 'Unable to update this result.'
+    renderCurrentCard()
+    return true
   }
 
   function keepTranslationOnPronunciationError(message) {
@@ -523,7 +561,17 @@
     }, 'stt-close')
     closeEl.setAttribute('aria-label', 'Close reading card')
     closeEl.title = 'Close · Esc'
-    toolbarEl.append(tabsEl, closeEl)
+    const toolbarActionsEl = createEl('div', 'stt-toolbar-actions')
+    if (state.activeSelection.cache[state.mode]) {
+      const refreshEl = createButton('⟳', () => void startTranslationRequest(state.mode, { forceRefresh: true }),
+        'stt-regenerate')
+      refreshEl.setAttribute('aria-label', '重新生成当前结果')
+      refreshEl.title = '重新生成当前模式的结果（会调用模型）'
+      refreshEl.disabled = Boolean(state.activeRequest?.inFlight)
+      toolbarActionsEl.appendChild(refreshEl)
+    }
+    toolbarActionsEl.appendChild(closeEl)
+    toolbarEl.append(tabsEl, toolbarActionsEl)
     const sourceEl = createEl('div', 'stt-card-block stt-card-block--source')
     const textEl = createEl('div', 'stt-source-text', state.activeSelection.text)
     if (state.activeSelection.text.length > 80) textEl.classList.add('stt-source-text--passage')
@@ -554,7 +602,24 @@
     speechStatusEl.setAttribute('role', 'status')
     sourceEl.appendChild(speechStatusEl)
     cardEl.append(toolbarEl, sourceEl)
+    appendRefreshStatus(cardEl)
     return cardEl
+  }
+
+  function appendRefreshStatus(cardEl) {
+    const isRefreshing = isRefreshingCurrentResult()
+    const error = state.activeSelection.refreshErrors[state.mode]
+    if (!isRefreshing && !error) return
+    const statusEl = createEl('div', 'stt-refresh-status')
+    statusEl.setAttribute('role', 'status')
+    statusEl.appendChild(createEl('span', '', isRefreshing ? '正在更新…' : `重新生成失败：${error}`))
+    if (error && !isRefreshing) {
+      const retryEl = createButton('重试生成', () => void startTranslationRequest(state.mode, { forceRefresh: true }),
+        'stt-text-button stt-refresh-retry')
+      retryEl.disabled = Boolean(state.activeRequest?.inFlight)
+      statusEl.appendChild(retryEl)
+    }
+    cardEl.appendChild(statusEl)
   }
 
   function finishCard() {
@@ -588,7 +653,7 @@
 
   function renderSuccessCard(sourceText, translatedText, lexicalDetails) {
     const existingEl = state.cardEl?.querySelector('.stt-card-block--translation')
-    if (existingEl && state.activeRequest?.inFlight && !lexicalDetails) {
+    if (existingEl && state.activeRequest?.inFlight && !state.activeRequest.forceRefresh && !lexicalDetails) {
       existingEl.textContent = translatedText
       positionCard(state.activeSelection.rect)
       return
@@ -599,7 +664,7 @@
     cardEl.appendChild(translationEl)
     const lexicalBlock = buildLexicalBlock(sourceText, lexicalDetails)
     if (lexicalBlock) cardEl.appendChild(lexicalBlock)
-    if (!state.activeRequest?.inFlight) appendVocabularyActions(cardEl)
+    if (!state.activeRequest?.inFlight || state.activeRequest.forceRefresh) appendVocabularyActions(cardEl)
     finishCard()
   }
 
@@ -1364,6 +1429,10 @@
       .stt-tabs { display: flex; gap: 3px; padding: 3px; background: #edf1e9; border-radius: 9px; }
       .stt-tab { padding: 5px 12px; background: transparent; color: #788375; border-radius: 7px; font-size: 12px; }
       .stt-tab[aria-pressed=true] { background: #fffefa; color: #1d6b53; box-shadow: 0 1px 4px #263b3010; font-weight: 600; }
+      .stt-toolbar-actions { display: flex; align-items: center; gap: 6px; margin-left: 6px; flex: 0 0 auto; }
+      .stt-regenerate { display: grid; place-items: center; width: 24px; height: 26px; padding: 0;
+        background: transparent; color: #7a8b76; font-size: 20px; line-height: 1; border-radius: 6px; }
+      .stt-regenerate:hover:enabled { color: #1d6b53; background: #edf1e9; }
       .stt-close { background: transparent; color: #8a9387; font-size: 23px; padding: 0 3px; line-height: 1; }
       .stt-card-block { padding: 14px 18px; }
       .stt-card-block--source { border-bottom: 1px solid #e6ebe1; }
@@ -1374,6 +1443,8 @@
       .stt-phonetic { font: 13px/1.4 'Segoe UI', sans-serif; color: #7b8678; }
       .stt-speech-status { color: #a46738; font-size: 11px; margin-top: 4px; }
       .stt-speech-status:empty { display: none; }
+      .stt-refresh-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        padding: 10px 18px 0; color: #94613c; font-size: 11px; white-space: normal; }
       .stt-section-label { color: #8b9684; font-size: 9px; letter-spacing: 1.6px; line-height: 1.5;
         padding: 15px 18px 0; font-weight: 600; white-space: normal; }
       .stt-card-block--translation { padding-top: 8px; color: #384b3c; }

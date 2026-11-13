@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Selected Text Translator",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Read with context: translate, listen, and discover meaning through gentle English hints.",
   "permissions": [
     "storage",

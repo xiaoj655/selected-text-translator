@@ -13,6 +13,7 @@ await mkdir(artifactPath, { recursive: true })
 const requests = []
 let shouldFailPronunciation = false
 let shouldDelayGuide = false
+let shouldFailGuide = false
 const guide = {
   phonetic: '/rɪˈlʌktənt/',
   hints: [
@@ -33,6 +34,11 @@ const server = createServer(async (request, response) => {
     const payload = JSON.parse(body)
     requests.push(payload)
     const prompt = payload.messages[0].content
+    if (shouldFailGuide && prompt.includes('reading tutor') && !prompt.includes('Never include definitions')) {
+      response.writeHead(503)
+      response.end('Unavailable')
+      return
+    }
     if (payload.stream) {
       response.writeHead(200, { 'Content-Type': 'text/event-stream' })
       response.end('data: {"choices":[{"delta":{"content":"不情愿的；犹豫的"}}]}')
@@ -46,7 +52,7 @@ const server = createServer(async (request, response) => {
     if (shouldDelayGuide) await new Promise((resolve) => setTimeout(resolve, 200))
     const selected = JSON.parse(payload.messages.at(-1).content || '{}')
     const recordGuide = {
-      phonetic: '/ˈrɛkərd/',
+      phonetic: shouldDelayGuide ? '/ˈrɛk.ɚd/' : '/ˈrɛkərd/',
       hints: [
         "Notice the word 'a' just before the selected word.",
         'The band is making something new that people will listen to.',
@@ -217,7 +223,7 @@ try {
   await page.getByRole('button', { name: '翻译', exact: true }).click()
   await page.locator('.stt-card-block--translation').waitFor()
   assert.equal(await second.getByRole('button', { name: '引导理解', exact: true }).getAttribute('aria-pressed'), 'true')
-  assert.equal(requests.length, callsBeforeModeSwitch + 1)
+  assert.equal(requests.length, callsBeforeModeSwitch)
   await second.close()
   await selectText('record', '#repeated', 1)
   await page.locator('.stt-trigger').click()
@@ -239,6 +245,42 @@ try {
   assert.equal(savedVocabulary[0].contextStart, 27)
   assert.equal(savedVocabulary[0].contextEnd, 33)
   assert.equal(savedVocabulary[0].sourceUrl, `${origin}/`)
+  const callsBeforeRefresh = requests.length
+  shouldDelayGuide = true
+  await page.getByRole('button', { name: '重新生成当前结果', exact: true }).click()
+  assert.match(await page.locator('.stt-refresh-status').textContent(), /正在更新/)
+  assert.equal(await page.locator('.stt-answer').count(), 1)
+  assert.equal(await page.locator('.stt-regenerate').isDisabled(), true)
+  assert.equal(await page.locator('.stt-speak:not(.stt-speak-context)').isEnabled(), true)
+  await page.locator('.stt-regenerate').evaluate((el) => el.click())
+  await page.locator('.stt-answer').waitFor({ state: 'detached' })
+  await page.locator('.stt-refresh-status').waitFor({ state: 'detached' })
+  assert.equal(requests.length, callsBeforeRefresh + 1)
+  assert.equal(await page.locator('.stt-hint').count(), 1)
+  assert.equal(await page.locator('.stt-phonetic').textContent(), '/ˈrɛk.ɚd/')
+  shouldDelayGuide = false
+  await page.locator('.stt-next-hint').click()
+  await page.locator('.stt-reveal').click()
+  const previousAnswer = await page.locator('.stt-answer').textContent()
+  shouldFailGuide = true
+  await page.locator('.stt-regenerate').click()
+  await page.waitForFunction(() => document.querySelector('#selected-reading-assistant').shadowRoot
+    .querySelector('.stt-refresh-status')?.textContent.includes('503'))
+  assert.equal(await page.locator('.stt-hint').count(), 2)
+  assert.equal(await page.locator('.stt-answer').textContent(), previousAnswer)
+  const callsAfterFailure = requests.length
+  await page.locator('.stt-trigger').dispatchEvent('mouseenter')
+  await page.waitForTimeout(200)
+  assert.equal(requests.length, callsAfterFailure)
+  shouldFailGuide = false
+  await page.locator('.stt-refresh-retry').click()
+  await page.locator('.stt-refresh-status').waitFor({ state: 'detached' })
+  assert.equal(requests.length, callsAfterFailure + 1)
+  assert.equal(await page.locator('.stt-hint').count(), 1)
+  assert.equal(await page.locator('.stt-answer').count(), 0)
+  const stillSaved = await worker.evaluate(async () => (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries)
+  assert.deepEqual(stillSaved, savedVocabulary)
+
   const library = await context.newPage()
   library.on('pageerror', (error) => errors.push(error.message))
   await library.goto(`chrome-extension://${extensionId}/src/library.html`)
@@ -393,7 +435,7 @@ try {
   })
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: guide progression, hidden answers, context, caching, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: guide progression, hidden answers, context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } finally {
   await context?.close()
   await new Promise((resolve) => server.close(resolve))

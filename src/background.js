@@ -1,3 +1,4 @@
+import { createResultCache, createResultCacheKey } from './result-cache.js'
 import { getContextSentence } from './context-sentence.js'
 import { handleVocabularyMessage } from './vocabulary-messages.js'
 import { handleProviderDiagnostics } from './provider-diagnostics.js'
@@ -20,6 +21,14 @@ import { handleSpeechMessage } from './speech.js'
 
 const LOG_PREFIX = '[selected-text-translation]'
 const activeRequests = new Map()
+const resultCache = createResultCache()
+const inflightCacheStates = new Map()
+let cacheEpoch = 0
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'sync' || !['base_url', 'api_key', 'model', 'learning_model'].some((key) => key in changes)) return
+  cacheEpoch += 1
+  resultCache.clear()
+})
 let debugLoggingEnabled = false
 
 void initDebugLoggingSetting()
@@ -60,6 +69,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false
 })
 
+function acquireCacheWrite(key, isForced) {
+  let state = inflightCacheStates.get(key)
+  if (!state) {
+    state = { revision: 0, users: 0 }
+    inflightCacheStates.set(key, state)
+  }
+  if (isForced) state.revision += 1
+  state.users += 1
+  return { key, state, revision: state.revision }
+}
+
+function releaseCacheWrite(lease) {
+  if (!lease) return
+  lease.state.users -= 1
+  if (!lease.state.users && inflightCacheStates.get(lease.key) === lease.state) inflightCacheStates.delete(lease.key)
+}
+
 async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const selectionId = String(payload?.selectionId || '')
   const requestId = String(payload?.requestId || '')
@@ -69,12 +95,19 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
   const controller = new AbortController()
   const startedAt = Date.now()
+  const requestEpoch = cacheEpoch
+  let cacheKey = null
+  let cacheLease = null
   activeRequests.get(key)?.controller.abort()
   const active = { requestId, controller }
   activeRequests.set(key, active)
   const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), 25000)
-  const emit = (event) => {
+  const emit = (event, shouldCache = true) => {
     if (activeRequests.get(key) === active && !controller.signal.aborted) {
+      if (shouldCache && cacheLease && cacheLease.state.revision === cacheLease.revision
+        && requestEpoch === cacheEpoch && event.status === TRANSLATION_EVENT_STATUS.SUCCESS) {
+        resultCache.set(cacheKey, event)
+      }
       emitEvent(tabId, { selectionId, requestId, contextSentence, ...event }, frameId)
     }
   }
@@ -109,6 +142,20 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
         ? buildQwenMtRequest({ model, text, targetLanguage })
         : buildGenericRequest({ model, text })
     const endpoint = normalizeEndpoint(settings.baseUrl)
+    try {
+      cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
+        context: payload?.context, contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
+    } catch { }
+    if (controller.signal.aborted || activeRequests.get(key) !== active) return
+    const canUseCache = Boolean(cacheKey && requestEpoch === cacheEpoch)
+    if (canUseCache && payload?.forceRefresh === true) resultCache.delete(cacheKey)
+    const cached = payload?.forceRefresh !== true && canUseCache && resultCache.get(cacheKey)
+    if (cached) {
+      emit(cached, false)
+      debugLog('result_reused', { selectionId, requestId, kind, elapsedMs: Date.now() - startedAt })
+      return
+    }
+    if (canUseCache) cacheLease = acquireCacheWrite(cacheKey, payload?.forceRefresh === true)
     emit({ status: TRANSLATION_EVENT_STATUS.STARTED })
     debugLog('request_start', { selectionId, requestId, kind, model,
       selectedText: createSelectedTextDiagnostics(text) })
@@ -151,6 +198,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     emitEvent(tabId, { status: TRANSLATION_EVENT_STATUS.ERROR, selectionId, requestId, message }, frameId)
   } finally {
     clearTimeout(timeoutId)
+    releaseCacheWrite(cacheLease)
     if (activeRequests.get(key) === active) activeRequests.delete(key)
   }
 }

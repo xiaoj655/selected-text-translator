@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { setImmediate } from 'node:timers/promises'
+import { setTimeout as wait } from 'node:timers/promises'
 
 const guide = { hints: ['Look at her reaction.', 'Is she eager?', 'Something holds her back.'],
   answer: { meaning: 'Hesitant.', explanation: 'She has doubts.', example: 'I was reluctant to leave.' } }
@@ -10,12 +10,14 @@ async function withBackground({ fetchImpl, storageFailure = false, learningModel
   const listeners = []
   const events = []
   const requests = []
+  const storageListeners = []
+  const storage = { base_url: 'https://api.example.com/v1', api_key: 'test-token', model: 'qwen-mt-flash',
+    learning_model: learningModel }
   globalThis.chrome = {
     runtime: { lastError: null, onMessage: { addListener(fn) { listeners.push(fn) } } },
-    storage: { onChanged: { addListener() {} }, sync: { async get(keys) {
+    storage: { onChanged: { addListener(listener) { storageListeners.push(listener) } }, sync: { async get(keys) {
       if (storageFailure && keys.includes('base_url')) throw new Error('Storage unavailable')
-      return { base_url: 'https://api.example.com/v1', api_key: 'test-token', model: 'qwen-mt-flash',
-        learning_model: learningModel }
+      return { ...storage }
     } } },
     tabs: { sendMessage(tabId, event, options, done) { events.push({ tabId, ...event, options }); done() } },
   }
@@ -25,14 +27,19 @@ async function withBackground({ fetchImpl, storageFailure = false, learningModel
   }
   try {
     await import(`../src/background.js?test=${Math.random()}`)
-    const send = (payload, type = 'START_TRANSLATION') => {
-      for (const listener of listeners) listener({ type, payload }, { tab: { id: 7 }, frameId: 3 }, () => {})
+    const send = (payload, type = 'START_TRANSLATION', tabId = 7) => {
+      for (const listener of listeners) listener({ type, payload }, { tab: { id: tabId }, frameId: 3 }, () => {})
     }
     const waitFor = async (predicate) => {
-      for (let i = 0; i < 100; i++) { if (predicate()) return; await setImmediate() }
+      for (let i = 0; i < 500; i++) { if (predicate()) return; await wait(2) }
       assert.fail('Expected background event was not emitted')
     }
-    await callback({ send, waitFor, events, requests })
+    const changeSettings = (values) => {
+      const changes = Object.fromEntries(Object.entries(values).map(([key, newValue]) => [key, { newValue }]))
+      Object.assign(storage, values)
+      for (const listener of storageListeners) listener(changes, 'sync')
+    }
+    await callback({ send, waitFor, events, requests, changeSettings })
   } finally {
     globalThis.chrome = previous.chrome
     globalThis.fetch = previous.fetch
@@ -107,4 +114,134 @@ test('HTTP errors do not expose response bodies containing credentials', async (
       assert.doesNotMatch(events.at(-1).payload.message, /secret/)
       assert.match(events.at(-1).payload.message, /401/)
     })
+})
+
+
+test('repeated completed guide requests reuse results with current tab and correlation IDs', async () => {
+  await withBackground({}, async ({ send, waitFor, events, requests }) => {
+    send(payload)
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    send({ ...payload, selectionId: 'another-selection', requestId: 'another-request' }, 'START_TRANSLATION', 12)
+    await waitFor(() => events.some((event) => event.payload.requestId === 'another-request'))
+    assert.equal(requests.length, 1)
+    const replay = events.at(-1)
+    assert.equal(replay.payload.status, 'success')
+    assert.equal(replay.tabId, 12)
+    assert.equal(replay.payload.requestId, 'another-request')
+    assert.equal(replay.payload.selectionId, 'another-selection')
+    assert.deepEqual(replay.payload.result, { phonetic: '', ...guide })
+  })
+})
+
+test('context changes and explicit regeneration issue new provider requests', async () => {
+  await withBackground({}, async ({ send, waitFor, events, requests }) => {
+    for (const [requestId, extra] of [
+      ['one', {}], ['two', { context: 'A different sentence.' }], ['three', { forceRefresh: true }],
+    ]) {
+      send({ ...payload, ...extra, requestId })
+      await waitFor(() => events.some((event) => event.payload.requestId === requestId && event.payload.status === 'success'))
+    }
+    assert.equal(requests.length, 3)
+    send({ ...payload, requestId: 'four' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'four'))
+    assert.equal(requests.length, 3)
+  })
+})
+
+test('provider setting changes clear results while speech preferences do not invalidate them', async () => {
+  await withBackground({}, async ({ send, waitFor, events, requests, changeSettings }) => {
+    send({ ...payload, requestId: 'first' })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    changeSettings({ model: 'another-translation-model' })
+    send({ ...payload, requestId: 'after-change' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'after-change' && event.payload.status === 'success'))
+    assert.equal(requests.length, 2)
+    changeSettings({ speech_rate: 1.2 })
+    send({ ...payload, requestId: 'speech-only-change' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'speech-only-change'))
+    assert.equal(requests.length, 2)
+  })
+})
+
+test('provider errors are never reused', async () => {
+  let shouldFail = true
+  await withBackground({ fetchImpl: () => shouldFail ? new Response('', { status: 503 })
+    : Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }) },
+  async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, requestId: 'failed' })
+    await waitFor(() => events.some((event) => event.payload.status === 'error'))
+    shouldFail = false
+    send({ ...payload, requestId: 'retry' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'retry' && event.payload.status === 'success'))
+    assert.equal(requests.length, 2)
+  })
+})
+
+
+test('an in-flight result from an older settings epoch cannot repopulate cleared cache', async () => {
+  let completeFirst
+  let count = 0
+  await withBackground({ fetchImpl: () => ++count === 1 ? new Promise((resolve) => { completeFirst = resolve })
+    : Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }) },
+  async ({ send, waitFor, events, requests, changeSettings }) => {
+    send({ ...payload, requestId: 'old-epoch' })
+    await waitFor(() => requests.length === 1)
+    changeSettings({ model: 'another-translator' })
+    completeFirst(Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }))
+    await waitFor(() => events.some((event) => event.payload.requestId === 'old-epoch' && event.payload.status === 'success'))
+    send({ ...payload, requestId: 'new-epoch' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'new-epoch' && event.payload.status === 'success'))
+    assert.equal(requests.length, 2)
+  })
+})
+
+test('a late result in another tab cannot overwrite explicitly regenerated cache', async () => {
+  let completeOld
+  let count = 0
+  const newerGuide = { ...guide, answer: { ...guide.answer, meaning: 'Freshly regenerated meaning.' } }
+  await withBackground({ fetchImpl: () => ++count === 1 ? new Promise((resolve) => { completeOld = resolve })
+    : Response.json({ choices: [{ message: { content: JSON.stringify(newerGuide) } }] }) },
+  async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, requestId: 'old-tab' })
+    await waitFor(() => requests.length === 1)
+    send({ ...payload, requestId: 'force-tab', forceRefresh: true }, 'START_TRANSLATION', 12)
+    await waitFor(() => events.some((event) => event.payload.requestId === 'force-tab' && event.payload.status === 'success'))
+    completeOld(Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }))
+    await waitFor(() => events.some((event) => event.payload.requestId === 'old-tab' && event.payload.status === 'success'))
+    send({ ...payload, requestId: 'later-tab' }, 'START_TRANSLATION', 13)
+    await waitFor(() => events.some((event) => event.payload.requestId === 'later-tab'))
+    assert.equal(requests.length, 2)
+    assert.equal(events.at(-1).payload.result.answer.meaning, newerGuide.answer.meaning)
+  })
+})
+
+test('a failed regeneration removes the old cache instead of silently replaying it', async () => {
+  let count = 0
+  await withBackground({ fetchImpl: () => ++count === 2 ? new Response('', { status: 503 })
+    : Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }) },
+  async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, requestId: 'initial' })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    send({ ...payload, requestId: 'force-failed', forceRefresh: true })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'force-failed' && event.payload.status === 'error'))
+    send({ ...payload, requestId: 'following' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'following' && event.payload.status === 'success'))
+    assert.equal(requests.length, 3)
+  })
+})
+
+test('cancelled requests cannot populate a reusable successful result', async () => {
+  let count = 0
+  await withBackground({ fetchImpl: (url, options) => ++count === 1
+    ? new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)))
+    : Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] }) },
+  async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, requestId: 'cancel-me' })
+    await waitFor(() => requests.length === 1)
+    send({ requestId: 'cancel-me' }, 'CANCEL_TRANSLATION')
+    send({ ...payload, requestId: 'after-cancel' })
+    await waitFor(() => events.some((event) => event.payload.requestId === 'after-cancel' && event.payload.status === 'success'))
+    assert.equal(requests.length, 2)
+    assert.equal(events.filter((event) => event.payload.requestId === 'cancel-me' && event.payload.status === 'success').length, 0)
+  })
 })
