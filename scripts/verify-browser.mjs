@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
+import { normalizeVocabularyEntry } from '../src/vocabulary-store.js'
 
 const extensionPath = resolve(import.meta.dirname, '..')
 const profilePath = await mkdtemp(join(tmpdir(), 'selected-browser-'))
@@ -344,8 +345,18 @@ try {
   await popup.locator('#enable-current').click()
   await popup.waitForFunction(() => document.getElementById('page-status').classList.contains('enabled'))
   assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  const largeEntries = Array.from({ length: 1900 }, (_, index) => normalizeVocabularyEntry({
+    text: `word-${index}`, meaning: 'm'.repeat(1800),
+  }, 1700000000000))
+  const legacyFile = Buffer.from(JSON.stringify({ version: 2, exportedAt: Date.now(), entries: largeEntries }, null, 2))
+  assert.ok(legacyFile.length > 4 * 1024 * 1024)
+  assert.ok(legacyFile.length < 5 * 1024 * 1024)
+  await library.locator('#import-vocabulary-file').setInputFiles({
+    name: 'legacy-large-backup.json', mimeType: 'application/json', buffer: legacyFile,
+  })
+  await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: guide progression, hidden answers, context, caching, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary save/review/export/import, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: guide progression, hidden answers, context, caching, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } finally {
   await context?.close()
   await new Promise((resolve) => server.close(resolve))

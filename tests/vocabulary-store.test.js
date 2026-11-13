@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeVocabularyEntry, getDueEntries, scheduleReview, listVocabulary,
-  saveVocabulary, removeVocabulary, reviewVocabulary, exportVocabulary, importVocabulary } from '../src/vocabulary-store.js'
+  saveVocabulary, removeVocabulary, reviewVocabulary, exportVocabulary, importVocabulary, serializeVocabularyBackup } from '../src/vocabulary-store.js'
 
 const NOW = 1700000000000
 const DAY_MS = 86400000
@@ -325,5 +325,47 @@ test('version 1 backups remain readable and invalid optional metadata is rejecte
     ]
     for (const entry of invalid) assert.equal((await importVocabulary(createBackup([entry]))).ok, false)
     assert.equal(calls.length, 1)
+  })
+})
+
+
+test('a large vocabulary book exports below the file limit and imports without losing progress', async () => {
+  const entries = Array.from({ length: 1900 }, (_, index) => normalizeVocabularyEntry({
+    text: `word-${index}`, meaning: 'm'.repeat(1800),
+  }, NOW))
+  await withStorage(async ({ storage }) => {
+    const backup = await exportVocabulary()
+    const oldDownloadBytes = new TextEncoder().encode(JSON.stringify(backup.data, null, 2)).length
+    const file = serializeVocabularyBackup(backup.data)
+    assert.ok(oldDownloadBytes > 4 * 1024 * 1024)
+    assert.ok(new TextEncoder().encode(file).length < 4 * 1024 * 1024)
+    storage.vocabulary_entries = []
+    const result = await importVocabulary(JSON.parse(file))
+    assert.equal(result.ok, true)
+    assert.equal(result.added, entries.length)
+    assert.deepEqual((await listVocabulary()).entries, entries)
+  }, { initialEntries: entries })
+})
+
+test('legacy backups at the exact stored-content limit allow the JSON envelope overhead', async () => {
+  const limit = 4 * 1024 * 1024
+  const entries = Array.from({ length: 1900 }, (_, index) => normalizeVocabularyEntry({
+    text: `word-${index}`, meaning: 'm'.repeat(1800),
+  }, NOW))
+  let remaining = limit - new TextEncoder().encode(JSON.stringify(entries)).length
+  for (const entry of entries) {
+    const addition = Math.min(remaining, 2400)
+    entry.context = 'x'.repeat(addition)
+    remaining -= addition
+    if (!remaining) break
+  }
+  assert.equal(new TextEncoder().encode(JSON.stringify(entries)).length, limit)
+  const backup = createBackup(entries)
+  assert.ok(new TextEncoder().encode(JSON.stringify(backup)).length > limit)
+  await withStorage(async () => {
+    const restored = await importVocabulary(backup)
+    assert.equal(restored.ok, true)
+    assert.equal(restored.added, entries.length)
+    assert.deepEqual((await listVocabulary()).entries, entries)
   })
 })

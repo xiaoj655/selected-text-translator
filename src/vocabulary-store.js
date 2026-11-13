@@ -1,6 +1,7 @@
 const VOCABULARY_STORAGE_KEY = 'vocabulary_entries'
 const MAX_ENTRIES = 2000
 const MAX_STORAGE_BYTES = 4 * 1024 * 1024
+export const MAX_BACKUP_FILE_BYTES = 5 * 1024 * 1024
 const DAY_MS = 86400000
 const REVIEW_INTERVALS = Object.freeze([1, 3, 7, 14, 30])
 let mutationQueue = Promise.resolve()
@@ -217,6 +218,10 @@ export function reviewVocabulary(id, rating, { expectedDueAt, expectedReviewCoun
   })
 }
 
+export function serializeVocabularyBackup(data) {
+  return JSON.stringify(data)
+}
+
 export async function exportVocabulary() {
   try {
     const result = await listVocabulary()
@@ -269,12 +274,12 @@ function validateBackup(data) {
   }
   let serialized
   try {
-    serialized = JSON.stringify(data)
+    serialized = JSON.stringify(data.entries)
   } catch {
     throw new Error('Invalid vocabulary backup: unable to read this file.')
   }
   if (new TextEncoder().encode(serialized).length > MAX_STORAGE_BYTES) {
-    throw new Error('Invalid vocabulary backup: the file exceeds 4 MB.')
+    throw new Error('Invalid vocabulary backup: vocabulary content exceeds 4 MB.')
   }
   return data.entries.map(validateBackupEntry)
 }

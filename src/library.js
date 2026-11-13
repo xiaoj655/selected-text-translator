@@ -1,4 +1,4 @@
-import { getDueEntries, scheduleReview } from './vocabulary-store.js'
+import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
 import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
 
 const allTabEl = document.getElementById('all-tab')
@@ -437,7 +437,7 @@ async function downloadBackup() {
   try {
     const response = await send('VOCABULARY_EXPORT')
     if (!response.ok) { setStatus(response.message || '导出失败，请重试。', true); return }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' }))
+    const url = URL.createObjectURL(new Blob([serializeVocabularyBackup(response.data)], { type: 'application/json' }))
     const linkEl = createEl('a')
     linkEl.href = url
     const date = new Date()
@@ -461,8 +461,8 @@ async function restoreBackup() {
   if (!file || importEl.disabled) return
   importEl.disabled = true
   try {
-    if (file.size > 4 * 1024 * 1024) {
-      setStatus('请选择不超过 4 MB 的表达本 JSON 备份。', true)
+    if (file.size > MAX_BACKUP_FILE_BYTES) {
+      setStatus('请选择不超过 5 MB 的表达本 JSON 备份。', true)
       return
     }
     let data
