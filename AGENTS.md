@@ -118,3 +118,5 @@ This is a Chrome extension—no build step required. Load the repository root (c
 - Read test credentials from environment variables or a private configuration file outside the repository.
 - Never include credentials in screenshots, test reports, fixtures, commits, or extension archives.
 - Package with `npm run package:extension`; keep generated archives and previews in ignored `dist/`.
+
+- Card tests should target `.entry-card > summary`; nested context and editor details have their own summaries.

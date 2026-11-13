@@ -25,6 +25,8 @@
 
 在翻译结果或引导答案中点击「收藏表达」，把原文、语境、释义和例句保存到本机。打开插件弹窗中的「我的表达本」，可以搜索收藏、回到原文，并复习到期条目。
 
+语境中的实际收藏位置会突出显示。同一段出现多次相同词时，也能看清当时选中的是哪一次。默认显示目标所在原句，展开「完整语境」可查看全部已保存内容；旧数据没有位置时，只在唯一字面匹配时标注，避免猜错。
+
 复习不需要输入：先回忆，再揭晓，选择「还不熟」或「记住了」。新词约 24 小时后开始复习；还不熟的词 10 分钟后再看，记住的按 1、3、7、14、30 天的间隔逐步安排。同一轮不会立刻重复同一张卡片。
 
 条目保存在 `chrome.storage.local`，不上传云端、不自动跨设备同步。支持 JSON 导出与导入，恢复时合并新词，不覆盖已有同词同义条目的进度。最多 2,000 条、4 MiB 条目内容；导入文件最多 5 MiB，以兼容旧版备份中的缩进空白。卸载前请导出需要保留的内容。
@@ -104,4 +106,4 @@ npm run test:browser
 
 在仓库 [Actions](https://github.com/xiaoj655/selected-text-translator/actions) 中打开成功的运行，从 Artifacts 下载 `selected-text-translator-版本号`，解压下载文件后即可取得插件 ZIP 和校验文件。再将插件 ZIP 解压，在 Chrome 中加载包含 `manifest.json` 的目录。出包产物保存 30 天，浏览器预览保存 7 天。
 
-发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.5.0`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
+发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.6.0`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。

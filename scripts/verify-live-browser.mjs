@@ -59,7 +59,7 @@ try {
   assert.ok(entry.meaning)
   const library = await browser.newPage()
   await library.goto(`chrome-extension://${new URL(worker.url()).host}/src/library.html`)
-  await library.locator('.entry-card summary').click()
+  await library.locator('.entry-card > summary').click()
   await library.screenshot({ path: join(artifactPath, 'live-library.png'), fullPage: true })
   console.log(JSON.stringify({ ok: true, model, elapsedMs, text: entry.text, phonetic: entry.phonetic,
     meaning: entry.meaning, guideToVocabulary: true, artifacts: artifactPath }))

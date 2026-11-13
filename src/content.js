@@ -734,10 +734,42 @@
     if (selection.answerRevealed) appendVocabularyActions(cardEl)
     if (selection.context) {
       const contextEl = createEl('details', 'stt-context')
-      contextEl.append(createEl('summary', '', '查看参考上下文'), createEl('p', '', selection.context))
+      contextEl.open = Boolean(selection.isContextOpen)
+      contextEl.append(createEl('summary', '', '查看参考上下文'), createSelectionContext(selection))
+      contextEl.addEventListener('toggle', () => {
+        selection.isContextOpen = contextEl.open
+        if (contextEl.open) centerSelectionContext(contextEl)
+      })
       cardEl.appendChild(contextEl)
     }
     finishCard()
+  }
+
+  function createSelectionContext(selection) {
+    const contextEl = createEl('p', 'stt-context-text')
+    const { context, text, contextStart: start, contextEnd: end } = selection
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start
+      || end > context.length || context.slice(start, end) !== text) {
+      contextEl.textContent = context
+      return contextEl
+    }
+    const targetEl = createEl('mark', 'stt-context-target', context.slice(start, end))
+    targetEl.title = '选中的内容'
+    contextEl.append(document.createTextNode(context.slice(0, start)), targetEl,
+      document.createTextNode(context.slice(end)))
+    return contextEl
+  }
+
+  function centerSelectionContext(contextEl) {
+    if (!contextEl.isConnected) return
+    const textEl = contextEl.querySelector('.stt-context-text')
+    const targetEl = textEl?.querySelector('.stt-context-target')
+    if (!targetEl || !textEl.clientHeight) return
+    const targetRect = targetEl.getBoundingClientRect()
+    const textRect = textEl.getBoundingClientRect()
+    const offset = Math.max(0, (textEl.clientHeight - targetRect.height) / 2)
+    const top = textEl.scrollTop + targetRect.top - textRect.top - offset
+    textEl.scrollTop = clamp(top, 0, Math.max(0, textEl.scrollHeight - textEl.clientHeight))
   }
 
   function getVocabularyValue() {
@@ -1469,7 +1501,9 @@
       .stt-example { font-family: Georgia, serif; font-style: italic; }
       .stt-context { border-top: 1px solid #e8ede2; padding: 10px 18px; color: #86907d; font-size: 11px; }
       .stt-context summary { cursor: pointer; }
-      .stt-context p { max-height: 150px; overflow: auto; margin: 8px 0 0; }
+      .stt-context p { max-height: 150px; overflow: auto; margin: 8px 0 0; color: #586b50; }
+      .stt-context-target { background: #dfedce; color: #29432e; font-weight: 600; padding: 0 2px;
+        border-radius: 3px; box-decoration-break: clone; }
       .stt-vocabulary-actions { border-top: 1px solid #e8ede2; padding-top: 10px; padding-bottom: 10px; }
       .stt-save:disabled { cursor: default; opacity: .7; }
       .stt-save-status { color: #94613c; padding: 0 18px 10px; font-size: 11px; }

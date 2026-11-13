@@ -84,7 +84,7 @@ const server = createServer(async (request, response) => {
     </style></head><body><main><div class="eyebrow">THE READING ROOM / 01</div>
     <h1>Some words ask us<br>to stay a little longer.</h1>
     <p id="sentence">She was reluctant to accept the offer. It meant leaving the small town she had called home for so many years.</p>
-    <p id="repeated">The band will record a new record tomorrow.</p><p id="passage">Sometimes, understanding is less about finding an answer and more about noticing what is already there.</p>
+    <p id="repeated">The band will record a new record tomorrow. Everyone is excited.</p><p id="passage">Sometimes, understanding is less about finding an answer and more about noticing what is already there.</p>
     <p class="note">Select a word. Listen to its sound.<br>Let the surrounding words show you the way.</p></main></body></html>`)
 })
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -234,6 +234,16 @@ try {
   const occurrenceData = JSON.parse(requests.at(-1).messages[1].content)
   assert.equal(occurrenceData.contextStart, 27)
   assert.equal(occurrenceData.selectedOccurrence.before, 'The band will record a new ')
+  await page.locator('.stt-context summary').click()
+  await page.locator('.stt-context-target').waitFor()
+  assert.equal(await page.locator('.stt-context-target').textContent(), 'record')
+  assert.equal(await page.locator('.stt-context-target').evaluate((el) => el.previousSibling.textContent),
+    'The band will record a new ')
+  assert.equal(await page.locator('.stt-context-text').textContent(),
+    'The band will record a new record tomorrow. Everyone is excited.')
+  await page.locator('.stt-next-hint').click()
+  assert.equal(await page.locator('.stt-context').getAttribute('open'), '')
+
   assert.equal(await page.locator('.stt-save').count(), 0)
   await page.locator('.stt-reveal').click()
   await page.locator('.stt-save').click()
@@ -285,8 +295,20 @@ try {
   library.on('pageerror', (error) => errors.push(error.message))
   await library.goto(`chrome-extension://${extensionId}/src/library.html`)
   await library.locator('.entry-card').waitFor()
-  await library.locator('.entry-card summary').click()
+  await library.locator('.entry-card > summary').click()
   assert.equal(await library.locator('.entry-usage').textContent(), 'a new record by + artist')
+  const focusedContext = library.locator('.entry-card .context-block > .entry-context')
+  assert.equal(await focusedContext.textContent(), 'The band will record a new record tomorrow.')
+  assert.equal(await focusedContext.locator('.context-target').textContent(), 'record')
+  assert.equal(await focusedContext.locator('.context-target').evaluate((el) => el.previousSibling.textContent),
+    'The band will record a new ')
+  const libraryScroll = await library.evaluate(() => window.scrollY)
+  await library.locator('.entry-card .context-full').evaluate((el) => { el.open = true })
+  await library.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  assert.equal(await library.locator('.entry-card .context-full > .entry-context').textContent(),
+    'The band will record a new record tomorrow. Everyone is excited.')
+  assert.equal(await library.evaluate(() => window.scrollY), libraryScroll)
+
   await library.getByRole('button', { name: '修订内容', exact: true }).click()
   const correctedMeaning = 'A group of recorded songs released together.'
   await library.locator('[data-edit-field="meaning"]').fill(correctedMeaning)
@@ -342,8 +364,14 @@ try {
   await library.locator('#review-tab').click()
   await library.locator('.review-reveal').waitFor()
   assert.equal(await library.locator('.review-answer').count(), 0)
+  assert.equal(await library.locator('.review-panel .context-block > .entry-context .context-target').textContent(), 'record')
+  assert.equal(await library.locator('.review-panel .context-block > .entry-context .context-target')
+    .evaluate((el) => el.previousSibling.textContent), 'The band will record a new ')
+  await library.locator('.review-panel .context-full').evaluate((el) => { el.open = true })
+
   await library.locator('.review-reveal').focus()
   await library.keyboard.press('Space')
+  assert.equal(await library.locator('.review-panel .context-full').getAttribute('open'), '')
   assert.equal(await library.locator('.review-answer .entry-usage').textContent(), 'a new record by + artist')
   await library.locator('.review-answer [data-speech-target="example"]').click()
   await library.locator('.review-answer [data-speech-target="example"][aria-pressed="true"]').waitFor()
@@ -367,7 +395,7 @@ try {
   assert.equal(exported.entries[0].usage, 'a new record by + artist')
   await library.locator('#all-tab').click()
   if ((await library.locator('.entry-card').getAttribute('open')) === null) {
-    await library.locator('.entry-card summary').click()
+    await library.locator('.entry-card > summary').click()
   }
   await library.getByRole('button', { name: '移除 record', exact: true }).click()
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '0')
@@ -378,7 +406,7 @@ try {
   assert.equal(undone.dueAt, reviewed.dueAt)
   assert.equal(undone.usage, 'a new record by + artist')
   const restoredCard = library.locator('.entry-card')
-  if ((await restoredCard.getAttribute('open')) === null) await restoredCard.locator('summary').click()
+  if ((await restoredCard.getAttribute('open')) === null) await restoredCard.locator(':scope > summary').click()
   await library.getByRole('button', { name: '移除 record', exact: true }).click()
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '0')
   await library.locator('#import-vocabulary-file').setInputFiles({
@@ -435,7 +463,7 @@ try {
   })
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: guide progression, hidden answers, context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } finally {
   await context?.close()
   await new Promise((resolve) => server.close(resolve))

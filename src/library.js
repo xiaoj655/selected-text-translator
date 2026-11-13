@@ -1,5 +1,6 @@
 import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
 import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
+import { getContextView } from './context-view.js'
 import { createVocabularyDraft, getVocabularyDraftUpdate, serializeVocabularyDraft,
   setVocabularyDraftField, syncVocabularyDraft, VOCABULARY_EDIT_FIELDS } from './vocabulary-editor.js'
 
@@ -182,8 +183,55 @@ function renderList() {
   updateSpeechControls()
 }
 
-function createContext(entry) {
-  return createEl('p', 'entry-context', entry.context || 'No surrounding sentence was saved with this selection.')
+function createContext(entry, previousState = null) {
+  const view = getContextView(entry)
+  if (!view.text) {
+    return createEl('p', 'entry-context', 'No surrounding sentence was saved with this selection.')
+  }
+  const contextEl = createEl('div', 'context-block')
+  contextEl.appendChild(createContextText(view.segments))
+  if (!view.hasLocation) {
+    contextEl.appendChild(createEl('p', 'context-location-note', '未记录具体位置'))
+  }
+  if (view.isFocused) {
+    const fullEl = createEl('details', 'context-full')
+    const fullContextEl = createContextText(view.fullSegments)
+    let restoredScrollTop = previousState?.isFullOpen ? previousState.fullScrollTop : null
+    fullEl.open = Boolean(previousState?.isFullOpen)
+    fullEl.append(createEl('summary', '', '完整语境'), fullContextEl)
+    fullEl.addEventListener('toggle', () => {
+      if (!fullEl.open) return
+      if (restoredScrollTop !== null) {
+        fullContextEl.scrollTop = restoredScrollTop
+        restoredScrollTop = null
+      } else scrollContextTarget(fullContextEl)
+    })
+    contextEl.appendChild(fullEl)
+  }
+  return contextEl
+}
+
+function createContextText(segments) {
+  const contextEl = createEl('p', 'entry-context')
+  for (const segment of segments) {
+    contextEl.appendChild(segment.isTarget
+      ? createEl('mark', 'context-target', segment.text)
+      : document.createTextNode(segment.text))
+  }
+  return contextEl
+}
+
+function scrollContextTarget(contextEl) {
+  requestAnimationFrame(() => {
+    const targetEl = contextEl?.querySelector('.context-target')
+    if (!targetEl || !contextEl.isConnected || contextEl.scrollHeight <= contextEl.clientHeight) return
+    const contextRect = contextEl.getBoundingClientRect()
+    const targetRect = targetEl.getBoundingClientRect()
+    if (targetRect.top >= contextRect.top && targetRect.bottom <= contextRect.bottom) return
+    const offset = targetRect.height < contextEl.clientHeight
+      ? (contextEl.clientHeight - targetRect.height) / 2 : 0
+    contextEl.scrollTop += targetRect.top - contextRect.top - offset
+  })
 }
 
 function appendAnswer(containerEl, entry) {
@@ -473,7 +521,9 @@ async function saveDraft() {
 function createEntryCard(entry) {
   const cardEl = createEl('details', 'entry-card')
   cardEl.dataset.entryId = entry.id
-  cardEl.addEventListener('toggle', () => {
+  cardEl.addEventListener('toggle', (event) => {
+    if (event.target !== cardEl) return
+    if (cardEl.open) scrollContextTarget(cardEl.querySelector('.context-block > .entry-context'))
     if (!cardEl.open && libraryAudio.getActiveKey().startsWith(`${entry.id}:`)) void libraryAudio.stop()
   })
   const summaryEl = createEl('summary')
@@ -577,6 +627,13 @@ function getCurrentReviewEntry() {
 function renderReview() {
   renderDraftNotice()
   const entry = getCurrentReviewEntry()
+  const isNewEntry = state.reviewEntryId !== (entry?.id || '')
+  const previousContextEl = isNewEntry ? null : reviewCardEl.querySelector('.context-block')
+  const previousState = previousContextEl ? {
+    scrollTop: previousContextEl.querySelector(':scope > .entry-context')?.scrollTop || 0,
+    isFullOpen: Boolean(previousContextEl.querySelector('.context-full')?.open),
+    fullScrollTop: previousContextEl.querySelector('.context-full > .entry-context')?.scrollTop || 0,
+  } : null
   if (state.reviewEntryId !== (entry?.id || '')) void libraryAudio.stop()
   state.reviewEntryId = entry?.id || ''
   reviewCardEl.replaceChildren()
@@ -600,7 +657,7 @@ function renderReview() {
   cardEl.appendChild(wordEl)
   if (entry.phonetic) cardEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
   cardEl.appendChild(createSpeechControls(entry))
-  cardEl.append(createEl('span', 'context-label', 'REMEMBER THE MOMENT'), createContext(entry))
+  cardEl.append(createEl('span', 'context-label', 'REMEMBER THE MOMENT'), createContext(entry, previousState))
   if (!state.isRevealed) {
     cardEl.appendChild(createButton('想到了，揭晓释义', revealReviewAnswer, 'review-reveal'))
   } else {
@@ -619,6 +676,9 @@ function renderReview() {
     cardEl.append(answerEl, ratingEl)
   }
   reviewCardEl.appendChild(cardEl)
+  const contextEl = cardEl.querySelector('.context-block > .entry-context')
+  if (isNewEntry) scrollContextTarget(contextEl)
+  else if (contextEl) contextEl.scrollTop = previousState?.scrollTop || 0
   updateSpeechControls()
 }
 
