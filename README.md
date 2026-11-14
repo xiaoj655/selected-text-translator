@@ -7,7 +7,7 @@
 选中文字后，悬停在 `Aa` 按钮上或直接点击即可打开阅读卡片。
 
 - **翻译**：结合附近原文判断所选词句的意思，只显示选中部分的译文。通用模型还可以补充当前义项的音标、释义与用法。
-- **引导理解**：结合选区所在段落，先显示一条简短英文提示。点击「再提示一点」逐层展开，最多三层。随时可以「揭晓答案」，查看英文释义、解释和例句。无需输入猜测。
+- **引导理解**：结合选区所在段落，用简单英文帮助理解。单词和短语先显示一条线索，点击「再提示一点」逐层展开，最多三层；随时可以「揭晓答案」，查看英文释义、解释和例句。整句和段落采用下面的句子流程。无需输入猜测。
 - **朗读**：独立于模型请求，可读选区，也可读包含选区的原句。支持音色选择、语速调整和试听。
 - **音标**：通用翻译模型返回时直接显示；使用 qwen-mt 翻译时，配置学习模型后会自动补充单词音标。
 
@@ -16,6 +16,12 @@
 键盘聚焦 `Aa` 后，按 Enter 或空格可打开卡片，焦点会进入当前阅读模式。Tab / Shift+Tab 可依次访问操作，也可回到原网页；模型返回、刷新和收藏会保留当前操作位置，不会在你已离开卡片时抢回焦点。生成中的按钮保持可聚焦，但不会重复请求。Esc 在卡片或入口内关闭卡片并回到入口，网页其他位置的 Esc 继续由原网页处理。
 
 Qwen-MT 会结合有明确位置的原文翻译，再提取所选部分的译文。流式结果确认选区边界后才显示，避免整段译文闪入卡片；模型未保留边界时可手动重试，或在设置中改用通用翻译模型，不会自动重复请求。
+
+### 划整句时
+
+选中完整句子或段落时，引导先说明原句的主干，再按需说明转折、指代、语序或时态，不要求猜词，不插入无关类比。句子提示为 1–3 条，第一条默认显示；「再拆一点」继续，随时可以「看简单表达」直接揭晓整句的易懂英文简述。
+
+详细解释收在「为什么这样理解」中，默认折叠，展开不增加模型请求。整句不展示词汇音标或新例句。没有句号的短句也可以被模型识别；单词和短语继续使用原来的渐进提示。
 
 ### 再次查看与重新生成
 
@@ -92,7 +98,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。键盘场景位于 `scripts/verify-card-keyboard.mjs`，使用受控响应验证焦点保留与迟到结果，不依赖真实接口。结束后输出各阶段耗时，失败时报告所在阶段。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
+浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。键盘场景位于 `scripts/verify-card-keyboard.mjs`，整句场景位于 `scripts/verify-sentence-guidance.mjs`；使用受控响应验证焦点保留、解释折叠与迟到结果，不依赖真实接口。结束后输出各阶段耗时，失败时报告所在阶段。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
 
 ### 可选：真实接口验证
 
@@ -104,6 +110,8 @@ npm run test:browser
 
 `npm run test:live:translation:browser` 用真实 Chrome 检查快速翻译到收藏的链路，包括选中同句第二个 `record`。此入口默认使用 `qwen-mt-flash`，可用 `STT_TRANSLATION_MODEL` 覆盖；真实请求同样会产生 API 费用。
 
+`npm run test:live:sentences` 检查三个真实句子引导样例（转折、倒装、无句号短句），`npm run test:live:sentences:browser` 检查整句提示、简述、折叠解释到收藏的真实 Chrome 链路。两者使用 `STT_LEARNING_MODEL`，同样需要私有配置且会产生 API 费用。
+
 ### 打包
 
 `npm run package:extension` 使用 Python 3 的标准库，将运行所需文件打包至 `dist/selected-text-translator-版本号.zip`，不包含测试、Node.js 依赖或本机配置。
@@ -114,4 +122,4 @@ npm run test:browser
 
 在仓库 [Actions](https://github.com/xiaoj655/selected-text-translator/actions) 中打开成功的运行，从 Artifacts 下载 `selected-text-translator-版本号`，解压下载文件后即可取得插件 ZIP 和校验文件。再将插件 ZIP 解压，在 Chrome 中加载包含 `manifest.json` 的目录。出包产物保存 30 天，浏览器预览保存 7 天。
 
-发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.7.2`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
+发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.8.0`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。

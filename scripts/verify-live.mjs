@@ -19,13 +19,19 @@ const readingCases = [
   { name: 'passage', text: 'Little did she know that the quiet stranger would change her life.',
     context: 'She barely noticed the man sitting by the window. Little did she know that the quiet stranger would change her life.' },
 ]
+const sentenceCases = [
+  { name: 'contrast',
+    text: 'Although the proposal looked promising, the board was reluctant to approve it without further evidence.' },
+  { name: 'inversion', text: 'Little did she know that the quiet stranger would change her life.' },
+  { name: 'short-unpunctuated', text: 'I wish I had known this earlier' },
+].map((sample) => ({ ...sample, context: sample.text }))
 const cases = task === 'translate' ? [
   ...readingCases.slice(0, 3),
   { name: 'phrasal-verb', text: 'take in',
     context: 'The lecture was so dense that I could not take in all the details.' },
   { name: 'mixed-context-english', text: 'bank', context: 'She sat on the bank of the river. 她看着河水。' },
   { name: 'mixed-context-chinese', text: '唱片', context: 'Their new record comes out next week. 我期待这张唱片。' },
-] : readingCases
+] : process.argv.includes('--sentences') ? sentenceCases : readingCases
 const results = []
 for (const sample of cases) {
   const startedAt = performance.now()

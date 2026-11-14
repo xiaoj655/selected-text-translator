@@ -10,6 +10,18 @@ const guide = {
   answer: { meaning: 'Hesitant or unwilling.', explanation: 'Her reaction suggests doubt.', example: 'He was reluctant to go.' },
 }
 
+const sentenceGuide = {
+  guideType: 'sentence',
+  hints: [
+    '“she let” starts the main action: she gives her classmates time.',
+    '“Although” contrasts what she already knew with what she chose to do.',
+  ],
+  answer: {
+    meaning: 'She knew the answer, but she chose to let her classmates work it out.',
+    explanation: 'Knowing the answer did not make her answer for the others.',
+  },
+}
+
 test('reading guide requests English clues and keeps surrounding text as bounded data', () => {
   const request = buildReadingRequest({ model: 'generic', text: 'reluctant', context: 'x'.repeat(5000) })
   const data = JSON.parse(request.messages[1].content)
@@ -30,6 +42,7 @@ test('phonetics request does not ask for a definition or translation', () => {
 
 test('guide parser requires three usable hints and a complete answer', () => {
   assert.deepEqual(parseReadingResponse(JSON.stringify(guide)), guide)
+  assert.deepEqual(parseReadingResponse(JSON.stringify({ ...guide, guideType: 'term' })), guide)
   assert.throws(() => parseReadingResponse('not json'), /invalid JSON/)
   assert.throws(() => parseReadingResponse('null'), /incomplete/)
   assert.throws(() => parseReadingResponse(JSON.stringify({ ...guide, hints: ['one'] })), /incomplete/)
@@ -92,6 +105,78 @@ test('reading hints support silent inference and reserve direct definitions for 
   assert.match(prompt, /Hint 3 gives a concrete everyday situation/)
   assert.match(prompt, /not list every meaning/)
   assert.match(prompt, /same sense and word pattern/)
+})
+
+test('sentence guides use the model scope even when a sentence without punctuation has a phrase hint', () => {
+  const text = 'Although she knew the answer, she let her classmates think'
+  const request = buildReadingRequest({ model: 'generic', text })
+  assert.equal(classifyReadingSelection(text), 'phrase')
+  assert.equal(JSON.parse(request.messages[1].content).selectionType, 'phrase')
+  const prompt = request.messages[0].content
+  assert.match(prompt, /selectionType is only a rough hint/)
+  assert.match(prompt, /without final punctuation still needs guideType "sentence"/)
+  assert.match(prompt, /directly explain who does what/)
+  assert.match(prompt, /Never invent or alter quoted source text/)
+  assert.match(prompt, /Do not ask questions, ask the learner to guess/)
+  assert.match(prompt, /preserve all people, events, negation, time, and logical relationships/)
+  const parsed = parseReadingResponse(JSON.stringify(sentenceGuide), 'guide', { text })
+  assert.deepEqual(parsed, {
+    ...sentenceGuide,
+    phonetic: '',
+    answer: { ...sentenceGuide.answer, example: '' },
+  })
+})
+
+test('sentence guides accept one to three useful hints without requiring an example', () => {
+  for (const count of [1, 2, 3]) {
+    const hints = ['Main action.', 'A useful connection.', 'A difficult reference.'].slice(0, count)
+    const parsed = parseReadingResponse(JSON.stringify({ ...sentenceGuide, hints }), 'guide', { text: 'She stays.' })
+    assert.deepEqual(parsed.hints, hints)
+    assert.equal(parsed.answer.example, '')
+    assert.equal(parsed.guideType, 'sentence')
+  }
+  for (const hints of [[], ['One.', 'Two.', 'Three.', 'Four.']]) {
+    assert.throws(() => parseReadingResponse(JSON.stringify({ ...sentenceGuide, hints }), 'guide', {
+      text: 'She stays.',
+    }), /incomplete/)
+  }
+  for (const field of ['meaning', 'explanation']) {
+    for (const value of [undefined, '', '  ']) {
+      const answer = { ...sentenceGuide.answer, [field]: value }
+      assert.throws(() => parseReadingResponse(JSON.stringify({ ...sentenceGuide, answer }), 'guide', {
+        text: 'She stays.',
+      }), /incomplete/)
+    }
+  }
+})
+
+test('single words keep term validation when the model incorrectly returns a sentence guide', () => {
+  assert.throws(() => parseReadingResponse(JSON.stringify(sentenceGuide), 'guide', { text: 'reluctant' }), /incomplete/)
+  const withThreeHints = { ...sentenceGuide, hints: guide.hints }
+  assert.throws(() => parseReadingResponse(JSON.stringify(withThreeHints), 'guide', {
+    text: 'reluctant',
+  }), /incomplete/)
+  assert.deepEqual(parseReadingResponse(JSON.stringify({ ...guide, guideType: 'sentence' }), 'guide', {
+    text: 'reluctant',
+  }), guide)
+})
+
+test('sentence guides suppress phonetics and usage, including old passage responses without a scope', () => {
+  const raw = JSON.stringify({
+    ...sentenceGuide,
+    phonetic: '/wrong/',
+    answer: { ...sentenceGuide.answer, usage: 'not a sentence pattern', example: ' A legacy example. ' },
+  })
+  const parsed = parseReadingResponse(raw, 'guide', { text: 'She would rather stay home' })
+  assert.equal(parsed.phonetic, '')
+  assert.equal('usage' in parsed.answer, false)
+  assert.equal(parsed.answer.example, 'A legacy example.')
+  const legacy = { hints: sentenceGuide.hints, answer: sentenceGuide.answer }
+  assert.deepEqual(parseReadingResponse(JSON.stringify(legacy), 'guide', { text: 'She stays.' }), {
+    ...sentenceGuide,
+    phonetic: '',
+    answer: { ...sentenceGuide.answer, example: '' },
+  })
 })
 
 test('repeated record occurrences carry distinct positions and local text for contextual meaning and IPA', () => {

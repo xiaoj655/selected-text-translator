@@ -6,8 +6,10 @@
     "test": "node --test",
     "test:browser": "node scripts/verify-browser.mjs",
     "test:live": "node scripts/verify-live.mjs",
+    "test:live:sentences": "node scripts/verify-live.mjs --sentences",
     "test:live:translation": "node scripts/verify-live.mjs --translation",
     "test:live:browser": "node scripts/verify-live-browser.mjs",
+    "test:live:sentences:browser": "node scripts/verify-live-browser.mjs --sentence",
     "test:live:translation:browser": "node scripts/verify-live-browser.mjs --translation",
     "package:extension": "python3 scripts/package-extension.py"
   },

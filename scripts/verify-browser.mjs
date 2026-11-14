@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { verifyCardKeyboard } from './verify-card-keyboard.mjs'
+import { SENTENCE_GUIDANCE_FIXTURES, verifySentenceGuidance } from './verify-sentence-guidance.mjs'
 import { normalizeVocabularyEntry } from '../src/vocabulary-store.js'
 
 const verificationStartedAt = performance.now()
@@ -103,6 +104,7 @@ const server = createServer(async (request, response) => {
     requests.push(payload)
     const prompt = payload.messages[0].content
     const selected = readSourceData(payload)
+    const sentenceFixture = SENTENCE_GUIDANCE_FIXTURES.find((fixture) => fixture.text === selected.selectedText)
     if (shouldFailGuide && prompt.includes('reading tutor') && !prompt.includes('Never include definitions')) {
       response.writeHead(503)
       response.end('Unavailable')
@@ -111,10 +113,11 @@ const server = createServer(async (request, response) => {
     if (payload.stream || prompt.includes('professional multilingual translation engine')) {
       const isRecord = selected.selectedText === 'record'
       const isNoun = selected.contextStart === 27
-      const translation = isRecord ? isNoun ? '唱片' : '录制' : '不情愿的；犹豫的'
+      const translation = sentenceFixture?.translation || (isRecord ? isNoun ? '唱片' : '录制' : '不情愿的；犹豫的')
       if (payload.stream) {
-        const before = isRecord ? isNoun ? '乐队明天将录制一张新' : '乐队明天将' : '她'
-        const after = isRecord ? isNoun ? '。大家都很兴奋。' : '一张新唱片。大家都很兴奋。' : '地接受了邀请。'
+        const before = sentenceFixture ? '' : isRecord ? isNoun ? '乐队明天将录制一张新' : '乐队明天将' : '她'
+        const after = sentenceFixture ? ''
+          : isRecord ? isNoun ? '。大家都很兴奋。' : '一张新唱片。大家都很兴奋。' : '地接受了邀请。'
         const chunks = selected.openingTag ? [
           before,
           selected.openingTag.slice(0, 6),
@@ -130,7 +133,8 @@ const server = createServer(async (request, response) => {
           .join('') + 'data: [DONE]\n\n')
         return
       }
-      const result = { translation, phonetic: isRecord ? isNoun ? '/ˈrɛkərd/' : '/rɪˈkɔrd/' : '/rɪˈlʌktənt/' }
+      const result = sentenceFixture ? { translation }
+        : { translation, phonetic: isRecord ? isNoun ? '/ˈrɛkərd/' : '/rɪˈkɔrd/' : '/rɪˈlʌktənt/' }
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }))
       return
@@ -159,7 +163,7 @@ const server = createServer(async (request, response) => {
     }
     const phonetic = selected.selectedText === 'record' ? '/ˈrɛkərd/' : '/ˈɔfɚ/'
     const result = prompt.includes('Never include definitions') ? { phonetic }
-      : selected.selectedText === 'record' ? recordGuide : guide
+      : sentenceFixture?.guide || (selected.selectedText === 'record' ? recordGuide : guide)
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }))
     return
@@ -180,6 +184,7 @@ const server = createServer(async (request, response) => {
     <h1>Some words ask us<br>to stay a little longer.</h1>
     <p id="sentence">She was reluctant to accept the offer. It meant leaving the small town she had called home for so many years.</p>
     <p id="repeated">The band will record a new record tomorrow. Everyone is excited.</p><p id="passage">Sometimes, understanding is less about finding an answer and more about noticing what is already there.</p>
+    ${SENTENCE_GUIDANCE_FIXTURES.map((fixture) => `<p id="${fixture.id}">${fixture.text}</p>`).join('')}
     <p class="note">Select a word. Listen to its sound.<br>Let the surrounding words show you the way.</p></main></body></html>`)
 })
 let context
@@ -632,8 +637,10 @@ try {
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   startPhase('keyboard-card')
   await verifyCardKeyboard({ worker, context, origin, selectText, requests, errors, holdGuideResponse })
+  startPhase('sentence-card')
+  await verifySentenceGuidance({ worker, context, origin, selectText, requests, errors, holdGuideResponse, artifactPath })
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, word and sentence guide progression, hidden answers, sentence explanation disclosure and short-clause recognition, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } catch (error) {
   hasVerificationError = true
   reportPhaseTimings('failed')

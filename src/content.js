@@ -468,6 +468,7 @@
         if (payload.kind === 'guide' && state.activeRequest.forceRefresh) {
           state.activeSelection.hintCount = 1
           state.activeSelection.answerRevealed = false
+          state.activeSelection.isExplanationOpen = false
         }
         renderCurrentCard();
         return;
@@ -568,6 +569,10 @@
     state.cardFocusKey = cardEl.contains(focusedEl) ? focusedEl.dataset.sttFocus : null
     const contextEl = cardEl.querySelector('.stt-context')
     if (contextEl) state.activeSelection.isContextOpen = contextEl.open
+    const explanationEl = cardEl.querySelector('.stt-sentence-explanation')
+    if (explanationEl && state.activeSelection.answerRevealed) {
+      state.activeSelection.isExplanationOpen = explanationEl.open
+    }
     cardEl.className = 'stt-card stt-card--result'
     cardEl.replaceChildren()
     const toolbarEl = createEl('div', 'stt-toolbar')
@@ -722,8 +727,10 @@
   function renderGuideCard(guide) {
     const selection = state.activeSelection
     const cardEl = renderFrame()
+    const isSentence = guide.guideType === 'sentence'
+    if (isSentence) cardEl.querySelector('.stt-source-text').classList.add('stt-source-text--passage')
     const headingEl = createEl('div', 'stt-guide-heading')
-    headingEl.append(createEl('span', 'stt-section-label', 'READ BETWEEN THE LINES'),
+    headingEl.append(createEl('span', 'stt-section-label', isSentence ? 'FOLLOW THE SENTENCE' : 'READ BETWEEN THE LINES'),
       createEl('span', 'stt-progress', `${selection.hintCount} / ${guide.hints.length}`))
     cardEl.appendChild(headingEl)
     const hintsEl = createEl('div', 'stt-hints')
@@ -736,7 +743,7 @@
     cardEl.appendChild(hintsEl)
     const actionsEl = createEl('div', 'stt-actions')
     if (selection.hintCount < guide.hints.length) {
-      const nextEl = createButton('再提示一点 →', () => {
+      const nextEl = createButton(isSentence ? '再拆一点 →' : '再提示一点 →', () => {
         selection.hintCount += 1
         renderGuideCard(guide)
         state.cardEl.querySelector('.stt-next-hint, .stt-reveal')?.focus({ preventScroll: true })
@@ -745,7 +752,7 @@
       actionsEl.appendChild(nextEl)
     }
     if (!selection.answerRevealed) {
-      const revealEl = createButton('揭晓答案', () => {
+      const revealEl = createButton(isSentence ? '看简单表达' : '揭晓答案', () => {
         selection.answerRevealed = true
         renderGuideCard(guide)
         const answerEl = state.cardEl.querySelector('.stt-answer')
@@ -755,19 +762,7 @@
       actionsEl.appendChild(revealEl)
     }
     cardEl.appendChild(actionsEl)
-    if (selection.answerRevealed) {
-      const answerEl = createEl('section', 'stt-answer')
-      answerEl.tabIndex = -1
-      answerEl.dataset.sttFocus = 'answer'
-      answerEl.setAttribute('aria-label', 'Revealed answer')
-      answerEl.append(createEl('div', 'stt-section-label', 'NOW IT MAKES SENSE'),
-        createEl('p', 'stt-meaning', guide.answer.meaning),
-        createEl('p', 'stt-explanation', guide.answer.explanation),
-        createEl('div', 'stt-section-label', 'ANOTHER WAY TO USE IT'),
-        createEl('p', 'stt-example', guide.answer.example))
-      if (guide.answer.usage) answerEl.appendChild(createEl('p', 'stt-usage', guide.answer.usage))
-      cardEl.appendChild(answerEl)
-    }
+    if (selection.answerRevealed) cardEl.appendChild(createGuideAnswer(guide, isSentence))
     if (selection.answerRevealed) appendVocabularyActions(cardEl)
     if (selection.context) {
       const contextEl = createEl('details', 'stt-context')
@@ -782,6 +777,33 @@
       cardEl.appendChild(contextEl)
     }
     finishCard()
+  }
+
+  function createGuideAnswer(guide, isSentence) {
+    const answerEl = createEl('section', 'stt-answer')
+    answerEl.tabIndex = -1
+    answerEl.dataset.sttFocus = 'answer'
+    answerEl.setAttribute('aria-label', 'Revealed answer')
+    answerEl.append(createEl('div', 'stt-section-label', isSentence ? 'PUT IT TOGETHER' : 'NOW IT MAKES SENSE'),
+      createEl('p', 'stt-meaning', guide.answer.meaning))
+    if (isSentence) {
+      const selection = state.activeSelection
+      const detailsEl = createEl('details', 'stt-sentence-explanation')
+      detailsEl.open = Boolean(selection.isExplanationOpen)
+      const summaryEl = createEl('summary', '', '为什么这样理解')
+      summaryEl.dataset.sttFocus = 'sentence-explanation'
+      detailsEl.append(summaryEl, createEl('p', 'stt-explanation', guide.answer.explanation))
+      detailsEl.addEventListener('toggle', () => {
+        if (detailsEl.isConnected) selection.isExplanationOpen = detailsEl.open
+      })
+      answerEl.appendChild(detailsEl)
+      return answerEl
+    }
+    answerEl.append(createEl('p', 'stt-explanation', guide.answer.explanation),
+      createEl('div', 'stt-section-label', 'ANOTHER WAY TO USE IT'),
+      createEl('p', 'stt-example', guide.answer.example))
+    if (guide.answer.usage) answerEl.appendChild(createEl('p', 'stt-usage', guide.answer.usage))
+    return answerEl
   }
 
   function createSelectionContext(selection) {
@@ -1544,6 +1566,9 @@
       .stt-explanation { color: #65735e; }
       .stt-usage { color: #4a7455; font-size: 12px; border-left: 2px solid #a3bea0; padding-left: 10px; }
       .stt-example { font-family: Georgia, serif; font-style: italic; }
+      .stt-sentence-explanation { margin-top: 10px; color: #586b50; font-size: 12px; }
+      .stt-sentence-explanation summary { cursor: pointer; min-height: 24px; line-height: 24px; }
+      .stt-sentence-explanation .stt-explanation { margin-bottom: 0; }
       .stt-context { border-top: 1px solid #e8ede2; padding: 10px 18px; color: #86907d; font-size: 11px; }
       .stt-context summary { cursor: pointer; }
       .stt-context p { max-height: 150px; overflow: auto; margin: 8px 0 0; color: #586b50; }
