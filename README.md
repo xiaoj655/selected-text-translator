@@ -11,7 +11,9 @@
 - **朗读**：独立于模型请求，可读选区，也可读包含选区的原句。支持音色选择、语速调整和试听。
 - **音标**：通用翻译模型返回时直接显示；使用 qwen-mt 翻译时，配置学习模型后会自动补充单词音标。
 
-同一选区内，已生成的结果与提示进度会保留，切换模式无需重复生成。切换模式会记住选择，之后的划词沿用该模式。可用 `Alt+Shift+E` 打开当前选区（可在 Chrome 扩展快捷键设置中调整）。按 `Esc`、点击卡片外部或点右上角关闭按钮退出。拖动卡片右侧边缘可以调整宽度。
+同一选区内，已生成的结果与提示进度会保留，切换模式无需重复生成。切换模式会记住选择，之后的划词沿用该模式。可用 `Alt+Shift+E` 打开当前选区（可在 Chrome 扩展快捷键设置中调整）。在卡片内按 `Esc`、点击卡片外部或点右上角关闭按钮退出。拖动卡片右侧边缘可以调整宽度。
+
+键盘聚焦 `Aa` 后，按 Enter 或空格可打开卡片，焦点会进入当前阅读模式。Tab / Shift+Tab 可依次访问操作，也可回到原网页；模型返回、刷新和收藏会保留当前操作位置，不会在你已离开卡片时抢回焦点。生成中的按钮保持可聚焦，但不会重复请求。Esc 在卡片或入口内关闭卡片并回到入口，网页其他位置的 Esc 继续由原网页处理。
 
 Qwen-MT 会结合有明确位置的原文翻译，再提取所选部分的译文。流式结果确认选区边界后才显示，避免整段译文闪入卡片；模型未保留边界时可手动重试，或在设置中改用通用翻译模型，不会自动重复请求。
 
@@ -90,7 +92,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。结束后输出各阶段耗时，失败时报告所在阶段。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
+浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。键盘场景位于 `scripts/verify-card-keyboard.mjs`，使用受控响应验证焦点保留与迟到结果，不依赖真实接口。结束后输出各阶段耗时，失败时报告所在阶段。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
 
 ### 可选：真实接口验证
 
@@ -112,4 +114,4 @@ npm run test:browser
 
 在仓库 [Actions](https://github.com/xiaoj655/selected-text-translator/actions) 中打开成功的运行，从 Artifacts 下载 `selected-text-translator-版本号`，解压下载文件后即可取得插件 ZIP 和校验文件。再将插件 ZIP 解压，在 Chrome 中加载包含 `manifest.json` 的目录。出包产物保存 30 天，浏览器预览保存 7 天。
 
-发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.7.1`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
+发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.7.2`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。

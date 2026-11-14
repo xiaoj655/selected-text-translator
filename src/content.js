@@ -43,6 +43,7 @@
     activeRequest: null,
     triggerEl: null,
     cardEl: null,
+    cardFocusKey: null,
     cardWidthPx: DEFAULT_CARD_WIDTH_PX,
     cardResizeSession: null,
     cardWidthPersistQueue: Promise.resolve(),
@@ -64,7 +65,10 @@
     window.addEventListener('resize', scheduleViewportUpdate);
     window.addEventListener('pagehide', () => { cancelActiveRequest(); stopSpeech(); });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && state.cardEl) {
+      if (event.key === 'Escape' && state.cardEl
+        && (event.composedPath().includes(state.cardEl) || event.composedPath().includes(state.triggerEl))) {
+        event.preventDefault()
+        event.stopPropagation()
         removeCard();
         state.triggerEl?.focus({ preventScroll: true });
       }
@@ -73,9 +77,7 @@
     chrome.runtime.onMessage.addListener((message) => {
       if (message?.type === 'OPEN_READING_ASSISTANT') {
         refreshSelection();
-        if (state.activeSelection) void startTranslationRequest().then(() => {
-          state.cardEl?.querySelector('.stt-tab[aria-pressed="true"]')?.focus({ preventScroll: true });
-        });
+        if (state.activeSelection) openCardWithKeyboardFocus()
         return;
       }
       if (message?.type === 'SPEECH_EVENT') {
@@ -212,6 +214,9 @@
     trigger.type = 'button';
     trigger.textContent = 'Aa';
     trigger.setAttribute('aria-label', 'Open reading assistant');
+    trigger.setAttribute('aria-haspopup', 'dialog')
+    trigger.setAttribute('aria-controls', 'stt-reading-card')
+    trigger.setAttribute('aria-expanded', 'false')
     trigger.title = 'Translate or explore this selection';
 
     trigger.addEventListener('mousedown', (event) => {
@@ -223,7 +228,10 @@
     trigger.addEventListener('click', (event) => {
       event.stopPropagation();
       clearHoverTimer();
-      void startTranslationRequest();
+      refreshSelection()
+      if (!state.activeSelection) return
+      if (event.detail === 0) openCardWithKeyboardFocus()
+      else void startTranslationRequest()
     });
 
     state.uiRoot.appendChild(trigger);
@@ -368,6 +376,16 @@
         if (!keepResultOnRefreshError(message)) renderStatusCard(message)
       }
     }
+  }
+
+  function openCardWithKeyboardFocus() {
+    const selectionId = state.activeSelection?.id
+    const focusedEl = state.uiRoot.activeElement || document.activeElement
+    void startTranslationRequest().then(() => {
+      if (state.activeSelection?.id !== selectionId
+        || (state.uiRoot.activeElement || document.activeElement) !== focusedEl) return
+      state.cardEl?.querySelector('.stt-tab[aria-pressed="true"]')?.focus({ preventScroll: true })
+    })
   }
 
   function cancelActiveRequest() {
@@ -532,11 +550,13 @@
     return el
   }
 
-  function createButton(label, handler, className = 'stt-button') {
+  function createButton(label, handler, className = 'stt-button', focusKey = className) {
     const buttonEl = createEl('button', className, label)
     buttonEl.type = 'button'
+    buttonEl.dataset.sttFocus = focusKey
     buttonEl.addEventListener('click', (event) => {
       event.stopPropagation()
+      if (buttonEl.getAttribute('aria-disabled') === 'true') return
       handler()
     })
     return buttonEl
@@ -544,6 +564,10 @@
 
   function renderFrame() {
     const cardEl = ensureCard()
+    const focusedEl = state.uiRoot.activeElement
+    state.cardFocusKey = cardEl.contains(focusedEl) ? focusedEl.dataset.sttFocus : null
+    const contextEl = cardEl.querySelector('.stt-context')
+    if (contextEl) state.activeSelection.isContextOpen = contextEl.open
     cardEl.className = 'stt-card stt-card--result'
     cardEl.replaceChildren()
     const toolbarEl = createEl('div', 'stt-toolbar')
@@ -551,23 +575,23 @@
     tabsEl.setAttribute('role', 'group')
     tabsEl.setAttribute('aria-label', 'Reading mode')
     for (const [mode, label] of [['translate', '翻译'], ['guide', '引导理解']]) {
-      const tabEl = createButton(label, () => selectMode(mode), 'stt-tab')
+      const tabEl = createButton(label, () => selectMode(mode), 'stt-tab', `mode-${mode}`)
       tabEl.setAttribute('aria-pressed', String(state.mode === mode))
       tabsEl.appendChild(tabEl)
     }
     const closeEl = createButton('×', () => {
       removeCard()
       state.triggerEl?.focus({ preventScroll: true })
-    }, 'stt-close')
+    }, 'stt-close', 'close')
     closeEl.setAttribute('aria-label', 'Close reading card')
     closeEl.title = 'Close · Esc'
     const toolbarActionsEl = createEl('div', 'stt-toolbar-actions')
     if (state.activeSelection.cache[state.mode]) {
       const refreshEl = createButton('⟳', () => void startTranslationRequest(state.mode, { forceRefresh: true }),
-        'stt-regenerate')
+        'stt-regenerate', 'regenerate')
       refreshEl.setAttribute('aria-label', '重新生成当前结果')
       refreshEl.title = '重新生成当前模式的结果（会调用模型）'
-      refreshEl.disabled = Boolean(state.activeRequest?.inFlight)
+      refreshEl.setAttribute('aria-disabled', String(Boolean(state.activeRequest?.inFlight)))
       toolbarActionsEl.appendChild(refreshEl)
     }
     toolbarActionsEl.appendChild(closeEl)
@@ -578,12 +602,12 @@
     sourceEl.appendChild(textEl)
     const soundRowEl = createEl('div', 'stt-sound-row')
     const speechEl = createButton(state.speechId && state.speechTarget === 'selection' ? '■ 停止' : '▷ 朗读',
-      () => toggleSpeech('selection'), 'stt-speak')
+      () => toggleSpeech('selection'), 'stt-speak', 'speech-selection')
     speechEl.setAttribute('aria-pressed', String(Boolean(state.speechId && state.speechTarget === 'selection')))
     soundRowEl.appendChild(speechEl)
     if (state.activeSelection.contextSentence) {
       const contextSpeechEl = createButton(state.speechId && state.speechTarget === 'context' ? '■ 停止原句' : '▷ 读原句',
-        () => toggleSpeech('context'), 'stt-speak-context stt-speak')
+        () => toggleSpeech('context'), 'stt-speak-context stt-speak', 'speech-context')
       contextSpeechEl.title = state.activeSelection.contextSentence
       contextSpeechEl.setAttribute('aria-pressed', String(Boolean(state.speechId && state.speechTarget === 'context')))
       soundRowEl.appendChild(contextSpeechEl)
@@ -593,8 +617,8 @@
     if (phonetic) soundRowEl.appendChild(createEl('span', 'stt-phonetic', phonetic))
     else if (isSingleWordInput(state.activeSelection.text)) {
       const phoneticEl = createButton(state.activeRequest?.kind === 'pronunciation' && state.activeRequest.inFlight
-        ? '获取音标…' : '查看音标', () => void startTranslationRequest('pronunciation'), 'stt-text-button')
-      phoneticEl.disabled = Boolean(state.activeRequest?.inFlight)
+        ? '获取音标…' : '查看音标', () => void startTranslationRequest('pronunciation'), 'stt-text-button', 'phonetic')
+      phoneticEl.setAttribute('aria-disabled', String(Boolean(state.activeRequest?.inFlight)))
       soundRowEl.appendChild(phoneticEl)
     }
     sourceEl.appendChild(soundRowEl)
@@ -615,8 +639,8 @@
     statusEl.appendChild(createEl('span', '', isRefreshing ? '正在更新…' : `重新生成失败：${error}`))
     if (error && !isRefreshing) {
       const retryEl = createButton('重试生成', () => void startTranslationRequest(state.mode, { forceRefresh: true }),
-        'stt-text-button stt-refresh-retry')
-      retryEl.disabled = Boolean(state.activeRequest?.inFlight)
+        'stt-text-button stt-refresh-retry', 'refresh-retry')
+      retryEl.setAttribute('aria-disabled', String(Boolean(state.activeRequest?.inFlight)))
       statusEl.appendChild(retryEl)
     }
     cardEl.appendChild(statusEl)
@@ -625,6 +649,18 @@
   function finishCard() {
     ensureCardResizeHandle();
     positionCard(state.activeSelection.rect)
+    restoreCardFocus()
+  }
+
+  function restoreCardFocus() {
+    const key = state.cardFocusKey
+    state.cardFocusKey = null
+    if (!key) return
+    const fallbacks = { phonetic: 'speech-selection', 'next-hint': 'reveal', reveal: 'answer' }
+    const controls = Array.from(state.cardEl.querySelectorAll('[data-stt-focus]'))
+    const targetEl = controls.find((el) => el.dataset.sttFocus === key)
+      || controls.find((el) => el.dataset.sttFocus === (fallbacks[key] || `mode-${state.mode}`))
+    targetEl?.focus({ preventScroll: true })
   }
 
   function renderLoadingCard(message) {
@@ -640,12 +676,12 @@
     cardEl.appendChild(createEl('div', 'stt-card-block stt-error', message))
     const actionsEl = createEl('div', 'stt-actions')
     actionsEl.append(
-      createButton('重试', () => void startTranslationRequest(state.activeRequest?.kind)),
+      createButton('重试', () => void startTranslationRequest(state.activeRequest?.kind), 'stt-button', 'status-retry'),
       createButton('打开设置 ↗', () => {
         try {
           chrome.runtime.sendMessage({ type: 'OPEN_SETTINGS' }, () => { void chrome.runtime.lastError })
         } catch { }
-      }, 'stt-text-button'),
+      }, 'stt-text-button', 'settings'),
     )
     cardEl.appendChild(actionsEl)
     finishCard()
@@ -704,7 +740,7 @@
         selection.hintCount += 1
         renderGuideCard(guide)
         state.cardEl.querySelector('.stt-next-hint, .stt-reveal')?.focus({ preventScroll: true })
-      })
+      }, 'stt-button', 'next-hint')
       nextEl.classList.add('stt-next-hint')
       actionsEl.appendChild(nextEl)
     }
@@ -715,13 +751,14 @@
         const answerEl = state.cardEl.querySelector('.stt-answer')
         answerEl?.focus({ preventScroll: true })
         answerEl?.scrollIntoView({ block: 'nearest' })
-      }, 'stt-text-button stt-reveal')
+      }, 'stt-text-button stt-reveal', 'reveal')
       actionsEl.appendChild(revealEl)
     }
     cardEl.appendChild(actionsEl)
     if (selection.answerRevealed) {
       const answerEl = createEl('section', 'stt-answer')
       answerEl.tabIndex = -1
+      answerEl.dataset.sttFocus = 'answer'
       answerEl.setAttribute('aria-label', 'Revealed answer')
       answerEl.append(createEl('div', 'stt-section-label', 'NOW IT MAKES SENSE'),
         createEl('p', 'stt-meaning', guide.answer.meaning),
@@ -735,7 +772,9 @@
     if (selection.context) {
       const contextEl = createEl('details', 'stt-context')
       contextEl.open = Boolean(selection.isContextOpen)
-      contextEl.append(createEl('summary', '', '查看参考上下文'), createSelectionContext(selection))
+      const summaryEl = createEl('summary', '', '查看参考上下文')
+      summaryEl.dataset.sttFocus = 'context'
+      contextEl.append(summaryEl, createSelectionContext(selection))
       contextEl.addEventListener('toggle', () => {
         selection.isContextOpen = contextEl.open
         if (contextEl.open) centerSelectionContext(contextEl)
@@ -801,12 +840,12 @@
     const status = state.activeSelection.savedVocabulary[key]
     const actionsEl = createEl('div', 'stt-actions stt-vocabulary-actions')
     const saveEl = createButton(status === 'saved' ? '✓ 已收藏' : status === 'saving' ? '保存中…' : '＋ 收藏表达',
-      () => void saveCurrentVocabulary(value, key), 'stt-save stt-text-button')
-    saveEl.disabled = status === 'saving' || status === 'saved'
+      () => void saveCurrentVocabulary(value, key), 'stt-save stt-text-button', 'save')
+    saveEl.setAttribute('aria-disabled', String(status === 'saving' || status === 'saved'))
     const libraryEl = createButton('表达本 ↗', () => {
       try { chrome.runtime.sendMessage({ type: 'OPEN_LIBRARY' }, () => { void chrome.runtime.lastError }) }
       catch { }
-    }, 'stt-text-button')
+    }, 'stt-text-button', 'library')
     actionsEl.append(saveEl, libraryEl)
     cardEl.appendChild(actionsEl)
     if (status === 'error') {
@@ -1102,6 +1141,7 @@
 
     const card = document.createElement('div');
     card.className = 'stt-card stt-card--status';
+    card.id = 'stt-reading-card'
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-label', 'Reading assistant');
     card.addEventListener('mousedown', (event) => {
@@ -1111,6 +1151,7 @@
 
     state.uiRoot.appendChild(card);
     state.cardEl = card;
+    state.triggerEl?.setAttribute('aria-expanded', 'true')
     ensureCardResizeHandle();
     applyCardWidth();
     return card;
@@ -1334,6 +1375,8 @@
     stopCardResize();
     state.cardEl.remove();
     state.cardEl = null;
+    state.cardFocusKey = null
+    state.triggerEl?.setAttribute('aria-expanded', 'false')
   }
 
   function clearHoverTimer() {
@@ -1443,7 +1486,9 @@
       *, *::before, *::after { box-sizing: border-box; }
       button { font: inherit; cursor: pointer; border: 0; }
       button:disabled { cursor: wait; opacity: .45; }
-      button:focus-visible, summary:focus-visible { outline: 2px solid #68a287; outline-offset: 3px; }
+      button:focus-visible, summary:focus-visible, .stt-answer:focus-visible {
+        outline: 2px solid #1d6b53; outline-offset: 3px; }
+      button[aria-disabled=true] { cursor: default; opacity: .7; }
       .stt-trigger { position: fixed; pointer-events: auto; display: grid; place-items: center;
         width: 28px; height: 28px; border-radius: 9px 9px 9px 2px; background: #1d6b53; color: #f6f3da;
         font: 16px Georgia, serif; box-shadow: 0 3px 12px #143e3429; padding: 0; }
@@ -1505,7 +1550,6 @@
       .stt-context-target { background: #dfedce; color: #29432e; font-weight: 600; padding: 0 2px;
         border-radius: 3px; box-decoration-break: clone; }
       .stt-vocabulary-actions { border-top: 1px solid #e8ede2; padding-top: 10px; padding-bottom: 10px; }
-      .stt-save:disabled { cursor: default; opacity: .7; }
       .stt-save-status { color: #94613c; padding: 0 18px 10px; font-size: 11px; }
       .stt-error { color: #94613c; font-size: 12px; padding-bottom: 0; }
       .stt-loading { color: #87927d; font-size: 12px; }

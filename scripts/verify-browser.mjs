@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
+import { verifyCardKeyboard } from './verify-card-keyboard.mjs'
 import { normalizeVocabularyEntry } from '../src/vocabulary-store.js'
 
 const verificationStartedAt = performance.now()
@@ -39,6 +40,22 @@ const requests = []
 let shouldFailPronunciation = false
 let shouldDelayGuide = false
 let shouldFailGuide = false
+let heldGuideResponse = null
+
+function holdGuideResponse() {
+  let release
+  let markStarted
+  const response = new Promise((resolve) => { release = resolve })
+  const started = new Promise((resolve) => { markStarted = resolve })
+  heldGuideResponse = { response, started: markStarted }
+  return {
+    started,
+    release: () => {
+      heldGuideResponse = null
+      release()
+    },
+  }
+}
 
 function readSourceData(payload) {
   const content = payload.messages.at(-1).content || ''
@@ -124,6 +141,11 @@ const server = createServer(async (request, response) => {
       return
     }
     if (shouldDelayGuide) await new Promise((resolve) => setTimeout(resolve, 200))
+    if (heldGuideResponse) {
+      const held = heldGuideResponse
+      held.started()
+      await held.response
+    }
     const recordGuide = {
       phonetic: shouldDelayGuide ? '/ˈrɛk.ɚd/' : '/ˈrɛkərd/',
       hints: [
@@ -608,6 +630,8 @@ try {
     name: 'legacy-large-backup.json', mimeType: 'application/json', buffer: legacyFile,
   })
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
+  startPhase('keyboard-card')
+  await verifyCardKeyboard({ worker, context, origin, selectText, requests, errors, holdGuideResponse })
   assert.deepEqual(errors, [])
   console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } catch (error) {
