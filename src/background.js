@@ -1,5 +1,6 @@
 import { createResultCache, createResultCacheKey } from './result-cache.js'
 import { getContextSentence } from './context-sentence.js'
+import { createQwenTranslationScope, extractQwenScopedTranslation } from './qwen-context.js'
 import { handleVocabularyMessage } from './vocabulary-messages.js'
 import { handleProviderDiagnostics } from './provider-diagnostics.js'
 import {
@@ -133,6 +134,8 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     if (controller.signal.aborted) return
     const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
+    const qwenScope = isQwenMtRequest ? createQwenTranslationScope({ text, context: payload?.context,
+      contextStart: payload?.contextStart, contextEnd: payload?.contextEnd }) : null
     const requestBody = kind !== 'translate'
       ? buildReadingRequest({ model, text, context: payload?.context,
           contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind })
@@ -181,9 +184,10 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     const translationResult = isQwenMtRequest
       ? requestBody.stream
-        ? { translation: await consumeStream({ response, tabId, frameId, selectionId, requestId,
+        ? { translation: await consumeStream({ response, tabId, frameId, selectionId, requestId, scope: qwenScope,
             isActive: () => activeRequests.get(key) === active && !controller.signal.aborted }), lexicalDetails: null }
-        : { translation: await consumeQwenMtNonStreamResponse({ response, selectionId, requestId }), lexicalDetails: null }
+        : { translation: await consumeQwenMtNonStreamResponse({ response, selectionId, requestId, scope: qwenScope }),
+            lexicalDetails: null }
       : await consumeNonStreamResponse({ response, selectionId, requestId, sourceText: text })
     emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
       translatedText: translationResult.translation, lexicalDetails: translationResult.lexicalDetails })
@@ -203,7 +207,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   }
 }
 
-async function consumeStream({ response, tabId, frameId, selectionId, requestId, isActive }) {
+async function consumeStream({ response, tabId, frameId, selectionId, requestId, isActive, scope }) {
   if (!response.body) {
     throw new Error('qwen-mt response did not include a stream body.');
   }
@@ -250,8 +254,8 @@ async function consumeStream({ response, tabId, frameId, selectionId, requestId,
       }
 
       qwenTranslation += delta;
-      const partial = qwenTranslation.trim();
-      if (partial) {
+      const partial = extractQwenScopedTranslation(qwenTranslation, scope, { partial: true })
+      if (partial && partial !== lastRenderedTranslation) {
         lastRenderedTranslation = partial;
         emitEvent(tabId, {
           status: TRANSLATION_EVENT_STATUS.STREAM,
@@ -271,7 +275,7 @@ async function consumeStream({ response, tabId, frameId, selectionId, requestId,
     if (done) break;
   }
 
-  const finalTranslation = qwenTranslation.trim();
+  const finalTranslation = extractQwenScopedTranslation(qwenTranslation, scope)
 
   if (!finalTranslation) {
     throw new Error('Unable to read translated text from stream response.');
@@ -280,7 +284,7 @@ async function consumeStream({ response, tabId, frameId, selectionId, requestId,
   return finalTranslation;
 }
 
-async function consumeQwenMtNonStreamResponse({ response, selectionId, requestId }) {
+async function consumeQwenMtNonStreamResponse({ response, selectionId, requestId, scope }) {
   const rawResponseText = await safeReadText(response);
   if (!rawResponseText.trim()) {
     throw new Error('No translated text returned by endpoint.');
@@ -311,7 +315,7 @@ async function consumeQwenMtNonStreamResponse({ response, selectionId, requestId
     throw new Error('qwen-mt non-stream response did not include translated content.');
   }
 
-  return content;
+  return extractQwenScopedTranslation(content, scope)
 }
 
 async function consumeNonStreamResponse({ response, selectionId, requestId, sourceText }) {

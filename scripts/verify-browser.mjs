@@ -6,10 +6,35 @@ import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { normalizeVocabularyEntry } from '../src/vocabulary-store.js'
 
+const verificationStartedAt = performance.now()
+const phaseDurationsMs = {}
+let currentPhase = 'setup'
+let phaseStartedAt = verificationStartedAt
+
+function startPhase(phase) {
+  const now = performance.now()
+  phaseDurationsMs[currentPhase] = Math.round(now - phaseStartedAt)
+  currentPhase = phase
+  phaseStartedAt = now
+}
+
+function reportPhaseTimings(status) {
+  const now = performance.now()
+  const phaseMs = Math.round(now - phaseStartedAt)
+  const summary = {
+    status,
+    phase: currentPhase,
+    phaseMs,
+    totalMs: Math.round(now - verificationStartedAt),
+    phasesMs: { ...phaseDurationsMs, [currentPhase]: phaseMs },
+  }
+  const log = status === 'passed' ? console.log : console.error
+  log(`Browser timings: ${JSON.stringify(summary)}`)
+}
+
 const extensionPath = resolve(import.meta.dirname, '..')
-const profilePath = await mkdtemp(join(tmpdir(), 'selected-browser-'))
+let profilePath
 const artifactPath = process.env.STT_ARTIFACT_DIR || join(tmpdir(), 'selected-browser-preview')
-await mkdir(artifactPath, { recursive: true })
 const requests = []
 let shouldFailPronunciation = false
 let shouldDelayGuide = false
@@ -19,6 +44,24 @@ function readSourceData(payload) {
   const content = payload.messages.at(-1).content || ''
   const marker = '\nSource data:\n'
   if (content.includes(marker)) return JSON.parse(content.slice(content.indexOf(marker) + marker.length))
+  const markedSelection = /<(stt-selected-\d+)>([\s\S]*?)<\/\1>/.exec(content)
+  if (markedSelection) {
+    const openingTag = `<${markedSelection[1]}>`
+    const closingTag = `</${markedSelection[1]}>`
+    const selectedText = markedSelection[2]
+    const before = content.slice(0, markedSelection.index)
+    const after = content.slice(markedSelection.index + markedSelection[0].length)
+    return {
+      selectedText,
+      surroundingContext: before + selectedText + after,
+      contextStart: before.length,
+      contextEnd: before.length + selectedText.length,
+      targetLanguage: payload.translation_options.target_lang,
+      selectedOccurrence: { before, text: selectedText, after },
+      openingTag,
+      closingTag,
+    }
+  }
   return content.startsWith('{') ? JSON.parse(content) : { selectedText: content }
 }
 
@@ -53,8 +96,21 @@ const server = createServer(async (request, response) => {
       const isNoun = selected.contextStart === 27
       const translation = isRecord ? isNoun ? '唱片' : '录制' : '不情愿的；犹豫的'
       if (payload.stream) {
+        const before = isRecord ? isNoun ? '乐队明天将录制一张新' : '乐队明天将' : '她'
+        const after = isRecord ? isNoun ? '。大家都很兴奋。' : '一张新唱片。大家都很兴奋。' : '地接受了邀请。'
+        const chunks = selected.openingTag ? [
+          before,
+          selected.openingTag.slice(0, 6),
+          selected.openingTag.slice(6),
+          translation.slice(0, 1),
+          translation.slice(1),
+          selected.closingTag.slice(0, 7),
+          selected.closingTag.slice(7),
+          after,
+        ] : [translation]
         response.writeHead(200, { 'Content-Type': 'text/event-stream' })
-        response.end(`data: ${JSON.stringify({ choices: [{ delta: { content: translation } }] })}`)
+        response.end(chunks.map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+          .join('') + 'data: [DONE]\n\n')
         return
       }
       const result = { translation, phonetic: isRecord ? isNoun ? '/ˈrɛkərd/' : '/rɪˈkɔrd/' : '/rɪˈlʌktənt/' }
@@ -104,10 +160,13 @@ const server = createServer(async (request, response) => {
     <p id="repeated">The band will record a new record tomorrow. Everyone is excited.</p><p id="passage">Sometimes, understanding is less about finding an answer and more about noticing what is already there.</p>
     <p class="note">Select a word. Listen to its sound.<br>Let the surrounding words show you the way.</p></main></body></html>`)
 })
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-const origin = `http://127.0.0.1:${server.address().port}`
 let context
+let hasVerificationError = false
 try {
+  profilePath = await mkdtemp(join(tmpdir(), 'selected-browser-'))
+  await mkdir(artifactPath, { recursive: true })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const origin = `http://127.0.0.1:${server.address().port}`
   context = await chromium.launchPersistentContext(profilePath, {
     channel: 'chromium', headless: true, viewport: { width: 1280, height: 900 },
     args: ['--no-sandbox', `--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
@@ -151,6 +210,7 @@ try {
     }, { text, selector, occurrence })
     await targetPage.locator('.stt-trigger').waitFor({ state: 'visible' })
   }
+  startPhase('reading-card')
   await selectText('reluctant')
   await page.locator('.stt-trigger').hover()
   await page.locator('.stt-hint').first().waitFor()
@@ -243,21 +303,53 @@ try {
   assert.equal(requests.length, callsBeforeModeSwitch)
   await second.close()
   await selectText('record', '#repeated', 0)
+  await page.evaluate(() => {
+    const root = document.querySelector('#selected-reading-assistant').shadowRoot
+    globalThis.translationSnapshots = []
+    globalThis.translationObserver = new MutationObserver(() => {
+      const text = root.querySelector('.stt-card-block--translation')?.textContent
+      if (text) globalThis.translationSnapshots.push(text)
+    })
+    globalThis.translationObserver.observe(root, { childList: true, characterData: true, subtree: true })
+  })
   await page.locator('.stt-trigger').click()
   await page.locator('.stt-card-block--translation').waitFor()
+  await page.waitForFunction(() => document.querySelector('#selected-reading-assistant').shadowRoot
+    .querySelector('.stt-card-block--translation')?.textContent === '录制')
   assert.equal(await page.locator('.stt-card-block--translation').textContent(), '录制')
-  const verbSource = readSourceData(requests.findLast((request) => request.stream))
+  const verbRequest = requests.findLast((request) => request.stream)
+  const verbSource = readSourceData(verbRequest)
   assert.equal(verbSource.contextStart, 14)
+  assert.equal(verbSource.contextEnd, 20)
   assert.equal(verbSource.selectedOccurrence.before, 'The band will ')
+  assert.equal(verbRequest.messages[0].content,
+    'The band will <stt-selected-0>record</stt-selected-0> a new record tomorrow. Everyone is excited.')
+  assert.match(verbRequest.translation_options.domains, /tags/i)
   await selectText('record', '#repeated', 1)
   await page.locator('.stt-trigger').click()
   await page.locator('.stt-card-block--translation').waitFor()
+  await page.waitForFunction(() => document.querySelector('#selected-reading-assistant').shadowRoot
+    .querySelector('.stt-card-block--translation')?.textContent === '唱片')
   assert.equal(await page.locator('.stt-card-block--translation').textContent(), '唱片')
-  const nounSource = readSourceData(requests.findLast((request) => request.stream))
+  const nounRequest = requests.findLast((request) => request.stream)
+  const nounSource = readSourceData(nounRequest)
   assert.equal(nounSource.contextStart, 27)
+  assert.equal(nounSource.contextEnd, 33)
   assert.equal(nounSource.targetLanguage, 'Chinese')
   assert.equal(nounSource.selectedOccurrence.before, 'The band will record a new ')
+  assert.equal(nounRequest.messages[0].content,
+    'The band will record a new <stt-selected-0>record</stt-selected-0> tomorrow. Everyone is excited.')
+  assert.match(nounRequest.translation_options.domains, /tags/i)
   await page.locator('.stt-phonetic').waitFor()
+  const translationSnapshots = await page.evaluate(() => {
+    globalThis.translationObserver.disconnect()
+    return globalThis.translationSnapshots
+  })
+  assert.ok(translationSnapshots.includes('录制'))
+  assert.ok(translationSnapshots.includes('唱片'))
+  for (const text of translationSnapshots) {
+    assert.doesNotMatch(text, /[<>]|stt-selected|乐队|明天|新唱片|大家|兴奋/)
+  }
   await page.getByRole('button', { name: '引导理解', exact: true }).click()
   await page.locator('.stt-hint').first().waitFor()
   const occurrenceData = JSON.parse(requests.at(-1).messages[1].content)
@@ -320,6 +412,7 @@ try {
   const stillSaved = await worker.evaluate(async () => (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries)
   assert.deepEqual(stillSaved, savedVocabulary)
 
+  startPhase('library')
   const library = await context.newPage()
   library.on('pageerror', (error) => errors.push(error.message))
   await library.goto(`chrome-extension://${extensionId}/src/library.html`)
@@ -447,6 +540,7 @@ try {
   assert.equal('api_key' in exported, false)
   await library.setViewportSize({ width: 420, height: 850 })
   assert.equal(await library.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  startPhase('generic-translation')
   await worker.evaluate(async () => {
     await chrome.storage.sync.set({ model: 'test-generic', reading_mode: 'translate' })
   })
@@ -464,6 +558,7 @@ try {
   assert.equal(genericRequest.messages[0].role, 'system')
   assert.equal(genericRequest.response_format.type, 'json_object')
   await genericPage.close()
+  startPhase('settings')
   await worker.evaluate(async () => {
     await chrome.storage.sync.set({ model: 'qwen-mt-flash', reading_mode: 'guide' })
   })
@@ -486,6 +581,7 @@ try {
   await settings.screenshot({ path: join(artifactPath, 'settings.png'), fullPage: true })
   await settings.setViewportSize({ width: 420, height: 900 })
   assert.equal(await settings.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  startPhase('popup')
   const popup = await context.newPage()
   await popup.setViewportSize({ width: 380, height: 800 })
   popup.on('pageerror', (error) => errors.push(error.message))
@@ -501,6 +597,7 @@ try {
   await popup.locator('#enable-current').click()
   await popup.waitForFunction(() => document.getElementById('page-status').classList.contains('enabled'))
   assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  startPhase('backup-import')
   const largeEntries = Array.from({ length: 1900 }, (_, index) => normalizeVocabularyEntry({
     text: `word-${index}`, meaning: 'm'.repeat(1800),
   }, 1700000000000))
@@ -513,8 +610,22 @@ try {
   await library.waitForFunction(() => document.getElementById('all-count').textContent === '1901')
   assert.deepEqual(errors, [])
   console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, guide progression, hidden answers, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+} catch (error) {
+  hasVerificationError = true
+  reportPhaseTimings('failed')
+  throw error
 } finally {
-  await context?.close()
-  await new Promise((resolve) => server.close(resolve))
-  await rm(profilePath, { recursive: true, force: true })
+  startPhase('cleanup')
+  try {
+    await context?.close()
+    if (server.listening) await new Promise((resolve) => server.close(resolve))
+    if (profilePath) await rm(profilePath, { recursive: true, force: true })
+  } catch (error) {
+    if (!hasVerificationError) {
+      reportPhaseTimings('failed')
+      throw error
+    }
+    console.error(error)
+  }
 }
+reportPhaseTimings('passed')

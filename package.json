@@ -8,6 +8,7 @@
     "test:live": "node scripts/verify-live.mjs",
     "test:live:translation": "node scripts/verify-live.mjs --translation",
     "test:live:browser": "node scripts/verify-live-browser.mjs",
+    "test:live:translation:browser": "node scripts/verify-live-browser.mjs --translation",
     "package:extension": "python3 scripts/package-extension.py"
   },
   "devDependencies": {

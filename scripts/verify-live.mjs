@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { buildReadingRequest, parseReadingResponse } from '../src/reading-support.js'
+import { createQwenTranslationScope, extractQwenScopedTranslation } from '../src/qwen-context.js'
 import { buildGenericRequest, buildQwenMtRequest, extractGenericResponse, isQwenMtModel, isSingleWordInput }
   from '../src/translation-contracts.js'
 
@@ -43,7 +44,7 @@ for (const sample of cases) {
     }
     const content = json.choices?.[0]?.message?.content
     const result = task === 'guide' ? parseReadingResponse(content, 'guide', { text: sample.text })
-      : isQwenMtModel(model) ? { translation: String(content || '').trim() }
+      : isQwenMtModel(model) ? { translation: extractQwenScopedTranslation(content, createQwenTranslationScope(sample)) }
         : extractGenericResponse(content, { allowLexicalFields: isSingleWordInput(sample.text) })
     if (task === 'translate' && !result.translation) throw new Error('Missing translation')
     results.push({ name: sample.name, ok: true, elapsedMs: Math.round(performance.now() - startedAt),

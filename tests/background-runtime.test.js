@@ -82,7 +82,7 @@ test('storage read failure emits a visible terminal error', async () => {
 test('qwen SSE parser retains the last event even without a trailing newline', async () => {
   await withBackground({ fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"你好"}}]}') },
     async ({ send, waitFor, events }) => {
-      send({ ...payload, kind: 'translate' })
+      send({ ...payload, kind: 'translate', context: '' })
       await waitFor(() => events.some((event) => event.payload.status === 'success'))
       assert.equal(events.at(-1).payload.translatedText, '你好')
     })
@@ -111,9 +111,13 @@ test('generic translation receives the exact selection context and keeps single-
 
 test('qwen translation forwards distinct occurrences without adding unsupported message roles', async () => {
   const context = 'The band will record a new record tomorrow.'
-  await withBackground({ fetchImpl: () => new Response(
-    'data: {"choices":[{"delta":{"content":"译文"}}]}',
-  ) }, async ({ send, waitFor, events, requests }) => {
+  await withBackground({ fetchImpl: (url, options) => {
+    const isNoun = JSON.parse(options.body).messages[0].content.indexOf('<stt-selected-0>') === 27
+    const chunks = isNoun
+      ? ['乐队明天将录制一张新的<stt-selec', 'ted-0>唱', '片</stt-select', 'ed-0>。']
+      : ['乐队明天将<stt-selected-0>录制</stt-selected-0>一张新专辑。']
+    return new Response(chunks.map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`).join('\n'))
+  } }, async ({ send, waitFor, events, requests }) => {
     for (const start of [14, 27]) {
       send({ ...payload, requestId: `record-${start}`, kind: 'translate', text: 'record',
         context, contextStart: start, contextEnd: start + 6 })
@@ -125,13 +129,44 @@ test('qwen translation forwards distinct occurrences without adding unsupported 
       const body = requests[index].body
       assert.equal(body.messages.length, 1)
       assert.equal(body.messages[0].role, 'user')
-      assert.match(body.messages[0].content, new RegExp(`"contextStart":${start}`))
+      assert.equal(body.messages[0].content, context.slice(0, start)
+        + '<stt-selected-0>record</stt-selected-0>' + context.slice(start + 6))
       assert.equal(body.translation_options.target_lang, 'Chinese')
       assert.equal(body.stream, true)
       assert.equal('response_format' in body, false)
     }
     assert.notEqual(requests[0].body.messages[0].content, requests[1].body.messages[0].content)
     assert.equal(events.at(-1).payload.sourceText, 'record')
+    assert.equal(events.at(-1).payload.translatedText, '唱片')
+    const streams = events.filter((event) => event.payload.status === 'stream')
+    assert.deepEqual(streams.map((event) => event.payload.translatedText), ['录制', '唱片'])
+  })
+})
+
+test('qwen contextual non-stream responses extract the marked translation only', async () => {
+  await withBackground({ model: 'qwen-mt-plus', fetchImpl: () => Response.json({ choices: [{ message: {
+    content: '乐队明天将录制一张新的<stt-selected-0>唱片</stt-selected-0>。',
+  } }] }) }, async ({ send, waitFor, events }) => {
+    send({ ...payload, kind: 'translate', text: 'record',
+      context: 'The band will record a new record tomorrow.', contextStart: 27, contextEnd: 33 })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    assert.equal(events.at(-1).payload.translatedText, '唱片')
+    assert.equal(events.filter((event) => event.payload.status === 'stream').length, 0)
+  })
+})
+
+test('missing qwen selection boundaries never expose full context or enter the result cache', async () => {
+  await withBackground({ fetchImpl: () => new Response(
+    'data: {"choices":[{"delta":{"content":"She was hesitant to accept the offer."}}]}',
+  ) }, async ({ send, waitFor, events, requests }) => {
+    for (const requestId of ['missing-boundary', 'retry-missing-boundary']) {
+      send({ ...payload, kind: 'translate', requestId })
+      await waitFor(() => events.some((event) => event.payload.requestId === requestId && event.payload.status === 'error'))
+    }
+    assert.equal(requests.length, 2)
+    assert.equal(events.filter((event) => ['success', 'stream'].includes(event.payload.status)).length, 0)
+    assert.match(events.at(-1).payload.message, /selected text boundary/)
+    assert.doesNotMatch(events.at(-1).payload.message, /hesitant|offer/)
   })
 })
 

@@ -13,6 +13,8 @@
 
 同一选区内，已生成的结果与提示进度会保留，切换模式无需重复生成。切换模式会记住选择，之后的划词沿用该模式。可用 `Alt+Shift+E` 打开当前选区（可在 Chrome 扩展快捷键设置中调整）。按 `Esc`、点击卡片外部或点右上角关闭按钮退出。拖动卡片右侧边缘可以调整宽度。
 
+Qwen-MT 会结合有明确位置的原文翻译，再提取所选部分的译文。流式结果确认选区边界后才显示，避免整段译文闪入卡片；模型未保留边界时可手动重试，或在设置中改用通用翻译模型，不会自动重复请求。
+
 ### 再次查看与重新生成
 
 近期再次选中相同内容、相同语境和位置时，可直接复用已完成的结果。不同语境、位置、模型或服务配置会分别处理，避免同词不同义混用。
@@ -88,7 +90,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
+浏览器验证需要 Node.js 20.11+，会在临时 Chrome 配置中加载真实扩展，使用本地模拟 API，检查提示展开、答案隐藏、缓存、音标、朗读消息、键盘操作、滚动定位与设置页布局。结束后输出各阶段耗时，失败时报告所在阶段。TTS 在自动化中模拟调用，不代表已验证设备上的实际音质。预览截图默认输出至系统临时目录 `selected-browser-preview/`，可通过 `STT_ARTIFACT_DIR` 指定目录。
 
 ### 可选：真实接口验证
 
@@ -96,7 +98,9 @@ npm run test:browser
 
 这两项检查会产生真实 API 请求，普通 `npm test` 和 `test:browser` 不调用付费服务。后者使用隔离的临时浏览器配置，检查真实模型的提示、揭晓与收藏链路，结束后删除测试配置。语音实际音质仍需在使用设备上试听。
 
-`npm run test:live:translation` 单独检查快速翻译。可用 `STT_TRANSLATION_MODEL` 指定模型，默认沿用 `STT_LEARNING_MODEL`。它使用合成例句测试两处 `record`、短语和双语语境，并打印实际译文供检查；同样需要配置凭据并会产生 API 请求。Qwen-MT 的上下文请求采用[官方支持的自定义提示词](https://help.aliyun.com/zh/model-studio/machine-translation)。自动化检查验证请求格式与交互，不能代替对实际译文的判断。
+`npm run test:live:translation` 单独检查快速翻译。可用 `STT_TRANSLATION_MODEL` 指定模型，默认沿用 `STT_LEARNING_MODEL`。它使用合成例句测试两处 `record`、短语和双语语境，并打印实际译文供检查；同样需要配置凭据并会产生 API 请求。Qwen-MT 请求保留单个 user 消息，使用[官方的领域提示参数](https://help.aliyun.com/zh/model-studio/machine-translation)要求保留选区标签，再由程序验证并提取标签内的译文。自动化检查验证请求格式与交互，不能代替对实际译文的判断。
+
+`npm run test:live:translation:browser` 用真实 Chrome 检查快速翻译到收藏的链路，包括选中同句第二个 `record`。此入口默认使用 `qwen-mt-flash`，可用 `STT_TRANSLATION_MODEL` 覆盖；真实请求同样会产生 API 费用。
 
 ### 打包
 
@@ -108,4 +112,4 @@ npm run test:browser
 
 在仓库 [Actions](https://github.com/xiaoj655/selected-text-translator/actions) 中打开成功的运行，从 Artifacts 下载 `selected-text-translator-版本号`，解压下载文件后即可取得插件 ZIP 和校验文件。再将插件 ZIP 解压，在 Chrome 中加载包含 `manifest.json` 的目录。出包产物保存 30 天，浏览器预览保存 7 天。
 
-发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.6.0`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
+发布正式版本时，先更新 `manifest.json` 与 `CHANGELOG.md`，再推送对应的 `v版本号` 标签，例如 `v0.7.1`。流水线会检查标签与清单版本一致，在验证通过后自动创建 [GitHub Release](https://github.com/xiaoj655/selected-text-translator/releases)，附上 ZIP、校验文件和自动生成的发布说明。
