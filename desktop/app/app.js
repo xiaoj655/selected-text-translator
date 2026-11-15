@@ -108,6 +108,8 @@ async function loadFlags() {
     const flags = await window.sttDesktop.getFlags()
     $('opt-always-on-top').checked = Boolean(flags?.alwaysOnTop)
     $('opt-login-item').checked = Boolean(flags?.loginItem)
+    $('opt-clipboard-only').checked = Boolean(flags?.clipboardOnly)
+    $('cfg-hotkey').value = state.hotkey || '' 
   } catch {
     // flags are optional
   }
@@ -651,6 +653,24 @@ function bind() {
   $('opt-login-item').addEventListener('change', (event) => {
     void window.sttDesktop.setLoginItem(event.target.checked)
     setStatus(event.target.checked ? '已开启开机自启' : '已关闭开机自启')
+  })
+  $('opt-clipboard-only').addEventListener('change', (event) => {
+    void window.sttDesktop.setCaptureMode(event.target.checked ? 'clipboard' : 'auto')
+    setStatus(event.target.checked
+      ? '已切换为仅剪贴板取词:复制后按热键即可,不需要辅助功能权限'
+      : '已恢复自动取词')
+  })
+  $('btn-hotkey').addEventListener('click', async () => {
+    const value = $('cfg-hotkey').value.trim()
+    if (!value) return
+    const applied = await window.sttDesktop.setHotkey(value)
+    if (applied) {
+      state.hotkey = applied
+      setStatus(`热键已设为 ${applied}`)
+      renderDiagnostics()
+    } else {
+      setStatus('热键注册失败,可能与其他程序冲突,请换一个组合')
+    }
   })
   $('btn-clear').addEventListener('click', () => {
     state.entries = []

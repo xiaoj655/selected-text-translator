@@ -9,9 +9,17 @@ export function createShortcuts({ globalShortcut, storage, onTrigger, logger = (
   let current = null
 
   async function register(accelerator) {
-    const next = HOTKEY_OPTIONS.includes(accelerator) ? accelerator : HOTKEY_OPTIONS[0]
+    const next = typeof accelerator === 'string' && accelerator.trim()
+      ? accelerator.trim()
+      : HOTKEY_OPTIONS[0]
     if (current) globalShortcut.unregister(current)
-    if (!globalShortcut.register(next, onTrigger)) {
+    let registered = false
+    try {
+      registered = globalShortcut.register(next, onTrigger)
+    } catch {
+      registered = false
+    }
+    if (!registered) {
       logger(`hotkey unavailable: ${next}`)
       if (current) {
         globalShortcut.register(current, onTrigger)

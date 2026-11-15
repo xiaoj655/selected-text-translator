@@ -78,7 +78,13 @@ function installIpc(storage, history) {
   ipcMain.handle('stt:get-flags', () => ({
     alwaysOnTop: windows.getAlwaysOnTop(),
     loginItem: app.getLoginItemSettings().openAtLogin,
+    clipboardOnly: capture.getMode() === 'clipboard',
   }))
+  ipcMain.handle('stt:set-capture-mode', (_event, mode) => {
+    capture.setMode(mode)
+    void storage.sync.set({ desktop_capture_mode: mode === 'clipboard' ? 'clipboard' : 'auto' })
+    return true
+  })
   ipcMain.handle('stt:set-always-on-top', (_event, flag) => {
     windows.setAlwaysOnTop(flag)
     void storage.sync.set({ desktop_always_on_top: Boolean(flag) })
@@ -125,6 +131,12 @@ async function bootstrap() {
   const shim = installMainChrome({ storage, windows, tts, logger })
   dispatch = shim.dispatch
   capture = createCapture({ clipboard, logger })
+  try {
+    const savedMode = await storage.sync.get(['desktop_capture_mode'])
+    if (savedMode?.desktop_capture_mode === 'clipboard') capture.setMode('clipboard')
+  } catch {
+    // capture mode is best effort
+  }
   shortcuts = createShortcuts({ globalShortcut, storage, onTrigger: onHotkey, logger })
 
   installIpc(storage, history)

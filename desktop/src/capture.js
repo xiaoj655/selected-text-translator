@@ -22,6 +22,12 @@ function copyCommand(platform) {
 }
 
 export function createCapture({ clipboard, platform = process.platform, delay = wait, run = runCommand, logger = () => {} }) {
+  let mode = 'auto'
+
+  function setMode(next) {
+    mode = next === 'clipboard' ? 'clipboard' : 'auto'
+  }
+
   async function simulateCopy() {
     const [command, args] = copyCommand(platform)
     try {
@@ -40,7 +46,7 @@ export function createCapture({ clipboard, platform = process.platform, delay = 
       // clipboard may be locked by another app
     }
 
-    const didCopy = await simulateCopy()
+    const didCopy = mode === 'clipboard' ? false : await simulateCopy()
     let after = before
     if (didCopy) {
       for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -70,9 +76,10 @@ export function createCapture({ clipboard, platform = process.platform, delay = 
       context: '',
       contextStart: null,
       contextEnd: null,
-      source: didCopy && after !== before ? 'simulated-copy' : 'clipboard',
+      source: didCopy && after !== before ? 'simulated-copy'
+        : mode === 'clipboard' ? 'clipboard-only' : 'clipboard',
     }
   }
 
-  return { capture }
+  return { capture, setMode, getMode: () => mode }
 }

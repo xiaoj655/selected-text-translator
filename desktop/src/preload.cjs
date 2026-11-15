@@ -137,4 +137,7 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   setLoginItem(flag) {
     return ipcRenderer.invoke('stt:set-login-item', flag)
   },
+  setCaptureMode(mode) {
+    return ipcRenderer.invoke('stt:set-capture-mode', mode)
+  },
 })
