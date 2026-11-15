@@ -109,7 +109,7 @@ async function loadFlags() {
     $('opt-always-on-top').checked = Boolean(flags?.alwaysOnTop)
     $('opt-login-item').checked = Boolean(flags?.loginItem)
     $('opt-clipboard-only').checked = Boolean(flags?.clipboardOnly)
-    $('cfg-hotkey').value = state.hotkey || '' 
+    $('cfg-hotkey').value = state.hotkey || ''
   } catch {
     // flags are optional
   }
@@ -255,6 +255,12 @@ function submit() {
   if (!state.configured) {
     void checkConfig()
     setStatus('请先完成模型设置')
+    return
+  }
+  const recent = state.entries[state.entries.length - 1]
+  if (recent && recent.text === text && ['pending', 'loading', 'streaming'].includes(recent.status)
+    && Date.now() - recent.createdAt < 2000) {
+    setStatus('相同内容正在处理中,请稍候')
     return
   }
   const entry = {
@@ -499,7 +505,11 @@ function renderActions(entry) {
     setStatus('已回填到输入框')
   })
   add(state.speechId ? '■ 停止朗读' : '▷ 朗读原文', () => toggleSpeech(entry))
-  add('重新生成', () => regenerate(entry))
+  if (['pending', 'loading', 'streaming'].includes(entry.status)) {
+    add('取消请求', () => cancelRequest(entry), { danger: true })
+  } else {
+    add('重新生成', () => regenerate(entry))
+  }
   add('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
   add('删除', () => {
     state.entries = state.entries.filter((item) => item.id !== entry.id)
@@ -554,6 +564,18 @@ function renderEntry(entry) {
   }
   node.replaceWith(renderEntryEl(entry))
   if (['pending', 'loading', 'streaming'].includes(entry.status)) stream.scrollTop = stream.scrollHeight
+}
+
+function cancelRequest(entry) {
+  try {
+    chrome.runtime.sendMessage({ type: 'CANCEL_TRANSLATION', payload: { requestId: entry.requestId } }, () => {})
+  } catch {
+    // the request may already have finished
+  }
+  entry.status = 'error'
+  entry.error = '已取消请求,可以重新生成。'
+  renderEntry(entry)
+  setStatus('已取消请求')
 }
 
 function regenerate(entry) {
