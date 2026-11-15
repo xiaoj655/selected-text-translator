@@ -6,7 +6,7 @@
 
 - **我(agent)**:写代码、单测、构建脚本、验证脚本、文档;更新本文件;把大任务拆成可独立验收的小步。
 - **你**:在 macOS / Windows 实机上按下方清单手动验证,回传现象、日志、截图;阶段 4 提供 Apple Developer 账号与代码签名证书。
-- **安装包获取**:push 到 `desktop` 分支后,`.github/workflows/desktop-build.yml` 自动构建;在 Actions 运行页的 **Artifacts** 里下载 `selected-text-translator-macOS` / `selected-text-translator-Windows`。macOS 有 x64 与 arm64 两个 dmg,按机器架构选。
+- **安装包获取**:push 到 `desktop` 分支后,`.github/workflows/desktop-build.yml` 自动构建;在 Actions 运行页的 **Artifacts** 里下载 `selected-text-translator-macOS` / `selected-text-translator-Windows`。macOS 有两个 dmg:`Selected Text Translator-0.8.0.dmg` 是 Intel (x64),`Selected Text Translator-0.8.0-arm64.dmg` 是 Apple Silicon。
 - **凭据**:API Key、证书、账号一律走环境变量或仓库外私有配置;不要发给我,不要出现在截图、日志、测试报告、提交里(沿用 AGENTS.md 约定)。
 
 ## 环境约束(固定事实,不要反复确认)
@@ -59,7 +59,7 @@
 回传时请附:平台 + 系统版本 + 代码版本(commit)、操作步骤、预期 vs 实际、日志、截图。截图注意避开 API Key 输入框。
 
 ### 清单 1 — 阶段 1(两平台通用)
-1. 从 Actions 的 Artifacts 下载安装包。**macOS 注意选对架构**:Intel 用 `...-x64.dmg`,Apple Silicon 用 `...-arm64.dmg`。当前产物未签名,macOS 首次打开需在「系统设置 → 隐私与安全性」允许,Windows 可能出现 SmartScreen 提示。
+1. 从 Actions 的 Artifacts 下载安装包。**macOS 注意选对架构**:Intel 用 `Selected Text Translator-0.8.0.dmg`,Apple Silicon 用 `Selected Text Translator-0.8.0-arm64.dmg`。当前产物未签名,macOS 首次打开需在「系统设置 → 隐私与安全性」允许,Windows 可能出现 SmartScreen 提示。
 2. 启动 App,托盘/菜单栏图标出现,不弹主窗口。
 3. 在设置里填入 API 地址、API Key、翻译模型(与扩展相同)。
 4. 在浏览器或文本编辑器里选中一段英文,按 `Alt+Shift+E`。
@@ -104,5 +104,6 @@
 | 2026-11-15 | 方案 | 新增 `docs/desktop-plan.md` | 未涉及运行 |
 | 2026-11-15 | 协作 | 新增本文件,确立长期任务追踪与手动验证方式 | — |
 | 2026-11-15 | 0–2 | 新建 `desktop/` Electron 壳、双层 `chrome` shim、剪贴板取词、TTS、窗口与托盘;`src/` 零改动 | `npm test` 229 全绿;`npm run smoke` 通过;`electron-builder --dir` 成功;Xvfb 下主进程 `background module loaded` → `ready linux` |
-| 2026-11-15 | 4 | 新增 `desktop-build.yml`,macOS / Windows 双平台 CI | run `43746432557` 成功,产出 arm64 dmg + x64 exe 并上传 Artifact;既有 "Verify and package extension" 工作流同样 success |
-| 2026-11-15 | 4 | macOS 补 x64 架构、CI 加 smoke、修弃用警告 | 见后续 CI run |
+| 2026-11-15 | 4 | 新增 `desktop-build.yml`,macOS / Windows 双平台 CI | run `43746432557` 成功,产出 arm64 dmg + x64 exe;既有 "Verify and package extension" 同样 success |
+| 2026-11-15 | 4 | 尝试补 x64 架构、CI 加 smoke、修弃用警告 | run `43747068833` 失败:`mac.arch` 不是合法字段,Windows job 也因全局配置校验失败 |
+| 2026-11-15 | 4 | 回退非法配置,改为 CI 分两步 `--mac --x64` / `--mac --arm64`;env 提到 job 级 | run `43747411549` **全绿**(macOS 3m51s / Windows 3m48s),产出 x64 dmg(119M)、arm64 dmg(115M)、x64 exe(116M)及对应 zip,两个 Artifact 已上传 |

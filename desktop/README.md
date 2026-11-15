@@ -46,7 +46,7 @@ npm run dist -- --linux
 
 CI 在 `desktop` 分支 push 或手动 `workflow_dispatch` 时,用 `macos-latest` / `windows-latest` 分别产出安装包并作为 Artifact 上传:
 
-- macOS:`...-x64.dmg`(Intel)与 `...-arm64.dmg`(Apple Silicon),以及对应的 zip;
+- macOS:`Selected Text Translator-0.8.0.dmg`(Intel / x64)与 `Selected Text Translator-0.8.0-arm64.dmg`(Apple Silicon),以及对应的 zip;
 - Windows:`Selected Text Translator Setup 0.8.0.exe`(x64)与 win zip。
 
 在 Actions 运行页的 Artifacts 里下载,实机测试时按机器架构选对应 dmg。
