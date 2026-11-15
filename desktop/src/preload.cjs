@@ -1,0 +1,111 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+const messageListeners = new Set()
+const storageListeners = new Set()
+
+ipcRenderer.on('stt:message', (_event, message) => {
+  for (const fn of messageListeners) {
+    try {
+      fn(message, {}, () => {})
+    } catch {
+      // one listener must not block the others
+    }
+  }
+})
+
+ipcRenderer.on('stt:storage-changed', (_event, payload) => {
+  for (const fn of storageListeners) {
+    try {
+      fn(payload?.changes || {}, payload?.areaName)
+    } catch {
+      // one listener must not block the others
+    }
+  }
+})
+
+function storageArea(area) {
+  return {
+    get(keys) {
+      return ipcRenderer.invoke('stt:storage', { area, op: 'get', keys })
+    },
+    set(items) {
+      return ipcRenderer.invoke('stt:storage', { area, op: 'set', items })
+    },
+  }
+}
+
+function withCallback(promise, callback) {
+  if (typeof callback === 'function') promise.then(callback).catch(() => callback())
+  return promise
+}
+
+const chrome = {
+  runtime: {
+    lastError: undefined,
+    onMessage: {
+      addListener(fn) {
+        messageListeners.add(fn)
+      },
+      removeListener(fn) {
+        messageListeners.delete(fn)
+      },
+    },
+    sendMessage(message, callback) {
+      return withCallback(ipcRenderer.invoke('stt:message', message), callback)
+    },
+    getURL(path) {
+      return `app://local/${String(path || '')}`
+    },
+    openOptionsPage(callback) {
+      return withCallback(ipcRenderer.invoke('stt:open', 'settings'), callback)
+    },
+  },
+  storage: {
+    sync: storageArea('sync'),
+    local: storageArea('local'),
+    onChanged: {
+      addListener(fn) {
+        storageListeners.add(fn)
+      },
+      removeListener(fn) {
+        storageListeners.delete(fn)
+      },
+    },
+  },
+  tabs: {
+    query() {
+      return ipcRenderer.invoke('stt:tabs-query')
+    },
+    create(options, callback) {
+      const name = String(options?.url || '').includes('library') ? 'library' : 'settings'
+      return withCallback(ipcRenderer.invoke('stt:open', name), callback)
+    },
+    sendMessage() {},
+  },
+}
+
+contextBridge.exposeInMainWorld('chrome', chrome)
+contextBridge.exposeInMainWorld('sttDesktop', {
+  onSelection(callback) {
+    ipcRenderer.on('stt:selection', (_event, payload) => callback(payload))
+  },
+  requestOpen() {
+    const message = { type: 'OPEN_READING_ASSISTANT' }
+    for (const fn of messageListeners) {
+      try {
+        fn(message, {}, () => {})
+      } catch {
+        // one listener must not block the others
+      }
+    }
+  },
+  hide() {
+    ipcRenderer.send('stt:hide')
+  },
+  hotkeyOptions() {
+    return ipcRenderer.invoke('stt:hotkey-options')
+  },
+  setHotkey(value) {
+    return ipcRenderer.invoke('stt:set-hotkey', value)
+  },
+})

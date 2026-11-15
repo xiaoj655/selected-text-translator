@@ -1,0 +1,68 @@
+name: Build desktop apps
+
+on:
+  push:
+    branches:
+      - desktop
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            args: --mac
+          - name: Windows
+            os: windows-latest
+            args: --win
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Sync shared sources
+        run: node desktop/scripts/sync-src.mjs
+
+      - name: Build installer
+        working-directory: desktop
+        run: npm run dist -- ${{ matrix.args }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: selected-text-translator-${{ matrix.name }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+            desktop/dist/*.zip
+            desktop/dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: List artifacts
+        shell: bash
+        run: ls -lh desktop/dist

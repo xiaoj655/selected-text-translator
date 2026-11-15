@@ -1,0 +1,61 @@
+{
+  "name": "selected-text-translator-desktop",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop build of the selected text reading assistant",
+  "main": "src/main.js",
+  "scripts": {
+    "sync": "node scripts/sync-src.mjs",
+    "presmoke": "node scripts/sync-src.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "start": "npm run sync && electron .",
+    "predist": "node scripts/sync-src.mjs",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.xiaoj655.selected-text-translator",
+    "productName": "Selected Text Translator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "package.json",
+      "src/**/*",
+      "app/**/*",
+      "vendor/**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "dir",
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "publish": null
+  }
+}
