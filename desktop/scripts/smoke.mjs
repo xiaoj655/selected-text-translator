@@ -17,7 +17,7 @@ const windows = {
   broadcast: () => {},
   sendToWindow: (id, channel, payload) => sent.push({ id, channel, payload }),
   open: () => {},
-  cardId: () => 7,
+  mainId: () => 7,
 }
 const tts = { getVoices: async () => [], speak: () => {}, stop: () => {} }
 

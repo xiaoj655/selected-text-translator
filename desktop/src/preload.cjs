@@ -89,15 +89,20 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   onSelection(callback) {
     ipcRenderer.on('stt:selection', (_event, payload) => callback(payload))
   },
-  requestOpen() {
-    const message = { type: 'OPEN_READING_ASSISTANT' }
-    for (const fn of messageListeners) {
-      try {
-        fn(message, {}, () => {})
-      } catch {
-        // one listener must not block the others
-      }
-    }
+  onStatus(callback) {
+    ipcRenderer.on('stt:status', (_event, payload) => callback(payload))
+  },
+  copyText(text) {
+    return ipcRenderer.invoke('stt:copy-text', text)
+  },
+  openSettings() {
+    return ipcRenderer.invoke('stt:open', 'settings')
+  },
+  openLibrary() {
+    return ipcRenderer.invoke('stt:open', 'library')
+  },
+  openLog() {
+    return ipcRenderer.invoke('stt:open-log')
   },
   hide() {
     ipcRenderer.send('stt:hide')
@@ -105,7 +110,13 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   hotkeyOptions() {
     return ipcRenderer.invoke('stt:hotkey-options')
   },
+  getHotkey() {
+    return ipcRenderer.invoke('stt:get-hotkey')
+  },
   setHotkey(value) {
     return ipcRenderer.invoke('stt:set-hotkey', value)
+  },
+  platform() {
+    return ipcRenderer.invoke('stt:platform')
   },
 })

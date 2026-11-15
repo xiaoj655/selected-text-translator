@@ -1,5 +1,6 @@
-import { BrowserWindow, Menu, Tray, nativeImage, screen } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { BrowserWindow, Menu, Tray, nativeImage } from 'electron'
 
 const AUX_FILES = {
   settings: 'popup.html',
@@ -7,17 +8,38 @@ const AUX_FILES = {
   library: 'library.html',
 }
 
-export function createWindows({ desktopDir, logger = () => {} }) {
+export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
   const vendorDir = join(desktopDir, 'vendor', 'src')
   const preloadPath = join(desktopDir, 'src', 'preload.cjs')
+  const boundsFile = join(userDataDir, 'window-bounds.json')
   const aux = new Map()
-  let card = null
-  let cardReady = null
+  let main = null
+  let mainReady = null
+  let isQuitting = false
   let tray = null
 
+  function loadBounds() {
+    try {
+      if (!existsSync(boundsFile)) return null
+      const value = JSON.parse(readFileSync(boundsFile, 'utf8'))
+      return Number.isFinite(value?.width) && Number.isFinite(value?.height) ? value : null
+    } catch {
+      return null
+    }
+  }
+
+  function saveBounds(win) {
+    if (!win || win.isDestroyed()) return
+    try {
+      writeFileSync(boundsFile, JSON.stringify(win.getBounds()))
+    } catch {
+      // bounds persistence is best effort
+    }
+  }
+
   function allWindows() {
-    return [card, ...aux.values()].filter((win) => win && !win.isDestroyed())
+    return [main, ...aux.values()].filter((win) => win && !win.isDestroyed())
   }
 
   function broadcast(channel, payload) {
@@ -32,8 +54,8 @@ export function createWindows({ desktopDir, logger = () => {} }) {
   function senderFor(webContents) {
     const win = BrowserWindow.fromWebContents(webContents)
     if (!win) return { tab: { id: 0 }, frameId: 0, url: '', documentId: '' }
-    if (win === card) {
-      return { tab: { id: win.id }, frameId: 0, url: 'app://local/card.html', documentId: 'card' }
+    if (win === main) {
+      return { tab: { id: win.id }, frameId: 0, url: 'app://local/index.html', documentId: 'main' }
     }
     const name = [...aux.entries()].find(([, value]) => value === win)?.[0] || 'settings'
     return {
@@ -44,22 +66,18 @@ export function createWindows({ desktopDir, logger = () => {} }) {
     }
   }
 
-  function ensureCard() {
-    if (card && !card.isDestroyed()) return card
-    card = new BrowserWindow({
-      width: 440,
-      height: 620,
+  function ensureMainWindow() {
+    if (main && !main.isDestroyed()) return main
+    const saved = loadBounds()
+    main = new BrowserWindow({
+      width: saved?.width || 920,
+      height: saved?.height || 720,
+      ...(Number.isFinite(saved?.x) && Number.isFinite(saved?.y) ? { x: saved.x, y: saved.y } : {}),
+      minWidth: 560,
+      minHeight: 480,
+      title: 'Selected Text Translator',
+      backgroundColor: '#f7f8f6',
       show: false,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      movable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      hasShadow: false,
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,
@@ -67,39 +85,40 @@ export function createWindows({ desktopDir, logger = () => {} }) {
         sandbox: false,
       },
     })
-    card.setAlwaysOnTop(true, 'floating')
-    card.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    cardReady = new Promise((resolve) => {
-      card.webContents.once('did-finish-load', resolve)
+    mainReady = new Promise((resolve) => {
+      main.webContents.once('did-finish-load', resolve)
     })
-    card.loadFile(join(appDir, 'card.html'))
-    card.on('closed', () => {
-      card = null
-      cardReady = null
+    main.loadFile(join(appDir, 'index.html'))
+    main.on('close', (event) => {
+      saveBounds(main)
+      if (!isQuitting) {
+        event.preventDefault()
+        main.hide()
+      }
     })
-    return card
+    main.on('closed', () => {
+      main = null
+      mainReady = null
+    })
+    return main
   }
 
-  function positionCard(win) {
-    const point = screen.getCursorScreenPoint()
-    const area = screen.getDisplayNearestPoint(point).workArea
-    const [width, height] = win.getSize()
-    const x = Math.min(Math.max(point.x + 16, area.x), Math.max(area.x, area.x + area.width - width))
-    const y = Math.min(Math.max(point.y + 16, area.y), Math.max(area.y, area.y + area.height - height))
-    win.setPosition(Math.round(x), Math.round(y))
-  }
-
-  async function showCard(payload) {
-    const win = ensureCard()
-    await cardReady
+  async function showMainWindow(payload) {
+    const win = ensureMainWindow()
+    await mainReady
     if (win.isDestroyed()) return
-    positionCard(win)
-    win.showInactive()
-    win.webContents.send('stt:selection', payload)
+    if (!win.isVisible()) win.show()
+    win.focus()
+    win.webContents.send('stt:selection', payload || {})
   }
 
-  function hideCard() {
-    if (card && !card.isDestroyed()) card.hide()
+  function hideMainWindow() {
+    if (main && !main.isDestroyed()) main.hide()
+  }
+
+  function toggleMainWindow() {
+    if (!main || main.isDestroyed() || !main.isVisible()) void showMainWindow({ text: '', source: 'tray' })
+    else main.hide()
   }
 
   function open(name) {
@@ -126,11 +145,12 @@ export function createWindows({ desktopDir, logger = () => {} }) {
     return win
   }
 
-  function createTray({ onTrigger, onQuit, hotkeyOptions, onHotkeyChange, currentHotkey }) {
+  function createTray({ onTrigger, onQuit, hotkeyOptions, onHotkeyChange, currentHotkey, onOpenLog }) {
     let image = nativeImage.createFromPath(join(desktopDir, 'vendor', 'assets', 'icon128.png'))
     if (image.isEmpty()) image = nativeImage.createEmpty()
     if (process.platform === 'darwin' && !image.isEmpty()) image = image.resize({ width: 18, height: 18 })
     tray = new Tray(image)
+    if (process.platform !== 'darwin') tray.on('click', toggleMainWindow)
 
     const hotkeyMenu = hotkeyOptions.map((option) => ({
       label: option,
@@ -141,6 +161,7 @@ export function createWindows({ desktopDir, logger = () => {} }) {
 
     tray.setToolTip('Selected Text Translator')
     tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '打开主窗口', click: () => void showMainWindow({ text: '', source: 'tray' }) },
       { label: '查词 / 翻译', click: onTrigger },
       { type: 'separator' },
       { label: '设置', click: () => open('settings') },
@@ -148,6 +169,7 @@ export function createWindows({ desktopDir, logger = () => {} }) {
       { label: '我的表达本', click: () => open('library') },
       { type: 'separator' },
       { label: '快捷键', submenu: hotkeyMenu },
+      { label: '打开日志', click: onOpenLog },
       { type: 'separator' },
       { label: '退出', click: onQuit },
     ]))
@@ -157,11 +179,16 @@ export function createWindows({ desktopDir, logger = () => {} }) {
     broadcast,
     sendToWindow,
     senderFor,
-    showCard,
-    hideCard,
+    showMainWindow,
+    hideMainWindow,
+    toggleMainWindow,
     open,
     createTray,
-    cardId: () => (card && !card.isDestroyed() ? card.id : 0),
+    notifyStatus: (payload) => broadcast('stt:status', payload),
+    mainId: () => (main && !main.isDestroyed() ? main.id : 0),
+    setQuitting: () => {
+      isQuitting = true
+    },
     logger,
   }
 }

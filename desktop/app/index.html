@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;">
+  <title>Selected Text Translator</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-dot"></span><h1>Selected Text Translator</h1></div>
+      <div class="modes" id="modes">
+        <button class="mode is-active" data-mode="translate" type="button">翻译</button>
+        <button class="mode" data-mode="guide" type="button">引导理解</button>
+      </div>
+      <div class="top-actions">
+        <button id="btn-settings" type="button" title="模型设置">设置</button>
+        <button id="btn-library" type="button" title="我的表达本">表达本</button>
+        <button id="btn-clear" type="button" title="清空对话">清空</button>
+      </div>
+    </header>
+
+    <div class="notice" id="notice" hidden></div>
+
+    <main class="stream" id="stream"></main>
+
+    <footer class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="2" placeholder="粘贴或输入要翻译的内容…  选中文字后按热键可自动带入"></textarea>
+        <div class="composer-actions">
+          <span class="composer-hint" id="composer-hint">Ctrl+Enter 发送 · Enter 换行</span>
+          <button id="btn-send" class="primary" type="button">翻译</button>
+        </div>
+      </div>
+      <div class="statusbar" id="statusbar">就绪</div>
+    </footer>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

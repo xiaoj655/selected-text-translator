@@ -77,7 +77,7 @@ export function installMainChrome({ storage, windows, tts, logger = () => {} }) 
     },
     tabs: {
       async query() {
-        return [{ id: windows.cardId(), url: '', active: true }]
+        return [{ id: windows.mainId(), url: '', active: true }]
       },
       sendMessage(tabId, message, third, fourth) {
         windows.sendToWindow(tabId, 'stt:message', message)

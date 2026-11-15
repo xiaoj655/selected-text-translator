@@ -1,7 +1,7 @@
-import { mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, clipboard, globalShortcut, ipcMain, safeStorage } from 'electron'
+import { app, clipboard, globalShortcut, ipcMain, Notification, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { installMainChrome } from './chrome-shim-main.js'
 import { createWindows } from './windows.js'
@@ -13,20 +13,46 @@ const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
 const vendorDir = join(desktopDir, 'vendor', 'src')
 
-const logger = (event, detail) => console.log('[desktop]', event, detail ?? '')
-
+let logFile = ''
 let windows
 let shortcuts
 let capture
 let dispatch
 
-async function onHotkey() {
+function logger(event, detail) {
+  let text = ''
+  if (detail instanceof Error) text = detail.message
+  else if (typeof detail === 'string') text = detail
+  else if (detail !== undefined) {
+    try {
+      text = JSON.stringify(detail)
+    } catch {
+      text = String(detail)
+    }
+  }
+  const short = text.slice(0, 400)
+  const line = `[${new Date().toISOString()}] ${event} ${short}\n`
   try {
-    const payload = await capture.capture()
-    logger('capture', payload.source)
-    await windows.showCard(payload)
+    if (logFile) appendFileSync(logFile, line)
+  } catch {
+    // logging must never break the app
+  }
+  console.log('[desktop]', event, short)
+}
+
+async function onHotkey() {
+  let payload
+  try {
+    payload = await capture.capture()
+    logger('capture', { source: payload.source, length: payload.text.length })
   } catch (error) {
-    logger('hotkey failed', error?.message || error)
+    logger('capture-failed', error)
+    payload = { text: '', context: '', contextStart: null, contextEnd: null, source: 'error' }
+  }
+  try {
+    await windows.showMainWindow(payload)
+  } catch (error) {
+    logger('show-failed', error)
   }
 }
 
@@ -36,19 +62,30 @@ function installIpc(storage) {
     const store = request?.area === 'local' ? storage.local : storage.sync
     return request?.op === 'set' ? store.set(request.items) : store.get(request.keys)
   })
-  ipcMain.handle('stt:tabs-query', () => [{ id: windows.cardId(), url: '', active: true }])
+  ipcMain.handle('stt:tabs-query', () => [{ id: windows.mainId(), url: '', active: true }])
   ipcMain.handle('stt:open', (_event, name) => {
     windows.open(name)
     return true
   })
   ipcMain.handle('stt:hotkey-options', () => HOTKEY_OPTIONS)
+  ipcMain.handle('stt:get-hotkey', () => shortcuts.current() || '')
   ipcMain.handle('stt:set-hotkey', (_event, value) => shortcuts.register(value))
-  ipcMain.on('stt:hide', () => windows.hideCard())
+  ipcMain.handle('stt:platform', () => process.platform)
+  ipcMain.handle('stt:copy-text', (_event, text) => {
+    clipboard.writeText(String(text || ''))
+    return true
+  })
+  ipcMain.handle('stt:open-log', () => {
+    if (logFile) void shell.openPath(logFile)
+    return true
+  })
+  ipcMain.on('stt:hide', () => windows.hideMainWindow())
 }
 
 async function bootstrap() {
   const userDataDir = app.getPath('userData')
   mkdirSync(userDataDir, { recursive: true })
+  logFile = join(userDataDir, 'desktop.log')
   if (typeof safeStorage.encryptString === 'function' && typeof safeStorage.decryptString === 'function') {
     setCrypto({
       encrypt: (value) => safeStorage.encryptString(value).toString('base64'),
@@ -58,7 +95,7 @@ async function bootstrap() {
 
   const storage = createStorage(userDataDir)
   const tts = createTts({ logger })
-  windows = createWindows({ desktopDir, logger })
+  windows = createWindows({ desktopDir, userDataDir, logger })
   const shim = installMainChrome({ storage, windows, tts, logger })
   dispatch = shim.dispatch
   capture = createCapture({ clipboard, logger })
@@ -72,11 +109,26 @@ async function bootstrap() {
   windows.createTray({
     onTrigger: onHotkey,
     onQuit: () => app.quit(),
+    onOpenLog: () => {
+      if (logFile) void shell.openPath(logFile)
+    },
     hotkeyOptions: HOTKEY_OPTIONS,
     onHotkeyChange: (value) => shortcuts.register(value),
     currentHotkey: () => shortcuts.current(),
   })
-  await shortcuts.init()
+
+  const registered = await shortcuts.init()
+  if (registered) {
+    logger('hotkey', registered)
+    windows.notifyStatus({ hotkey: registered, message: `热键 ${registered} 已就绪` })
+  } else {
+    logger('hotkey-unavailable', 'no accelerator could be registered')
+    new Notification({
+      title: 'Selected Text Translator',
+      body: '全局热键被占用,请用托盘菜单打开主窗口,或换一个快捷键。',
+    }).show()
+    windows.notifyStatus({ hotkey: '', message: '热键注册失败,请用托盘菜单打开主窗口' })
+  }
 
   if (process.platform === 'darwin' && app.dock) app.dock.hide()
   logger('ready', process.platform)
@@ -88,4 +140,5 @@ app.whenReady().then(bootstrap).catch((error) => {
 })
 
 app.on('window-all-closed', (event) => event.preventDefault())
+app.on('before-quit', () => windows?.setQuitting())
 app.on('will-quit', () => globalShortcut.unregisterAll())
