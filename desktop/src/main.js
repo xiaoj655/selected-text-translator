@@ -75,6 +75,20 @@ function installIpc(storage, history) {
   ipcMain.handle('stt:get-hotkey', () => shortcuts.current() || '')
   ipcMain.handle('stt:set-hotkey', (_event, value) => shortcuts.register(value))
   ipcMain.handle('stt:platform', () => process.platform)
+  ipcMain.handle('stt:get-flags', () => ({
+    alwaysOnTop: windows.getAlwaysOnTop(),
+    loginItem: app.getLoginItemSettings().openAtLogin,
+  }))
+  ipcMain.handle('stt:set-always-on-top', (_event, flag) => {
+    windows.setAlwaysOnTop(flag)
+    void storage.sync.set({ desktop_always_on_top: Boolean(flag) })
+    return true
+  })
+  ipcMain.handle('stt:set-login-item', (_event, flag) => {
+    app.setLoginItemSettings({ openAtLogin: Boolean(flag) })
+    void storage.sync.set({ desktop_login_item: Boolean(flag) })
+    return true
+  })
   ipcMain.handle('stt:copy-text', (_event, text) => {
     clipboard.writeText(String(text || ''))
     return true
@@ -101,6 +115,13 @@ async function bootstrap() {
   const history = createHistory(userDataDir)
   const tts = createTts({ logger })
   windows = createWindows({ desktopDir, userDataDir, logger })
+  try {
+    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item'])
+    if (flags?.desktop_always_on_top) windows.setAlwaysOnTop(true)
+    if (flags?.desktop_login_item) app.setLoginItemSettings({ openAtLogin: true })
+  } catch {
+    // window flags are best effort
+  }
   const shim = installMainChrome({ storage, windows, tts, logger })
   dispatch = shim.dispatch
   capture = createCapture({ clipboard, logger })

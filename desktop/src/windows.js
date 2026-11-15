@@ -17,6 +17,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let main = null
   let mainReady = null
   let isQuitting = false
+  let alwaysOnTop = false
   let tray = null
 
   function loadBounds() {
@@ -88,6 +89,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     mainReady = new Promise((resolve) => {
       main.webContents.once('did-finish-load', resolve)
     })
+    main.setAlwaysOnTop(alwaysOnTop, 'floating')
     main.loadFile(join(appDir, 'index.html'))
     main.on('close', (event) => {
       saveBounds(main)
@@ -114,6 +116,11 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
 
   function hideMainWindow() {
     if (main && !main.isDestroyed()) main.hide()
+  }
+
+  function setAlwaysOnTop(flag) {
+    alwaysOnTop = Boolean(flag)
+    if (main && !main.isDestroyed()) main.setAlwaysOnTop(alwaysOnTop, 'floating')
   }
 
   function toggleMainWindow() {
@@ -182,6 +189,8 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     showMainWindow,
     hideMainWindow,
     toggleMainWindow,
+    setAlwaysOnTop,
+    getAlwaysOnTop: () => alwaysOnTop,
     open,
     createTray,
     notifyStatus: (payload) => broadcast('stt:status', payload),

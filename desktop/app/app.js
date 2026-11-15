@@ -93,6 +93,7 @@ function hideNotice() {
 function openSettings() {
   $('settings-panel').hidden = false
   void loadSettings()
+  void loadFlags()
   renderDiagnostics()
   $('cfg-base-url').focus()
 }
@@ -100,6 +101,16 @@ function openSettings() {
 function closeSettings() {
   $('settings-panel').hidden = true
   $('input').focus()
+}
+
+async function loadFlags() {
+  try {
+    const flags = await window.sttDesktop.getFlags()
+    $('opt-always-on-top').checked = Boolean(flags?.alwaysOnTop)
+    $('opt-login-item').checked = Boolean(flags?.loginItem)
+  } catch {
+    // flags are optional
+  }
 }
 
 async function loadSettings() {
@@ -633,6 +644,14 @@ function bind() {
   })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())
+  $('opt-always-on-top').addEventListener('change', (event) => {
+    void window.sttDesktop.setAlwaysOnTop(event.target.checked)
+    setStatus(event.target.checked ? '窗口已置顶' : '已取消置顶')
+  })
+  $('opt-login-item').addEventListener('change', (event) => {
+    void window.sttDesktop.setLoginItem(event.target.checked)
+    setStatus(event.target.checked ? '已开启开机自启' : '已关闭开机自启')
+  })
   $('btn-clear').addEventListener('click', () => {
     state.entries = []
     void window.sttDesktop.clearHistory()

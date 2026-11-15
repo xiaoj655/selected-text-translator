@@ -128,4 +128,13 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   platform() {
     return ipcRenderer.invoke('stt:platform')
   },
+  getFlags() {
+    return ipcRenderer.invoke('stt:get-flags')
+  },
+  setAlwaysOnTop(flag) {
+    return ipcRenderer.invoke('stt:set-always-on-top', flag)
+  },
+  setLoginItem(flag) {
+    return ipcRenderer.invoke('stt:set-login-item', flag)
+  },
 })
