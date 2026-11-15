@@ -27,9 +27,15 @@
 
     <footer class="composer">
       <div class="composer-box">
-        <textarea id="input" rows="2" placeholder="粘贴或输入要翻译的内容…  选中文字后按热键可自动带入"></textarea>
+        <textarea id="input" rows="1" placeholder="粘贴或输入要翻译的内容…  选中文字后按热键可自动带入"></textarea>
         <div class="composer-actions">
-          <span class="composer-hint" id="composer-hint">Ctrl+Enter 发送 · Enter 换行</span>
+          <div class="composer-left">
+            <button id="btn-clear-input" type="button" title="清空输入框">清空输入</button>
+            <span class="composer-hint" id="composer-hint">Ctrl+Enter 发送 · Enter 换行</span>
+            <span class="char-count" id="char-count">0 字</span>
+            <label class="mini-toggle"><input type="checkbox" id="opt-paste" checked>粘贴后自动翻译</label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-enter">Enter 发送</label>
+          </div>
           <button id="btn-send" class="primary" type="button">翻译</button>
         </div>
       </div>

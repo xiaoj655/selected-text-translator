@@ -8,6 +8,7 @@ const state = {
   speechId: null,
   hotkey: '',
   capture: null,
+  prefs: { pasteAutoSubmit: true, enterToSend: false },
 }
 
 function el(tag, className, text) {
@@ -24,6 +25,29 @@ function makeId(prefix) {
 
 function setStatus(text) {
   $('statusbar').textContent = text
+}
+
+function updateComposer() {
+  const input = $('input')
+  input.style.height = 'auto'
+  input.style.height = `${Math.min(160, Math.max(38, input.scrollHeight))}px`
+  $('char-count').textContent = `${input.value.trim().length} 字`
+  $('composer-hint').textContent = state.prefs.enterToSend
+    ? 'Enter 发送 · Shift+Enter 换行' : 'Ctrl+Enter 发送 · Enter 换行'
+}
+
+async function savePrefs() {
+  try {
+    await chrome.storage.sync.set({ desktop_prefs: state.prefs })
+  } catch {
+    // preferences are best effort
+  }
+}
+
+function applyPrefs() {
+  $('opt-paste').checked = state.prefs.pasteAutoSubmit !== false
+  $('opt-enter').checked = state.prefs.enterToSend === true
+  updateComposer()
 }
 
 function showNotice(text, kind = 'info', action) {
@@ -137,9 +161,11 @@ function submit() {
   }
   state.entries.push(entry)
   $('input').value = ''
+  updateComposer()
   hideNotice()
   render()
   sendRequest(entry)
+  $('input').focus()
 }
 
 function handleTranslationEvent(payload) {
@@ -477,13 +503,43 @@ function bind() {
     setStatus('已清空对话')
     $('input').focus()
   })
-  $('input').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault()
-      submit()
-    } else if (event.key === 'Escape') {
+  const input = $('input')
+  input.addEventListener('input', updateComposer)
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
       window.sttDesktop.hide()
+      return
     }
+    if (event.key !== 'Enter') return
+    const modifier = event.ctrlKey || event.metaKey
+    const shouldSubmit = state.prefs.enterToSend
+      ? (!modifier && !event.shiftKey)
+      : modifier
+    if (!shouldSubmit) return
+    event.preventDefault()
+    submit()
+  })
+  input.addEventListener('paste', () => {
+    if (state.prefs.pasteAutoSubmit === false) return
+    setTimeout(() => {
+      if (input.value.trim()) submit()
+      else updateComposer()
+    }, 0)
+  })
+  $('btn-clear-input').addEventListener('click', () => {
+    input.value = ''
+    updateComposer()
+    input.focus()
+  })
+  $('opt-paste').addEventListener('change', (event) => {
+    state.prefs.pasteAutoSubmit = event.target.checked
+    void savePrefs()
+    setStatus(event.target.checked ? '粘贴后会自动翻译' : '粘贴后需手动点翻译')
+  })
+  $('opt-enter').addEventListener('change', (event) => {
+    state.prefs.enterToSend = event.target.checked
+    void savePrefs()
+    updateComposer()
   })
 
   document.addEventListener('keydown', (event) => {
@@ -505,6 +561,7 @@ function bind() {
     void checkConfig()
     if (text) {
       $('input').value = text
+      updateComposer()
       setStatus(`已取到 ${text.length} 字 · 来源:${payload.source || '剪贴板'}`)
       submit()
     } else {
@@ -529,6 +586,15 @@ async function init() {
     // default mode
   }
   renderModes()
+  try {
+    const savedPrefs = await chrome.storage.sync.get(['desktop_prefs'])
+    if (savedPrefs?.desktop_prefs && typeof savedPrefs.desktop_prefs === 'object') {
+      state.prefs = { ...state.prefs, ...savedPrefs.desktop_prefs }
+    }
+  } catch {
+    // default preferences
+  }
+  applyPrefs()
   await checkConfig()
   try {
     state.hotkey = await window.sttDesktop.getHotkey()
