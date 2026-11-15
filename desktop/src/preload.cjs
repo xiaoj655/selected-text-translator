@@ -107,6 +107,15 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   hide() {
     ipcRenderer.send('stt:hide')
   },
+  loadHistory() {
+    return ipcRenderer.invoke('stt:history-load')
+  },
+  saveHistory(entries) {
+    return ipcRenderer.invoke('stt:history-save', entries)
+  },
+  clearHistory() {
+    return ipcRenderer.invoke('stt:history-clear')
+  },
   hotkeyOptions() {
     return ipcRenderer.invoke('stt:hotkey-options')
   },

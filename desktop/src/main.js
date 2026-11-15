@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { app, clipboard, globalShortcut, ipcMain, Notification, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
+import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
 import { createWindows } from './windows.js'
 import { createCapture } from './capture.js'
@@ -56,7 +57,10 @@ async function onHotkey() {
   }
 }
 
-function installIpc(storage) {
+function installIpc(storage, history) {
+  ipcMain.handle('stt:history-load', () => history.load())
+  ipcMain.handle('stt:history-save', (_event, entries) => history.save(entries))
+  ipcMain.handle('stt:history-clear', () => history.clear())
   ipcMain.handle('stt:message', (event, message) => dispatch(message, windows.senderFor(event.sender)))
   ipcMain.handle('stt:storage', (_event, request) => {
     const store = request?.area === 'local' ? storage.local : storage.sync
@@ -94,6 +98,7 @@ async function bootstrap() {
   }
 
   const storage = createStorage(userDataDir)
+  const history = createHistory(userDataDir)
   const tts = createTts({ logger })
   windows = createWindows({ desktopDir, userDataDir, logger })
   const shim = installMainChrome({ storage, windows, tts, logger })
@@ -101,7 +106,7 @@ async function bootstrap() {
   capture = createCapture({ clipboard, logger })
   shortcuts = createShortcuts({ globalShortcut, storage, onTrigger: onHotkey, logger })
 
-  installIpc(storage)
+  installIpc(storage, history)
 
   await import(pathToFileURL(join(vendorDir, 'background.js')).href)
   logger('background module loaded')

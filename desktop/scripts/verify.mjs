@@ -33,5 +33,8 @@ assert.match(appSource, /START_TRANSLATION/u, 'app must drive the translation pr
 assert.match(appSource, /onSelection/u, 'app must accept hotkey payloads')
 assert.match(mainSource, /showMainWindow/u, 'hotkey must always reveal the main window')
 assert.ok(existsSync(join(root, 'app', 'app.css')), 'stylesheet is required')
+assert.ok(existsSync(join(root, 'src', 'history.js')), 'history persistence is required')
+assert.match(mainSource, /createHistory/u, 'history must be wired into the main process')
+assert.match(appSource, /loadHistory/u, 'app must restore history')
 
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

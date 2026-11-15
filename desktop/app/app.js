@@ -50,6 +50,14 @@ function applyPrefs() {
   updateComposer()
 }
 
+let persistTimer
+function persistHistory() {
+  clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    void window.sttDesktop.saveHistory(state.entries)
+  }, 300)
+}
+
 function showNotice(text, kind = 'info', action) {
   const node = $('notice')
   node.replaceChildren(el('span', '', text))
@@ -198,6 +206,7 @@ function handleTranslationEvent(payload) {
     default:
       return
   }
+  if (['done', 'error'].includes(entry.status)) persistHistory()
   renderEntry(entry)
 }
 
@@ -367,6 +376,16 @@ function renderActions(entry) {
       setStatus('结果已复制到剪贴板')
     })
   }
+  add('复制原文', () => {
+    window.sttDesktop.copyText(entry.text)
+    setStatus('原文已复制到剪贴板')
+  })
+  add('回填输入框', () => {
+    $('input').value = entry.text
+    updateComposer()
+    $('input').focus()
+    setStatus('已回填到输入框')
+  })
   add(state.speechId ? '■ 停止朗读' : '▷ 朗读原文', () => toggleSpeech(entry))
   add('重新生成', () => regenerate(entry))
   add('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
@@ -382,7 +401,14 @@ function renderEntryEl(entry) {
   wrapper.dataset.entryId = entry.id
 
   const source = el('div', 'entry-source')
-  source.append(el('div', 'bubble', entry.text))
+  const bubble = el('div', 'bubble', entry.text)
+  bubble.title = '点击回填到输入框'
+  bubble.addEventListener('click', () => {
+    $('input').value = entry.text
+    updateComposer()
+    $('input').focus()
+  })
+  source.append(bubble)
   wrapper.append(source)
 
   const card = el('div', 'entry-card')
@@ -399,6 +425,7 @@ function renderEntryEl(entry) {
 }
 
 function render() {
+  persistHistory()
   const stream = $('stream')
   stream.replaceChildren()
   if (!state.entries.length) stream.append(renderEmpty())
@@ -499,6 +526,7 @@ function bind() {
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-clear').addEventListener('click', () => {
     state.entries = []
+    void window.sttDesktop.clearHistory()
     render()
     setStatus('已清空对话')
     $('input').focus()
@@ -595,6 +623,18 @@ async function init() {
     // default preferences
   }
   applyPrefs()
+  try {
+    const restored = await window.sttDesktop.loadHistory()
+    if (Array.isArray(restored) && restored.length) {
+      state.entries = restored.map((entry) => ({
+        ...entry,
+        status: entry.status === 'done' ? 'done' : 'error',
+        error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
+      }))
+    }
+  } catch {
+    // history is optional
+  }
   await checkConfig()
   try {
     state.hotkey = await window.sttDesktop.getHotkey()

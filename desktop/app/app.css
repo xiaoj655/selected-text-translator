@@ -69,7 +69,10 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .entry-source .bubble {
   background: var(--accent); color: #fff; padding: 9px 13px; border-radius: 14px 14px 3px 14px;
   max-width: 82%; white-space: pre-wrap; word-break: break-word; font-size: 13.5px;
+  cursor: pointer;
 }
+.entry-source .bubble:hover { filter: brightness(1.08); }
+.entry-source .bubble::after { content: ' ↺'; opacity: .65; font-size: 11px; }
 .entry-card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px 16px; box-shadow: 0 2px 10px #1a34230a;
