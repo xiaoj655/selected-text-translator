@@ -44,7 +44,12 @@ npm run dist -- --linux
 
 产物在 `desktop/dist/`(已 gitignore)。
 
-CI 在 `desktop` 分支 push 或手动 `workflow_dispatch` 时,用 `macos-latest` / `windows-latest` 分别产出 dmg/zip 与 exe/zip,并作为 Artifact 上传。
+CI 在 `desktop` 分支 push 或手动 `workflow_dispatch` 时,用 `macos-latest` / `windows-latest` 分别产出安装包并作为 Artifact 上传:
+
+- macOS:`...-x64.dmg`(Intel)与 `...-arm64.dmg`(Apple Silicon),以及对应的 zip;
+- Windows:`Selected Text Translator Setup 0.8.0.exe`(x64)与 win zip。
+
+在 Actions 运行页的 Artifacts 里下载,实机测试时按机器架构选对应 dmg。
 
 **当前产物未签名**:`mac.identity` 为 `null`,Windows 未提供代码签名证书。macOS 首次打开需在「系统设置 → 隐私与安全性」中允许,Windows 可能出现 SmartScreen 提示。若要签名与公证,在仓库 Secrets 中配置 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`,并移除 `mac.identity` 配置。
 

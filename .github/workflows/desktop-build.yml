@@ -41,6 +41,10 @@ jobs:
       - name: Sync shared sources
         run: node desktop/scripts/sync-src.mjs
 
+      - name: Smoke test
+        working-directory: desktop
+        run: npm run smoke
+
       - name: Build installer
         working-directory: desktop
         run: npm run dist -- ${{ matrix.args }}

@@ -49,7 +49,7 @@ function installIpc(storage) {
 async function bootstrap() {
   const userDataDir = app.getPath('userData')
   mkdirSync(userDataDir, { recursive: true })
-  if (safeStorage.isEncryptionAvailable()) {
+  if (typeof safeStorage.encryptString === 'function' && typeof safeStorage.decryptString === 'function') {
     setCrypto({
       encrypt: (value) => safeStorage.encryptString(value).toString('base64'),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),
