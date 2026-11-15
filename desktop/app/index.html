@@ -23,6 +23,24 @@
 
     <div class="notice" id="notice" hidden></div>
 
+    <section class="drawer" id="settings-panel" hidden>
+      <div class="drawer-head">
+        <h2>模型设置</h2>
+        <button id="btn-close-settings" type="button">关闭</button>
+      </div>
+      <p class="drawer-tip">信息只保存在本机,不会上传。</p>
+      <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1"></label>
+      <label>API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false"></label>
+      <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash"></label>
+      <label>学习模型(可选)<input id="cfg-learning" list="model-list" spellcheck="false" placeholder="引导理解与音标"></label>
+      <datalist id="model-list"></datalist>
+      <div class="drawer-actions">
+        <button id="btn-discover" type="button">检测连接</button>
+        <button id="btn-save-settings" class="primary" type="button">保存</button>
+      </div>
+      <p class="drawer-status" id="settings-status"></p>
+    </section>
+
     <main class="stream" id="stream"></main>
 
     <footer class="composer">

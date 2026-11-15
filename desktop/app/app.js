@@ -75,6 +75,81 @@ function hideNotice() {
   $('notice').hidden = true
 }
 
+function openSettings() {
+  $('settings-panel').hidden = false
+  void loadSettings()
+  $('cfg-base-url').focus()
+}
+
+function closeSettings() {
+  $('settings-panel').hidden = true
+  $('input').focus()
+}
+
+async function loadSettings() {
+  try {
+    const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model'])
+    $('cfg-base-url').value = String(values?.base_url || '')
+    $('cfg-api-key').value = String(values?.api_key || '')
+    $('cfg-model').value = String(values?.model || '')
+    $('cfg-learning').value = String(values?.learning_model || '')
+  } catch {
+    setStatus('读取设置失败')
+  }
+}
+
+async function saveSettings() {
+  const button = $('btn-save-settings')
+  button.disabled = true
+  $('settings-status').textContent = '正在保存…'
+  const values = {
+    base_url: $('cfg-base-url').value.trim(),
+    api_key: $('cfg-api-key').value.trim(),
+    model: $('cfg-model').value.trim(),
+    learning_model: $('cfg-learning').value.trim(),
+  }
+  try {
+    await chrome.storage.sync.set(values)
+    $('settings-status').textContent = '已保存。'
+    await checkConfig()
+    if (state.configured) {
+      closeSettings()
+      setStatus('模型已连接,可以开始翻译')
+    }
+  } catch {
+    $('settings-status').textContent = '保存失败,请重试。'
+  }
+  button.disabled = false
+}
+
+async function discoverModels() {
+  const button = $('btn-discover')
+  button.disabled = true
+  $('settings-status').textContent = '正在连接并读取模型…'
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'DISCOVER_PROVIDER_MODELS',
+      payload: { baseUrl: $('cfg-base-url').value.trim(), apiKey: $('cfg-api-key').value.trim() },
+    })
+    if (!response?.ok) {
+      $('settings-status').textContent = response?.message || '连接失败,请重试。'
+      return
+    }
+    const models = (response.models || []).filter((model) => !/image|audio|realtime|embedding|rerank|\basr\b|\btts\b/iu.test(model))
+    const list = $('model-list')
+    list.replaceChildren()
+    for (const model of models) {
+      const option = document.createElement('option')
+      option.value = model
+      list.append(option)
+    }
+    $('settings-status').textContent = `连接成功,找到 ${models.length} 个文本模型。`
+  } catch {
+    $('settings-status').textContent = '连接失败,请检查网络。'
+  }
+  button.disabled = false
+}
+
 async function checkConfig() {
   try {
     const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model'])
@@ -85,7 +160,7 @@ async function checkConfig() {
   if (!state.configured) {
     showNotice('还没有连接模型。填写 API 地址、Key 和模型后才能翻译。', 'info', {
       label: '去设置',
-      run: () => window.sttDesktop.openSettings(),
+      run: openSettings,
     })
   } else if ($('notice').dataset.kind !== 'error') {
     hideNotice()
@@ -522,7 +597,16 @@ function bind() {
     if (button) void setMode(button.dataset.mode)
   })
   $('btn-send').addEventListener('click', submit)
-  $('btn-settings').addEventListener('click', () => window.sttDesktop.openSettings())
+  $('btn-settings').addEventListener('click', openSettings)
+  $('btn-close-settings').addEventListener('click', closeSettings)
+  $('btn-save-settings').addEventListener('click', () => void saveSettings())
+  $('btn-discover').addEventListener('click', () => void discoverModels())
+  $('settings-panel').addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      closeSettings()
+    }
+  })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-clear').addEventListener('click', () => {
     state.entries = []
@@ -643,6 +727,7 @@ async function init() {
   }
   render()
   $('input').focus()
+  if (!state.configured && !state.entries.length) openSettings()
 }
 
 void init()
