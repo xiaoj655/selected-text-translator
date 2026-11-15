@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
+  "author": "xiaoj655",
   "main": "src/main.js",
   "scripts": {
     "sync": "node scripts/sync-src.mjs",
@@ -34,10 +35,6 @@
     "mac": {
       "category": "public.app-category.productivity",
       "identity": null,
-      "arch": [
-        "x64",
-        "arm64"
-      ],
       "target": [
         "dmg",
         "zip"

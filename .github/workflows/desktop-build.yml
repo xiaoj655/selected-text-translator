@@ -17,16 +17,20 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS
             os: macos-latest
-            args: --mac
           - name: Windows
             os: windows-latest
-            args: --win
     steps:
       - uses: actions/checkout@v4
 
@@ -45,15 +49,20 @@ jobs:
         working-directory: desktop
         run: npm run smoke
 
-      - name: Build installer
+      - name: Build macOS x64
+        if: matrix.name == 'macOS'
         working-directory: desktop
-        run: npm run dist -- ${{ matrix.args }}
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run dist -- --mac --x64
+
+      - name: Build macOS arm64
+        if: matrix.name == 'macOS'
+        working-directory: desktop
+        run: npm run dist -- --mac --arm64
+
+      - name: Build Windows
+        if: matrix.name == 'Windows'
+        working-directory: desktop
+        run: npm run dist -- --win
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
