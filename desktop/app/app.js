@@ -8,6 +8,7 @@ const state = {
   speechId: null,
   hotkey: '',
   capture: null,
+  lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false },
 }
 
@@ -25,6 +26,20 @@ function makeId(prefix) {
 
 function setStatus(text) {
   $('statusbar').textContent = text
+  renderDiagnostics()
+}
+
+function renderDiagnostics() {
+  const lines = [
+    `配置:${state.configured ? '已连接' : '未连接'}`,
+    `热键:${state.hotkey || '未注册'}`,
+    `取词:${state.capture?.source || '尚未触发'}`,
+    `模式:${state.mode === 'guide' ? '引导理解' : '翻译'}`,
+  ]
+  if (state.lastElapsed) lines.push(`上次耗时:${state.lastElapsed} ms`)
+  const node = $('diagnostics')
+  if (node) node.textContent = lines.join(' · ')
+  $('statusbar').title = lines.join('\n')
 }
 
 function updateComposer() {
@@ -78,6 +93,7 @@ function hideNotice() {
 function openSettings() {
   $('settings-panel').hidden = false
   void loadSettings()
+  renderDiagnostics()
   $('cfg-base-url').focus()
 }
 
@@ -269,7 +285,8 @@ function handleTranslationEvent(payload) {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
       }
-      setStatus(`完成 · ${Date.now() - entry.createdAt} ms`)
+      state.lastElapsed = Date.now() - entry.createdAt
+      setStatus(`完成 · ${state.lastElapsed} ms`)
       break
     case 'missing-configuration':
     case 'error':
@@ -404,6 +421,13 @@ function renderResult(entry) {
   if (entry.status === 'error') {
     result.classList.add('is-error')
     result.textContent = entry.error
+    const retry = el('button', '', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', () => regenerate(entry))
+    const fix = el('button', '', '去设置')
+    fix.type = 'button'
+    fix.addEventListener('click', openSettings)
+    result.append(' ', retry, ' ', fix)
     return result
   }
   if (entry.status === 'pending' || entry.status === 'loading') {
@@ -608,6 +632,7 @@ function bind() {
     }
   })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
+  $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())
   $('btn-clear').addEventListener('click', () => {
     state.entries = []
     void window.sttDesktop.clearHistory()
@@ -669,6 +694,7 @@ function bind() {
 
   window.sttDesktop.onSelection((payload) => {
     state.capture = payload
+    renderDiagnostics()
     const text = String(payload?.text || '').trim()
     void checkConfig()
     if (text) {
@@ -685,6 +711,7 @@ function bind() {
   window.sttDesktop.onStatus((info) => {
     if (info?.hotkey) state.hotkey = info.hotkey
     if (info?.message) setStatus(info.message)
+    if (info?.hotkey) renderDiagnostics()
     if (!state.entries.length) render()
   })
 }

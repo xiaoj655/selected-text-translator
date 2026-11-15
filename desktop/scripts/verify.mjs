@@ -33,6 +33,8 @@ assert.match(htmlSource, /id="settings-panel"/u, 'in-app settings panel is requi
 assert.match(appSource, /START_TRANSLATION/u, 'app must drive the translation protocol')
 assert.match(appSource, /onSelection/u, 'app must accept hotkey payloads')
 assert.match(appSource, /openSettings/u, 'settings must be reachable in-app')
+assert.match(appSource, /renderDiagnostics/u, 'diagnostics must be visible')
+assert.match(htmlSource, /id="btn-log"/u, 'log access is required')
 assert.match(mainSource, /showMainWindow/u, 'hotkey must always reveal the main window')
 assert.ok(existsSync(join(root, 'app', 'app.css')), 'stylesheet is required')
 assert.ok(existsSync(join(root, 'src', 'history.js')), 'history persistence is required')
