@@ -12,8 +12,18 @@
   --font: 14px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
+:root[data-theme="dark"] {
+  --bg: #1b211d;
+  --panel: #232b25;
+  --ink: #e6ede5;
+  --muted: #99a89b;
+  --line: #37443a;
+  --accent: #7fc4a4;
+  --accent-soft: #2b3d32;
+  --danger: #e08b80;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme="system"] {
     --bg: #1b211d;
     --panel: #232b25;
     --ink: #e6ede5;
@@ -161,3 +171,14 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
   padding: 8px 12px; border-radius: 9px; background: var(--accent-soft);
   color: var(--accent); font-size: 12.5px;
 }
+
+:root[data-font="small"] { --font: 13px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+:root[data-font="large"] { --font: 16px/1.75 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+:root[data-motion="reduced"] .caret { animation: none; }
+:root[data-motion="reduced"] * { scroll-behavior: auto !important; transition: none !important; }
+:root[data-theme="dark"] .notice[data-kind="error"] { background: #3d2b28; }
+.drawer select {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--bg); color: var(--ink); font: var(--font); font-size: 13px;
+}
+.drawer-appearance { display: flex; flex-direction: column; gap: 10px; }

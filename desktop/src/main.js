@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, clipboard, globalShortcut, ipcMain, Notification, safeStorage, shell } from 'electron'
+import { app, clipboard, globalShortcut, ipcMain, nativeTheme, Notification, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
@@ -80,6 +80,10 @@ function installIpc(storage, history) {
     loginItem: app.getLoginItemSettings().openAtLogin,
     clipboardOnly: capture.getMode() === 'clipboard',
   }))
+  ipcMain.handle('stt:set-theme', (_event, theme) => {
+    windows.setTheme(theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors))
+    return true
+  })
   ipcMain.handle('stt:set-capture-mode', (_event, mode) => {
     capture.setMode(mode)
     void storage.sync.set({ desktop_capture_mode: mode === 'clipboard' ? 'clipboard' : 'auto' })

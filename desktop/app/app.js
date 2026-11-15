@@ -9,7 +9,7 @@ const state = {
   hotkey: '',
   capture: null,
   lastElapsed: 0,
-  prefs: { pasteAutoSubmit: true, enterToSend: false },
+  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', reducedMotion: false },
 }
 
 function el(tag, className, text) {
@@ -62,7 +62,19 @@ async function savePrefs() {
 function applyPrefs() {
   $('opt-paste').checked = state.prefs.pasteAutoSubmit !== false
   $('opt-enter').checked = state.prefs.enterToSend === true
+  $('opt-theme').value = ['system', 'light', 'dark'].includes(state.prefs.theme) ? state.prefs.theme : 'system'
+  $('opt-font').value = ['small', 'normal', 'large'].includes(state.prefs.font) ? state.prefs.font : 'normal'
+  $('opt-reduced-motion').checked = state.prefs.reducedMotion === true
   updateComposer()
+  applyAppearance()
+}
+
+function applyAppearance() {
+  const root = document.documentElement
+  root.dataset.theme = state.prefs.theme || 'system'
+  root.dataset.font = state.prefs.font || 'normal'
+  root.dataset.motion = state.prefs.reducedMotion ? 'reduced' : 'full'
+  void window.sttDesktop.setTheme(root.dataset.theme)
 }
 
 let persistTimer
@@ -738,6 +750,21 @@ function bind() {
     state.prefs.enterToSend = event.target.checked
     void savePrefs()
     updateComposer()
+  })
+  $('opt-theme').addEventListener('change', (event) => {
+    state.prefs.theme = event.target.value
+    void savePrefs()
+    applyAppearance()
+  })
+  $('opt-font').addEventListener('change', (event) => {
+    state.prefs.font = event.target.value
+    void savePrefs()
+    applyAppearance()
+  })
+  $('opt-reduced-motion').addEventListener('change', (event) => {
+    state.prefs.reducedMotion = event.target.checked
+    void savePrefs()
+    applyAppearance()
   })
 
   document.addEventListener('keydown', (event) => {

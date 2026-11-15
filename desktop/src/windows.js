@@ -18,6 +18,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let mainReady = null
   let isQuitting = false
   let alwaysOnTop = false
+  let windowBackground = '#f7f8f6'
   let tray = null
 
   function loadBounds() {
@@ -77,7 +78,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       minWidth: 560,
       minHeight: 480,
       title: 'Selected Text Translator',
-      backgroundColor: '#f7f8f6',
+      backgroundColor: windowBackground,
       show: false,
       webPreferences: {
         preload: preloadPath,
@@ -116,6 +117,11 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
 
   function hideMainWindow() {
     if (main && !main.isDestroyed()) main.hide()
+  }
+
+  function setTheme(isDark) {
+    windowBackground = isDark ? '#1b211d' : '#f7f8f6'
+    if (main && !main.isDestroyed()) main.setBackgroundColor(windowBackground)
   }
 
   function setAlwaysOnTop(flag) {
@@ -190,6 +196,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     hideMainWindow,
     toggleMainWindow,
     setAlwaysOnTop,
+    setTheme,
     getAlwaysOnTop: () => alwaysOnTop,
     open,
     createTray,

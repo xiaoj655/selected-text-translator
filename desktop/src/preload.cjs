@@ -140,4 +140,7 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   setCaptureMode(mode) {
     return ipcRenderer.invoke('stt:set-capture-mode', mode)
   },
+  setTheme(theme) {
+    return ipcRenderer.invoke('stt:set-theme', theme)
+  },
 })
