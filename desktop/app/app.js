@@ -356,6 +356,24 @@ function renderEmpty() {
   line2.append(el('kbd', '', state.hotkey || 'Alt+Shift+E'))
   line2.append(')可自动带入并翻译;取不到词时窗口仍会打开,等你粘贴。')
   box.append(line2)
+  box.append(el('p', '', '粘贴后自动翻译 · Ctrl+Enter 发送 · Esc 隐藏窗口 · 托盘菜单可改快捷键、置顶与主题。'))
+  const examples = el('div', 'empty-examples')
+  for (const [label, text] of [
+    ['试一个单词', 'record'],
+    ['试一个句子', 'The report, which was filed late, still changed the decision.'],
+    ['试一段中文', '这份报告虽然提交晚了,但仍然改变了最终决定。'],
+  ]) {
+    const button = el('button', '', label)
+    button.type = 'button'
+    button.addEventListener('click', () => {
+      $('input').value = text
+      updateComposer()
+      $('input').focus()
+      setStatus('已填入示例,点「翻译」或按 Ctrl+Enter')
+    })
+    examples.append(button)
+  }
+  box.append(examples)
   return box
 }
 

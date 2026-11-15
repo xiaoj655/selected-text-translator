@@ -148,6 +148,7 @@ async function bootstrap() {
   await import(pathToFileURL(join(vendorDir, 'background.js')).href)
   logger('background module loaded')
 
+  windows.ensureMainWindow()
   windows.createTray({
     onTrigger: onHotkey,
     onQuit: () => app.quit(),

@@ -182,3 +182,10 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
   background: var(--bg); color: var(--ink); font: var(--font); font-size: 13px;
 }
 .drawer-appearance { display: flex; flex-direction: column; gap: 10px; }
+
+.empty-examples { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.empty-examples button {
+  padding: 6px 12px; border-radius: 9px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--accent); font-size: 12px;
+}
+.empty-examples button:hover { background: var(--accent-soft); }

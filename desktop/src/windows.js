@@ -82,7 +82,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       show: false,
       webPreferences: {
         preload: preloadPath,
-        contextIsolation: true,
+        contextIsolation: false,
         nodeIntegration: false,
         sandbox: false,
       },
@@ -147,7 +147,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       title: key === 'library' ? '我的表达本' : key === 'options' ? '高级设置' : '设置',
       webPreferences: {
         preload: preloadPath,
-        contextIsolation: true,
+        contextIsolation: false,
         nodeIntegration: false,
         sandbox: false,
       },
@@ -192,6 +192,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     broadcast,
     sendToWindow,
     senderFor,
+    ensureMainWindow,
     showMainWindow,
     hideMainWindow,
     toggleMainWindow,

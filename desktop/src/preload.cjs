@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { ipcRenderer } = require('electron')
 
 const messageListeners = new Set()
 const storageListeners = new Set()
@@ -39,7 +39,7 @@ function withCallback(promise, callback) {
   return promise
 }
 
-const chrome = {
+const chromeShim = {
   runtime: {
     lastError: undefined,
     onMessage: {
@@ -84,8 +84,18 @@ const chrome = {
   },
 }
 
-contextBridge.exposeInMainWorld('chrome', chrome)
-contextBridge.exposeInMainWorld('sttDesktop', {
+try {
+  delete window.chrome
+} catch {
+  // chromium exposes a built-in chrome object in some versions
+}
+try {
+  Object.defineProperty(window, 'chrome', { value: chromeShim, configurable: true, writable: true })
+} catch {
+  window.chrome = chromeShim
+}
+
+window.sttDesktop = {
   onSelection(callback) {
     ipcRenderer.on('stt:selection', (_event, payload) => callback(payload))
   },
@@ -143,4 +153,4 @@ contextBridge.exposeInMainWorld('sttDesktop', {
   setTheme(theme) {
     return ipcRenderer.invoke('stt:set-theme', theme)
   },
-})
+}
