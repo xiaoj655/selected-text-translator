@@ -181,6 +181,154 @@ function jumpToEntry(id) {
   setTimeout(() => node.classList.remove('is-highlight'), 1600)
 }
 
+function formatStamp() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function entryHeading(entry, index) {
+  const kind = entry.mode === 'guide' ? '引导理解' : '翻译'
+  const time = new Date(entry.createdAt).toLocaleString('zh-CN', { hour12: false })
+  return `${index + 1}. ${kind} · ${time}`
+}
+
+function buildMarkdown() {
+  const lines = ['# 划词翻译记录', '']
+  lines.push(`> 导出时间:${new Date().toLocaleString('zh-CN', { hour12: false })} · 共 ${state.entries.length} 条记录`, '')
+  state.entries.forEach((entry, index) => {
+    lines.push('---', '', `## ${entryHeading(entry, index)}`, '')
+    lines.push('**原文**', '', `> ${String(entry.text || '').replace(/\n/g, '\n> ')}`, '')
+    if (entry.status === 'error') {
+      lines.push('**状态**:失败', '', `> ${entry.error || '未知错误'}`, '')
+      return
+    }
+    if (entry.mode === 'guide') {
+      const guide = entry.guide
+      if (guide?.phonetic) lines.push(`**音标**:${guide.phonetic}`, '')
+      if (Array.isArray(guide?.hints) && guide.hints.length) {
+        lines.push('**逐步提示**', '')
+        guide.hints.forEach((hint, i) => lines.push(`${i + 1}. ${hint}`))
+        lines.push('')
+      }
+      const answer = guide?.answer
+      if (answer) {
+        lines.push('**揭晓答案**', '')
+        if (answer.meaning) lines.push(`- **含义**:${answer.meaning}`)
+        if (answer.explanation) lines.push(`- **解释**:${answer.explanation}`)
+        if (answer.example) lines.push(`- **例句**:${answer.example}`)
+        if (answer.usage) lines.push(`- **用法**:${answer.usage}`)
+        lines.push('')
+      }
+      return
+    }
+    lines.push('**译文**', '', resultText(entry) || '（无结果）', '')
+    const lexical = entry.lexical
+    if (lexical) {
+      lines.push('**词典解析**', '')
+      if (lexical.phonetic) lines.push(`- **音标**:${lexical.phonetic}`)
+      if (Array.isArray(lexical.definitions)) {
+        lexical.definitions.forEach((item) => {
+          const example = item.example?.source
+            ? ` → *${item.example.source}${item.example.target ? ' / ' + item.example.target : ''}*`
+            : ''
+          lines.push(`- **${item.pos || '释义'}**:${item.meaning || ''}${example}`)
+        })
+      }
+      if (lexical.contextual_analysis) lines.push(`- **语境分析**:${lexical.contextual_analysis}`)
+      lines.push('')
+    }
+  })
+  return lines.join('\n')
+}
+
+function buildJson() {
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    app: 'Selected Text Translator',
+    count: state.entries.length,
+    entries: state.entries.map((entry) => ({
+      id: entry.id,
+      mode: entry.mode,
+      status: entry.status,
+      text: entry.text,
+      translatedText: entry.translatedText || '',
+      lexical: entry.lexical || null,
+      guide: entry.guide || null,
+      error: entry.error || '',
+      createdAt: entry.createdAt,
+    })),
+  }, null, 2)
+}
+
+function downloadText(filename, content, mime) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
+function updateStats() {
+  const entries = state.entries
+  const guides = entries.filter((entry) => entry.mode === 'guide').length
+  const chars = entries.reduce((sum, entry) => sum + String(entry.text || '').length, 0)
+  const node = $('status-stats')
+  node.textContent = `共 ${entries.length} 条 · 翻译 ${entries.length - guides} · 引导 ${guides} · 原文 ${chars.toLocaleString('zh-CN')} 字`
+  node.title = `本次会话共 ${entries.length} 条记录,原文累计 ${chars} 字`
+}
+
+function isExportOpen() {
+  return !$('export-menu').hidden
+}
+
+function openExportMenu() {
+  const menu = $('export-menu')
+  const rect = $('btn-export').getBoundingClientRect()
+  const appWidth = menu.offsetParent?.clientWidth || window.innerWidth
+  menu.style.right = `${Math.max(16, Math.round(appWidth - rect.right))}px`
+  menu.hidden = false
+  $('btn-export').setAttribute('aria-expanded', 'true')
+  $('export-note').textContent = state.entries.length
+    ? `共 ${state.entries.length} 条记录 · 将导出全部对话`
+    : '还没有可导出的记录'
+}
+
+function closeExportMenu() {
+  $('export-menu').hidden = true
+  $('btn-export').setAttribute('aria-expanded', 'false')
+}
+
+function toggleExportMenu() {
+  if (isExportOpen()) {
+    closeExportMenu()
+    return
+  }
+  $('help-overlay').hidden = true
+  closeSidebar()
+  openExportMenu()
+}
+
+function runExport(kind) {
+  if (!state.entries.length) {
+    setStatus('还没有可导出的记录')
+    return
+  }
+  if (kind === 'md') {
+    downloadText(`划词翻译-${formatStamp()}.md`, buildMarkdown(), 'text/markdown')
+    setStatus(`已导出 ${state.entries.length} 条记录为 Markdown`)
+  } else if (kind === 'json') {
+    downloadText(`划词翻译-${formatStamp()}.json`, buildJson(), 'application/json')
+    setStatus(`已导出 ${state.entries.length} 条记录为 JSON`)
+  } else if (kind === 'copy') {
+    window.sttDesktop.copyText(buildMarkdown())
+    setStatus('已复制全部记录为 Markdown')
+  }
+  closeExportMenu()
+}
+
 async function savePrefs() {
   try {
     await chrome.storage.sync.set({ desktop_prefs: state.prefs })
@@ -725,6 +873,10 @@ function renderEntryEl(entry) {
   card.append(head)
 
   const body = el('div', 'entry-body')
+  const label = entry.status === 'error' ? '出错了'
+    : ['pending', 'loading', 'streaming'].includes(entry.status) ? '正在处理'
+      : entry.mode === 'guide' ? '引导解析' : '译文'
+  body.append(el('div', 'result-label', label))
   body.append(renderResult(entry))
   body.append(renderActions(entry))
   if (collapsed) body.hidden = true
@@ -742,6 +894,7 @@ function render() {
   stream.scrollTop = stream.scrollHeight
   updateScrollFab()
   renderHistory()
+  updateStats()
 }
 
 function renderEntry(entry) {
@@ -755,6 +908,7 @@ function renderEntry(entry) {
   if (['pending', 'loading', 'streaming'].includes(entry.status)) stream.scrollTop = stream.scrollHeight
   updateScrollFab()
   renderHistory()
+  updateStats()
 }
 
 function cancelRequest(entry) {
@@ -901,6 +1055,11 @@ function bind() {
         hideHelp()
         return
       }
+      if (isExportOpen()) {
+        event.stopPropagation()
+        closeExportMenu()
+        return
+      }
       if (isSidebarOpen()) {
         event.stopPropagation()
         closeSidebar()
@@ -963,6 +1122,19 @@ function bind() {
     applyPrefs()
     setStatus(`已切换强调色:${swatch.title}`)
   })
+  $('btn-export').addEventListener('click', (event) => {
+    event.stopPropagation()
+    toggleExportMenu()
+  })
+  $('export-menu').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-export]')
+    if (button) runExport(button.dataset.export)
+  })
+  document.addEventListener('click', (event) => {
+    if (!isExportOpen()) return
+    if ($('export-menu').contains(event.target) || $('btn-export').contains(event.target)) return
+    closeExportMenu()
+  })
 
   $('btn-help').addEventListener('click', toggleHelp)
   $('btn-close-help').addEventListener('click', hideHelp)
@@ -1009,6 +1181,11 @@ function bind() {
       toggleSidebar()
       return
     }
+    if (mod && event.key.toLowerCase() === 'e') {
+      event.preventDefault()
+      toggleExportMenu()
+      return
+    }
     if ((mod && event.key === '/') || (event.key === '?' && !isTyping(event.target))) {
       event.preventDefault()
       toggleHelp()
@@ -1017,6 +1194,10 @@ function bind() {
     if (event.key === 'Escape') {
       if (!$('help-overlay').hidden) {
         hideHelp()
+        return
+      }
+      if (isExportOpen()) {
+        closeExportMenu()
         return
       }
       if (isSidebarOpen()) {

@@ -290,6 +290,30 @@ svg { display: block; }
 .entry-card { transition: border-color var(--t), box-shadow var(--t); }
 .entry.is-highlight .entry-card { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft-2), var(--shadow-md); }
 
+.top-actions #btn-export { color: var(--accent); }
+.export-menu {
+  position: absolute; top: 58px; right: 20px; z-index: 18;
+  width: 264px; padding: 8px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md);
+  animation: rise var(--t) both;
+}
+.export-menu[hidden] { display: none; }
+.export-head { padding: 5px 9px 9px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.export-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px; border-radius: 10px; text-align: left; transition: var(--t); }
+.export-menu button svg { width: 17px; height: 17px; flex: none; margin-top: 2px; color: var(--accent); }
+.export-menu button strong { display: block; font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.export-menu button small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+.export-menu button:hover { background: var(--accent-soft); }
+.export-note { margin: 7px 9px 3px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+
+.result-label { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 9px; padding: 3px 9px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.result-label::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.entry-body > .result { font-size: 15.5px; line-height: 1.85; letter-spacing: .005em; }
+.entry-body > .actions { margin-top: 16px; padding-top: 13px; border-top: 1px dashed var(--line); }
+
+.status-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.status-stats { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

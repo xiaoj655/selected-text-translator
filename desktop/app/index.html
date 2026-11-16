@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; style-src 'self'; script-src 'self'; img-src 'self' data:;">
   <title>Selected Text Translator</title>
   <link rel="stylesheet" href="./app.css">
 </head>
@@ -30,6 +30,9 @@
         <button id="btn-settings" type="button" title="模型设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>设置
         </button>
+        <button id="btn-export" type="button" title="导出对话 · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>导出
+        </button>
         <button id="btn-library" type="button" title="我的表达本">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>表达本
         </button>
@@ -44,6 +47,23 @@
         </button>
       </div>
     </header>
+
+    <div class="export-menu" id="export-menu" role="menu" aria-label="导出对话" hidden>
+      <div class="export-head">导出对话</div>
+      <button type="button" data-export="md" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+        <span><strong>Markdown (.md)</strong><small>含原文、译文与词典解析,适合笔记</small></span>
+      </button>
+      <button type="button" data-export="json" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
+        <span><strong>JSON (.json)</strong><small>结构化数据,便于二次处理</small></span>
+      </button>
+      <button type="button" data-export="copy" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span><strong>复制为 Markdown</strong><small>直接写入系统剪贴板</small></span>
+      </button>
+      <p class="export-note" id="export-note">共 0 条记录</p>
+    </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
     <aside class="sidebar" id="sidebar" hidden>
@@ -139,7 +159,10 @@
           </button>
         </div>
       </div>
-      <div class="statusbar" id="statusbar">就绪</div>
+      <div class="status-line">
+        <div class="statusbar" id="statusbar">就绪</div>
+        <span class="status-stats" id="status-stats">共 0 条 · 翻译 0 · 引导 0 · 原文 0 字</span>
+      </div>
     </footer>
 
     <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="回到最新" hidden>
@@ -158,6 +181,7 @@
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></dt><dd>发送并翻译</dd></div>
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></dt><dd>聚焦输入框</dd></div>
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>H</kbd></dt><dd>打开 / 关闭历史侧栏</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>E</kbd></dt><dd>打开 / 关闭导出菜单</dd></div>
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>/</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
           <div><dt><kbd>?</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
           <div><dt><kbd>Esc</kbd></dt><dd>隐藏窗口 / 关闭面板</dd></div>
