@@ -10,7 +10,7 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <button id="btn-history" class="history-trigger" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏">
+      <button id="btn-history" class="history-trigger" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏" aria-keyshortcuts="Control+H Meta+H">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>
       </button>
       <div class="brand">
@@ -28,22 +28,22 @@
         </button>
       </div>
       <div class="top-actions">
-        <button id="btn-settings" type="button" title="模型设置">
+        <button id="btn-settings" type="button" title="模型设置" aria-label="模型设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>设置
         </button>
-        <button id="btn-export" type="button" title="导出对话 · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false">
+        <button id="btn-export" type="button" title="导出对话 · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false" aria-label="导出对话" aria-keyshortcuts="Control+E Meta+E">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>导出
         </button>
-        <button id="btn-library" type="button" title="我的表达本">
+        <button id="btn-library" type="button" title="我的表达本" aria-label="我的表达本">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>表达本
         </button>
-        <button id="btn-clear" type="button" title="清空对话">
+        <button id="btn-clear" type="button" title="清空对话" aria-label="清空对话">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>清空
         </button>
-        <button id="btn-log" type="button" title="打开日志文件">
+        <button id="btn-log" type="button" title="打开日志文件" aria-label="打开日志文件">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>日志
         </button>
-        <button id="btn-help" class="help-trigger" type="button" title="键盘快捷键 · ?" aria-label="键盘快捷键">
+        <button id="btn-help" class="help-trigger" type="button" title="键盘快捷键 · ?" aria-label="键盘快捷键" aria-keyshortcuts="Control+/ Meta+/"
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>
         </button>
       </div>
@@ -70,7 +70,7 @@
     <aside class="sidebar" id="sidebar" role="dialog" aria-modal="true" aria-label="历史记录" hidden>
       <div class="sidebar-head">
         <div><h2>历史记录</h2><p class="drawer-tip">点击条目跳转到对话中对应位置</p></div>
-        <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭">
+        <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭" aria-label="关闭历史侧栏">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
@@ -88,7 +88,7 @@
     <section class="drawer" id="settings-panel" role="dialog" aria-modal="true" aria-label="设置" hidden>
       <div class="drawer-head">
         <div><h2>设置</h2><p class="drawer-tip">所有信息仅保存在本机,不会上传</p></div>
-        <button id="btn-close-settings" class="icon-btn" type="button" title="关闭">
+        <button id="btn-close-settings" class="icon-btn" type="button" title="关闭" aria-label="关闭设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
@@ -150,7 +150,7 @@
       <div class="drawer-diag" id="diagnostics"></div>
     </section>
 
-    <main class="stream" id="stream"></main>
+    <main class="stream" id="stream" aria-label="对话记录"></main>
 
     <footer class="composer">
       <div class="composer-box">
@@ -182,7 +182,7 @@
       </button>
     </div>
 
-    <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="回到最新" hidden>
+    <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="回到最新" aria-label="回到最新" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m6 13 6 6 6-6"/></svg>
     </button>
 
@@ -190,7 +190,7 @@
       <section class="help-pop" role="dialog" aria-modal="true" aria-label="键盘快捷键">
         <div class="help-head">
           <div><h2>键盘快捷键</h2><p class="drawer-tip">更快地使用划词翻译</p></div>
-          <button id="btn-close-help" class="icon-btn" type="button" title="关闭">
+          <button id="btn-close-help" class="icon-btn" type="button" title="关闭" aria-label="关闭帮助">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>

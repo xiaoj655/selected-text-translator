@@ -156,6 +156,16 @@ button::after { transition-duration: var(--md-motion-duration-short2); }
 .actions button.is-done { background: var(--success-soft); color: var(--success); }
 .caret { background: var(--md-sys-color-primary); }
 
+/* M3 keyboard focus — a crisp inset outline that survives forced-colors and clipped surfaces */
+button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: -3px;
+  box-shadow: none;
+}
+@media (forced-colors: active) {
+  button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline-color: Highlight; }
+}
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

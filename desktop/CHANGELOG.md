@@ -1,5 +1,14 @@
 # 桌面端更新记录
 
+## 0.8.37 · 2026-11-16
+
+- 全站键盘焦点改为 M3 高对比 3px primary 描边,替代会被裁切、且在系统高对比模式下消失的 box-shadow 焦点环
+- 描边内嵌(outline-offset:-3px),使 overflow:hidden 的结果卡片与悬浮卡内按钮也能完整显示焦点
+- forced-colors 高对比模式下描边切换为系统 Highlight 色,保证无障碍场景仍可辨识
+- 顶栏图标按钮、三个对话框关闭按钮、回到最新 FAB、悬浮卡控制全部补齐 aria-label,读屏可正确朗读
+- 带快捷键的按钮补充 aria-keyshortcuts,对话区补充区域标签,模式按钮保留 aria-pressed 状态
+- 主窗口与悬浮卡焦点样式一致;不新增功能,只让既有键盘操作与读屏路径完整可达
+
 ## 0.8.36 · 2026-11-16
 
 - 设置抽屉新增 API 地址实时校验(http/https + new URL),行内错误文案与 aria-invalid,不再保存坏地址

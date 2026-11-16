@@ -263,4 +263,12 @@ assert.match(appSource, /aria-invalid/u, 'invalid fields need aria-invalid')
 assert.match(appCss, /\.field-error/u, 'field errors must be styled')
 assert.match(appCss, /\.field-toggle/u, 'the key toggle must be styled')
 
+assert.match(htmlSource, /aria-keyshortcuts/u, 'shortcut buttons must advertise aria-keyshortcuts')
+assert.match(htmlSource, /aria-label="打开日志文件"/u, 'icon-only buttons must have accessible names')
+assert.match(htmlSource, /aria-label="回到最新"/u, 'the scroll FAB must have an accessible name')
+assert.match(cardHtml, /aria-label="在主窗口打开"/u, 'card controls must have accessible names')
+assert.match(appCss, /outline: 3px solid var\(--md-sys-color-primary\)/u, 'focus ring must be a crisp M3 outline')
+assert.match(appCss, /forced-colors: active/u, 'focus ring must survive forced-colors mode')
+assert.match(cardCss, /forced-colors: active/u, 'card focus ring must survive forced-colors mode')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
