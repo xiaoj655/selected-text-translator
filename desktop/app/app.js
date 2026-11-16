@@ -1,4 +1,5 @@
 import { localizeErrorMessage } from './messages.js'
+import { resultText, resultPlainText } from './result-text.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -715,11 +716,6 @@ function stopActiveSpeech() {
   }
 }
 
-function resultText(entry) {
-  if (entry.mode === 'guide') return entry.guide?.answer?.meaning || ''
-  return entry.translatedText
-}
-
 function renderEmpty() {
   const box = el('div', 'empty')
   const hero = el('div', 'empty-hero')
@@ -924,7 +920,7 @@ function renderActions(entry) {
     return button
   }
 
-  const text = resultText(entry)
+  const text = resultPlainText(entry)
   if (text && entry.status === 'done') {
     add('复制结果', (event) => {
       window.sttDesktop.copyText(text)

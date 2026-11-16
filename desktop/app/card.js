@@ -1,4 +1,5 @@
 import { localizeErrorMessage } from './messages.js'
+import { resultPlainText } from './result-text.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -360,7 +361,7 @@ function renderActions() {
   }
 
   if (entry.status === 'done' && entry.translatedText) {
-    add('复制结果', (event) => copyText(entry.translatedText, event.currentTarget))
+    add('复制结果', (event) => copyText(resultPlainText(entry), event.currentTarget))
   }
   add('复制原文', (event) => copyText(entry.text, event.currentTarget))
   add(state.speechId ? '■ 停止' : '▷ 朗读', toggleSpeech)
