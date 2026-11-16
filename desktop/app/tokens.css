@@ -1,0 +1,95 @@
+:root {
+  color-scheme: light dark;
+
+  --bg: #edf0f7;
+  --surface: #ffffff;
+  --surface-2: #f6f8fc;
+  --surface-3: #eef2f9;
+  --ink: #1a2340;
+  --ink-2: #4a5573;
+  --muted: #8b95ad;
+  --line: #e5e9f1;
+  --line-2: #d6dcea;
+
+  --accent: #4f57d6;
+  --accent-2: #7b5cf0;
+  --accent-ink: #ffffff;
+  --accent-soft: #eceeff;
+  --accent-soft-2: #dfe2fc;
+  --grad: linear-gradient(135deg, #4f57d6 0%, #7b5cf0 100%);
+  --grad-glow: #4f57d640;
+
+  --danger: #d24a5f;
+  --danger-soft: #fdecef;
+  --success: #169c72;
+  --success-soft: #e7f7f0;
+
+  --shadow-sm: 0 1px 2px #16204a0d, 0 2px 8px #16204a0a;
+  --shadow-md: 0 4px 14px #16204a12, 0 14px 34px #16204a0d;
+  --shadow-lg: -14px 0 44px #16204a1f;
+  --ring: 0 0 0 3px var(--accent-soft);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 22px;
+  --t: 170ms cubic-bezier(.4, 0, .2, 1);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0d1018;
+  --surface: #161b27;
+  --surface-2: #1c2230;
+  --surface-3: #232a3a;
+  --ink: #eef1fa;
+  --ink-2: #b5bfd6;
+  --muted: #7f8aa4;
+  --line: #28303f;
+  --line-2: #333c4e;
+
+  --accent: #9aa0ff;
+  --accent-2: #b98bff;
+  --accent-ink: #ffffff;
+  --accent-soft: #232540;
+  --accent-soft-2: #2f3257;
+  --grad: linear-gradient(135deg, #5b62e8 0%, #8a5cf0 100%);
+  --grad-glow: #5b62e840;
+
+  --danger: #ff8497;
+  --danger-soft: #3a2230;
+  --success: #4fd0a1;
+  --success-soft: #17342a;
+
+  --shadow-sm: 0 1px 2px #0006, 0 2px 8px #0004;
+  --shadow-md: 0 6px 18px #0006, 0 16px 40px #0005;
+  --shadow-lg: -14px 0 44px #0008;
+  --ring: 0 0 0 3px var(--accent-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #0d1018;
+    --surface: #161b27;
+    --surface-2: #1c2230;
+    --surface-3: #232a3a;
+    --ink: #eef1fa;
+    --ink-2: #b5bfd6;
+    --muted: #7f8aa4;
+    --line: #28303f;
+    --line-2: #333c4e;
+    --accent: #9aa0ff;
+    --accent-2: #b98bff;
+    --accent-ink: #ffffff;
+    --accent-soft: #232540;
+    --accent-soft-2: #2f3257;
+    --grad: linear-gradient(135deg, #5b62e8 0%, #8a5cf0 100%);
+    --grad-glow: #5b62e840;
+    --danger: #ff8497;
+    --danger-soft: #3a2230;
+    --success: #4fd0a1;
+    --success-soft: #17342a;
+    --shadow-sm: 0 1px 2px #0006, 0 2px 8px #0004;
+    --shadow-md: 0 6px 18px #0006, 0 16px 40px #0005;
+    --shadow-lg: -14px 0 44px #0008;
+    --ring: 0 0 0 3px var(--accent-soft);
+  }
+}

@@ -350,6 +350,9 @@ function resultText(entry) {
 
 function renderEmpty() {
   const box = el('div', 'empty')
+  const hero = el('div', 'empty-hero')
+  hero.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
+  box.append(hero)
   box.append(el('h2', '', '随时查词、翻译,或理解一句话'))
   const line1 = el('p', '', '在输入框粘贴或输入文字即可开始;图片、PDF、视频里不能选中的文字也适用。')
   box.append(line1)
@@ -412,6 +415,7 @@ function renderGuide(entry) {
   const guide = entry.guide
   if (!guide) return null
   const box = document.createDocumentFragment()
+  const tools = el('div', 'guide-tools')
   if (guide.phonetic) box.append(lexicalRow('音标', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
     const hints = el('div', 'hints')
@@ -427,7 +431,7 @@ function renderGuide(entry) {
         entry.hintCount += 1
         renderEntry(entry)
       })
-      box.append(more)
+      tools.append(more)
     }
   }
   const answer = guide.answer
@@ -438,31 +442,32 @@ function renderGuide(entry) {
       entry.answerRevealed = !entry.answerRevealed
       renderEntry(entry)
     })
-    box.append(reveal)
-    if (entry.answerRevealed) {
-      const panel = el('div', 'answer')
-      if (answer.meaning) {
-        const p = el('p')
-        p.append(el('strong', '', '含义:'), ` ${answer.meaning}`)
-        panel.append(p)
-      }
-      if (answer.explanation) {
-        const p = el('p')
-        p.append(el('strong', '', '解释:'), ` ${answer.explanation}`)
-        panel.append(p)
-      }
-      if (answer.example) {
-        const p = el('p')
-        p.append(el('strong', '', '例句:'), ` ${answer.example}`)
-        panel.append(p)
-      }
-      if (answer.usage) {
-        const p = el('p')
-        p.append(el('strong', '', '用法:'), ` ${answer.usage}`)
-        panel.append(p)
-      }
-      box.append(panel)
+    tools.append(reveal)
+  }
+  if (tools.childElementCount) box.append(tools)
+  if (answer && entry.answerRevealed) {
+    const panel = el('div', 'answer')
+    if (answer.meaning) {
+      const p = el('p')
+      p.append(el('strong', '', '含义:'), ` ${answer.meaning}`)
+      panel.append(p)
     }
+    if (answer.explanation) {
+      const p = el('p')
+      p.append(el('strong', '', '解释:'), ` ${answer.explanation}`)
+      panel.append(p)
+    }
+    if (answer.example) {
+      const p = el('p')
+      p.append(el('strong', '', '例句:'), ` ${answer.example}`)
+      panel.append(p)
+    }
+    if (answer.usage) {
+      const p = el('p')
+      p.append(el('strong', '', '用法:'), ` ${answer.usage}`)
+      panel.append(p)
+    }
+    box.append(panel)
   }
   return box
 }
@@ -568,9 +573,9 @@ function renderEntryEl(entry) {
   const card = el('div', 'entry-card')
   const head = el('div', 'entry-head')
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
-  head.append(el('span', '', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
+  head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
-  head.append(el('span', '', `${entry.text.length} 字`))
+  head.append(el('span', 'meta', `${entry.text.length} 字`))
   card.append(head)
   card.append(renderResult(entry))
   card.append(renderActions(entry))

@@ -85,4 +85,15 @@ const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
 assert.ok(changelog.split('\n').some((line) => line.startsWith(`## ${pkg.version}`)),
   `CHANGELOG.md must document v${pkg.version} (used for release notes)`)
 
+const tokensCss = readFileSync(join(root, 'app', 'tokens.css'), 'utf8')
+assert.match(tokensCss, /--grad:/u, 'shared tokens must define the accent gradient')
+assert.match(tokensCss, /data-theme="dark"/u, 'shared tokens must support dark theme')
+const appCss = readFileSync(join(root, 'app', 'app.css'), 'utf8')
+assert.match(appCss, /@import '\.\/tokens\.css'/u, 'main window must use shared tokens')
+assert.match(cardCss, /@import '\.\/tokens\.css'/u, 'card must use shared tokens')
+assert.match(appCss, /\.notice\[hidden\]/u, 'hidden notice must stay hidden')
+assert.match(htmlSource, /brand-mark/u, 'topbar needs the gradient brand mark')
+assert.match(appSource, /empty-hero/u, 'empty state needs a hero mark')
+assert.match(appSource, /guide-tools/u, 'guide actions need grouped controls')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

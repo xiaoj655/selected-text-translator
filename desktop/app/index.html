@@ -9,16 +9,33 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="brand"><span class="brand-dot"></span><h1>Selected Text Translator</h1></div>
+      <div class="brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+        </span>
+        <div><h1>Selected Text Translator</h1><small>划词翻译 · 阅读助手</small></div>
+      </div>
       <div class="modes" id="modes">
-        <button class="mode is-active" data-mode="translate" type="button">翻译</button>
-        <button class="mode" data-mode="guide" type="button">引导理解</button>
+        <button class="mode is-active" data-mode="translate" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>翻译
+        </button>
+        <button class="mode" data-mode="guide" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5A5 5 0 0 0 12 3a6 6 0 0 0-6 6c0 1 .2 2.2 1.5 3.5.7.8 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>引导理解
+        </button>
       </div>
       <div class="top-actions">
-        <button id="btn-settings" type="button" title="模型设置">设置</button>
-        <button id="btn-library" type="button" title="我的表达本">表达本</button>
-        <button id="btn-clear" type="button" title="清空对话">清空</button>
-        <button id="btn-log" type="button" title="打开日志文件">日志</button>
+        <button id="btn-settings" type="button" title="模型设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>设置
+        </button>
+        <button id="btn-library" type="button" title="我的表达本">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>表达本
+        </button>
+        <button id="btn-clear" type="button" title="清空对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>清空
+        </button>
+        <button id="btn-log" type="button" title="打开日志文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>日志
+        </button>
       </div>
     </header>
 
@@ -26,33 +43,48 @@
 
     <section class="drawer" id="settings-panel" hidden>
       <div class="drawer-head">
-        <h2>模型设置</h2>
-        <button id="btn-close-settings" type="button">关闭</button>
+        <div><h2>设置</h2><p class="drawer-tip">所有信息仅保存在本机,不会上传</p></div>
+        <button id="btn-close-settings" class="icon-btn" type="button" title="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
       </div>
-      <p class="drawer-tip">信息只保存在本机,不会上传。</p>
-      <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1"></label>
-      <label>API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false"></label>
-      <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash"></label>
-      <label>学习模型(可选)<input id="cfg-learning" list="model-list" spellcheck="false" placeholder="引导理解与音标"></label>
-      <datalist id="model-list"></datalist>
-      <div class="drawer-actions">
-        <button id="btn-discover" type="button">检测连接</button>
-        <button id="btn-save-settings" class="primary" type="button">保存</button>
-      </div>
-      <p class="drawer-status" id="settings-status"></p>
-      <div class="drawer-flags">
-        <label class="mini-toggle"><input type="checkbox" id="opt-always-on-top">窗口置顶</label>
-        <label class="mini-toggle"><input type="checkbox" id="opt-login-item">开机自启</label>
-        <label class="mini-toggle"><input type="checkbox" id="opt-clipboard-only">仅用剪贴板取词</label>
-      </div>
-      <div class="drawer-appearance">
-        <label>主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
-        <label>字号<select id="opt-font"><option value="normal">标准</option><option value="small">紧凑</option><option value="large">大</option></select></label>
-        <label class="mini-toggle"><input type="checkbox" id="opt-reduced-motion">减少动效</label>
-      </div>
-      <div class="drawer-hotkey">
-        <label>全局快捷键<input id="cfg-hotkey" spellcheck="false" placeholder="Alt+Shift+E"></label>
-        <button id="btn-hotkey" type="button">应用</button>
+      <div class="drawer-body">
+        <div class="drawer-section">
+          <h3>模型连接</h3>
+          <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1"></label>
+          <label>API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></label>
+          <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash"></label>
+          <label>学习模型(可选)<input id="cfg-learning" list="model-list" spellcheck="false" placeholder="引导理解与音标"></label>
+          <datalist id="model-list"></datalist>
+          <div class="drawer-actions">
+            <button id="btn-discover" type="button">检测连接</button>
+            <button id="btn-save-settings" class="primary" type="button">保存</button>
+          </div>
+          <p class="drawer-status" id="settings-status"></p>
+        </div>
+        <div class="drawer-section">
+          <h3>通用</h3>
+          <div class="drawer-flags">
+            <label class="mini-toggle"><input type="checkbox" id="opt-always-on-top">窗口置顶</label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-login-item">开机自启</label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-clipboard-only">仅用剪贴板取词</label>
+          </div>
+        </div>
+        <div class="drawer-section">
+          <h3>外观</h3>
+          <div class="drawer-appearance">
+            <label>主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+            <label>字号<select id="opt-font"><option value="normal">标准</option><option value="small">紧凑</option><option value="large">大</option></select></label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-reduced-motion">减少动效</label>
+          </div>
+        </div>
+        <div class="drawer-section">
+          <h3>全局快捷键</h3>
+          <div class="drawer-hotkey">
+            <label>组合键<input id="cfg-hotkey" spellcheck="false" placeholder="Alt+Shift+E"></label>
+            <button id="btn-hotkey" type="button">应用</button>
+          </div>
+        </div>
       </div>
       <div class="drawer-diag" id="diagnostics"></div>
     </section>
@@ -70,7 +102,9 @@
             <label class="mini-toggle"><input type="checkbox" id="opt-paste" checked>粘贴后自动翻译</label>
             <label class="mini-toggle"><input type="checkbox" id="opt-enter">Enter 发送</label>
           </div>
-          <button id="btn-send" class="primary" type="button">翻译</button>
+          <button id="btn-send" class="primary" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>翻译
+          </button>
         </div>
       </div>
       <div class="statusbar" id="statusbar">就绪</div>
