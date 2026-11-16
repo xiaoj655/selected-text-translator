@@ -2,6 +2,8 @@ import { localizeErrorMessage } from './messages.js'
 
 const $ = (id) => document.getElementById(id)
 
+const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
+
 const state = {
   mode: 'translate',
   entries: [],
@@ -11,7 +13,7 @@ const state = {
   hotkey: '',
   capture: null,
   lastElapsed: 0,
-  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', reducedMotion: false },
+  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
 }
 
@@ -193,6 +195,10 @@ function applyPrefs() {
   $('opt-theme').value = ['system', 'light', 'dark'].includes(state.prefs.theme) ? state.prefs.theme : 'system'
   $('opt-font').value = ['small', 'normal', 'large'].includes(state.prefs.font) ? state.prefs.font : 'normal'
   $('opt-reduced-motion').checked = state.prefs.reducedMotion === true
+  const activeAccent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'indigo'
+  $('opt-accent').querySelectorAll('.accent-swatch').forEach((swatch) => {
+    swatch.classList.toggle('is-active', swatch.dataset.accent === activeAccent)
+  })
   updateComposer()
   applyAppearance()
 }
@@ -202,6 +208,7 @@ function applyAppearance() {
   root.dataset.theme = state.prefs.theme || 'system'
   root.dataset.font = state.prefs.font || 'normal'
   root.dataset.motion = state.prefs.reducedMotion ? 'reduced' : 'full'
+  root.dataset.accent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'indigo'
   void window.sttDesktop.setTheme(root.dataset.theme)
 }
 
@@ -947,6 +954,14 @@ function bind() {
     state.prefs.reducedMotion = event.target.checked
     void savePrefs()
     applyAppearance()
+  })
+  $('opt-accent').addEventListener('click', (event) => {
+    const swatch = event.target.closest('.accent-swatch')
+    if (!swatch || !ACCENTS.includes(swatch.dataset.accent)) return
+    state.prefs.accent = swatch.dataset.accent
+    void savePrefs()
+    applyPrefs()
+    setStatus(`已切换强调色:${swatch.title}`)
   })
 
   $('btn-help').addEventListener('click', toggleHelp)

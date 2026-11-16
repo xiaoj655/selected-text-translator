@@ -123,4 +123,12 @@ assert.match(appSource, /is-highlight/u, 'jumped-to entry must be highlighted')
 assert.match(appCss, /\.sidebar/u, 'sidebar must be styled')
 assert.match(appCss, /\.history-item/u, 'history rows must be styled')
 
+assert.match(tokensCss, /data-accent="ocean"/u, 'tokens must define accent presets')
+assert.match(tokensCss, /data-accent="rose"/u, 'accent presets must cover several hues')
+assert.match(htmlSource, /id="opt-accent"/u, 'settings need an accent picker')
+assert.match(htmlSource, /data-accent="emerald"/u, 'accent picker needs swatches')
+assert.match(appSource, /root\.dataset\.accent/u, 'main window must apply the accent')
+assert.match(cardSource, /root\.dataset\.accent/u, 'card must apply the accent')
+assert.match(appCss, /\.accent-swatch/u, 'accent swatches must be styled')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

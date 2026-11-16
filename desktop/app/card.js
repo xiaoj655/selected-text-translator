@@ -27,6 +27,7 @@ function applyPrefs(prefs) {
   root.dataset.theme = ['system', 'light', 'dark'].includes(prefs?.theme) ? prefs.theme : 'system'
   root.dataset.font = ['small', 'normal', 'large'].includes(prefs?.font) ? prefs.font : 'normal'
   root.dataset.motion = prefs?.reducedMotion ? 'reduced' : 'full'
+  root.dataset.accent = ['indigo', 'ocean', 'emerald', 'rose', 'amber'].includes(prefs?.accent) ? prefs.accent : 'indigo'
 }
 
 async function initPrefs() {
