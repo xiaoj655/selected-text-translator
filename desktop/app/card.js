@@ -140,7 +140,8 @@ function handleTranslationEvent(payload) {
     case 'stream':
       entry.status = 'streaming'
       entry.translatedText = String(payload.translatedText || '').trim()
-      break
+      patchStreamResult(entry)
+      return
     case 'success': {
       entry.status = 'done'
       const translatedText = String(payload.translatedText || '').trim()
@@ -169,6 +170,17 @@ function handleSpeechEvent(payload) {
   if (resultEl && state.entry?.status === 'error' && payload.message) {
     resultEl.textContent = payload.message
   }
+}
+
+function patchStreamResult(entry) {
+  const resultEl = $('result')
+  if (!resultEl || entry.status !== 'streaming') {
+    render()
+    return
+  }
+  resultEl.className = 'result'
+  resultEl.replaceChildren(document.createTextNode(entry.translatedText || ''), el('span', 'caret'))
+  scheduleResize()
 }
 
 function reportEntry() {

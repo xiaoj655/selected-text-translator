@@ -194,4 +194,9 @@ assert.match(cardCss, /--md-chip-selected-container/u, 'floating card tag must b
 assert.match(cardCss, /--md-sys-color-error-container/u, 'card errors must use the M3 error container')
 assert.match(cardCss, /--md-btn-tonal-container/u, 'card actions must use M3 tonal buttons')
 
+assert.match(cardSource, /function patchStreamResult/u, 'floating card must patch streaming text in place')
+assert.match(cardSource, /patchStreamResult\(entry\)/u, 'stream events must use the in-place patch')
+assert.match(cardSource, /createTextNode\(entry\.translatedText/u, 'stream patch must keep text in place without rebuilding actions')
+assert.match(cardSource, /resultEl\.className = 'result'/u, 'stream patch must clear stale loading state')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
