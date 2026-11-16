@@ -191,8 +191,16 @@ function reportEntry() {
   }
 }
 
-function copyText(text) {
+function copyText(text, button) {
   void window.sttDesktop.copyText(text)
+  if (!button || button.classList.contains('is-done')) return
+  const original = button.textContent
+  button.textContent = '✓ 已复制'
+  button.classList.add('is-done')
+  setTimeout(() => {
+    button.textContent = original
+    button.classList.remove('is-done')
+  }, 1400)
 }
 
 function toggleSpeech() {
@@ -339,9 +347,9 @@ function renderActions() {
   }
 
   if (entry.status === 'done' && entry.translatedText) {
-    add('复制结果', () => copyText(entry.translatedText))
+    add('复制结果', (event) => copyText(entry.translatedText, event.currentTarget))
   }
-  add('复制原文', () => copyText(entry.text))
+  add('复制原文', (event) => copyText(entry.text, event.currentTarget))
   add(state.speechId ? '■ 停止' : '▷ 朗读', toggleSpeech)
   if (['pending', 'loading', 'streaming'].includes(entry.status)) {
     add('取消', () => {

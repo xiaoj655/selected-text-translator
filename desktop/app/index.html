@@ -36,6 +36,9 @@
         <button id="btn-log" type="button" title="打开日志文件">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>日志
         </button>
+        <button id="btn-help" class="help-trigger" type="button" title="键盘快捷键 · ?" aria-label="键盘快捷键">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>
+        </button>
       </div>
     </header>
 
@@ -109,6 +112,30 @@
       </div>
       <div class="statusbar" id="statusbar">就绪</div>
     </footer>
+
+    <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="回到最新" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m6 13 6 6 6-6"/></svg>
+    </button>
+
+    <div class="overlay" id="help-overlay" hidden>
+      <section class="help-pop" role="dialog" aria-modal="true" aria-label="键盘快捷键">
+        <div class="help-head">
+          <div><h2>键盘快捷键</h2><p class="drawer-tip">更快地使用划词翻译</p></div>
+          <button id="btn-close-help" class="icon-btn" type="button" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <dl class="help-list">
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></dt><dd>发送并翻译</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></dt><dd>聚焦输入框</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>/</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
+          <div><dt><kbd>?</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>隐藏窗口 / 关闭面板</dd></div>
+          <div><dt>点击卡片标题</dt><dd>折叠 / 展开该条结果</dd></div>
+        </dl>
+        <p class="help-foot">全局取词热键:<kbd id="help-hotkey">未注册</kbd> · 选中文字后按下即可自动翻译</p>
+      </section>
+    </div>
   </div>
   <script type="module" src="./app.js"></script>
 </body>

@@ -12,6 +12,7 @@ const state = {
   capture: null,
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', reducedMotion: false },
+  collapsed: new Set(),
 }
 
 function el(tag, className, text) {
@@ -48,9 +49,52 @@ function updateComposer() {
   const input = $('input')
   input.style.height = 'auto'
   input.style.height = `${Math.min(160, Math.max(38, input.scrollHeight))}px`
-  $('char-count').textContent = `${input.value.trim().length} 字`
+  const count = input.value.trim().length
+  const countEl = $('char-count')
+  countEl.textContent = `${count} 字`
+  countEl.classList.toggle('is-warn', count > 6000)
+  countEl.title = count > 6000 ? '内容较长,可能造成响应变慢或超出模型上下文' : ''
   $('composer-hint').textContent = state.prefs.enterToSend
     ? 'Enter 发送 · Shift+Enter 换行' : 'Ctrl+Enter 发送 · Enter 换行'
+}
+
+function isTyping(node) {
+  if (!node) return false
+  const tag = node.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable === true
+}
+
+function showCopyDone(button) {
+  if (button.classList.contains('is-done')) return
+  const original = button.textContent
+  button.textContent = '✓ 已复制'
+  button.classList.add('is-done')
+  setTimeout(() => {
+    button.textContent = original
+    button.classList.remove('is-done')
+  }, 1400)
+}
+
+function showHelp() {
+  $('help-hotkey').textContent = state.hotkey || '未注册'
+  $('help-overlay').hidden = false
+  $('btn-close-help').focus()
+}
+
+function hideHelp() {
+  $('help-overlay').hidden = true
+  $('input').focus()
+}
+
+function toggleHelp() {
+  if ($('help-overlay').hidden) showHelp()
+  else hideHelp()
+}
+
+function updateScrollFab() {
+  const stream = $('stream')
+  const far = stream.scrollHeight - stream.scrollTop - stream.clientHeight > 120
+  $('btn-scroll-bottom').hidden = !far
 }
 
 async function savePrefs() {
@@ -526,14 +570,16 @@ function renderActions(entry) {
 
   const text = resultText(entry)
   if (text && entry.status === 'done') {
-    add('复制结果', () => {
+    add('复制结果', (event) => {
       window.sttDesktop.copyText(text)
       setStatus('结果已复制到剪贴板')
+      showCopyDone(event.currentTarget)
     })
   }
-  add('复制原文', () => {
+  add('复制原文', (event) => {
     window.sttDesktop.copyText(entry.text)
     setStatus('原文已复制到剪贴板')
+    showCopyDone(event.currentTarget)
   })
   add('回填输入框', () => {
     $('input').value = entry.text
@@ -558,6 +604,8 @@ function renderActions(entry) {
 function renderEntryEl(entry) {
   const wrapper = el('div', 'entry')
   wrapper.dataset.entryId = entry.id
+  const collapsed = state.collapsed.has(entry.id)
+  if (collapsed) wrapper.classList.add('is-collapsed')
 
   const source = el('div', 'entry-source')
   const bubble = el('div', 'bubble', entry.text)
@@ -572,13 +620,26 @@ function renderEntryEl(entry) {
 
   const card = el('div', 'entry-card')
   const head = el('div', 'entry-head')
+  head.title = '点击折叠 / 展开'
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
   head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
   head.append(el('span', 'meta', `${entry.text.length} 字`))
+  const chevron = el('span', 'chevron')
+  chevron.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
+  head.append(chevron)
+  head.addEventListener('click', () => {
+    if (state.collapsed.has(entry.id)) state.collapsed.delete(entry.id)
+    else state.collapsed.add(entry.id)
+    renderEntry(entry)
+  })
   card.append(head)
-  card.append(renderResult(entry))
-  card.append(renderActions(entry))
+
+  const body = el('div', 'entry-body')
+  body.append(renderResult(entry))
+  body.append(renderActions(entry))
+  if (collapsed) body.hidden = true
+  card.append(body)
   wrapper.append(card)
   return wrapper
 }
@@ -590,6 +651,7 @@ function render() {
   if (!state.entries.length) stream.append(renderEmpty())
   else for (const entry of state.entries) stream.append(renderEntryEl(entry))
   stream.scrollTop = stream.scrollHeight
+  updateScrollFab()
 }
 
 function renderEntry(entry) {
@@ -601,6 +663,7 @@ function renderEntry(entry) {
   }
   node.replaceWith(renderEntryEl(entry))
   if (['pending', 'loading', 'streaming'].includes(entry.status)) stream.scrollTop = stream.scrollHeight
+  updateScrollFab()
 }
 
 function cancelRequest(entry) {
@@ -742,6 +805,11 @@ function bind() {
   input.addEventListener('input', updateComposer)
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      if (!$('help-overlay').hidden) {
+        event.stopPropagation()
+        hideHelp()
+        return
+      }
       window.sttDesktop.hide()
       return
     }
@@ -792,8 +860,43 @@ function bind() {
     applyAppearance()
   })
 
+  $('btn-help').addEventListener('click', toggleHelp)
+  $('btn-close-help').addEventListener('click', hideHelp)
+  $('help-overlay').addEventListener('click', (event) => {
+    if (event.target === $('help-overlay')) hideHelp()
+  })
+  $('help-overlay').addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      hideHelp()
+    }
+  })
+  $('btn-scroll-bottom').addEventListener('click', () => {
+    const stream = $('stream')
+    stream.scrollTo({ top: stream.scrollHeight, behavior: state.prefs.reducedMotion ? 'auto' : 'smooth' })
+  })
+  $('stream').addEventListener('scroll', updateScrollFab, { passive: true })
+
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') window.sttDesktop.hide()
+    const mod = event.ctrlKey || event.metaKey
+    if (mod && event.key.toLowerCase() === 'k' && $('help-overlay').hidden) {
+      event.preventDefault()
+      $('input').focus()
+      $('input').select()
+      return
+    }
+    if ((mod && event.key === '/') || (event.key === '?' && !isTyping(event.target))) {
+      event.preventDefault()
+      toggleHelp()
+      return
+    }
+    if (event.key === 'Escape') {
+      if (!$('help-overlay').hidden) {
+        hideHelp()
+        return
+      }
+      window.sttDesktop.hide()
+    }
   })
 
   chrome.runtime.onMessage.addListener((message) => {
