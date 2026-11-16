@@ -248,4 +248,11 @@ assert.match(appSource, /setAttribute\('role', 'alert'\)/u, 'errors must be anno
 assert.match(appCss, /--md-sys-color-error-container/u, 'errors must use the M3 error container')
 assert.match(appCss, /\.error-tools/u, 'error actions need an M3 layout')
 
+assert.match(htmlSource, /id="snackbar"/u, 'undo snackbar must exist')
+assert.match(htmlSource, /id="snackbar-action"/u, 'snackbar needs an action button')
+assert.match(appSource, /function showSnackbar/u, 'snackbar helper must exist')
+assert.match(appSource, /确定清空/u, 'clear must ask for confirmation')
+assert.match(appSource, /已撤销删除/u, 'delete must be undoable')
+assert.match(appCss, /\.snackbar/u, 'snackbar must use the M3 surface')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

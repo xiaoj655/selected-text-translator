@@ -15,6 +15,7 @@ const state = {
   hotkey: '',
   capture: null,
   draft: null,
+  snackbarTimer: null,
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
@@ -421,6 +422,26 @@ function showNotice(text, kind = 'info', action) {
 
 function hideNotice() {
   $('notice').hidden = true
+}
+
+function showSnackbar(text, actionLabel, onAction) {
+  const node = $('snackbar')
+  $('snackbar-label').textContent = text
+  const action = $('snackbar-action')
+  action.textContent = actionLabel
+  action.onclick = () => {
+    hideSnackbar()
+    onAction()
+  }
+  node.hidden = false
+  clearTimeout(state.snackbarTimer)
+  state.snackbarTimer = setTimeout(hideSnackbar, 6000)
+}
+
+function hideSnackbar() {
+  $('snackbar').hidden = true
+  clearTimeout(state.snackbarTimer)
+  state.snackbarTimer = null
 }
 
 function stashDraft(incoming) {
@@ -964,8 +985,15 @@ function renderActions(entry) {
   }
   add('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
   add('删除', () => {
-    state.entries = state.entries.filter((item) => item.id !== entry.id)
+    const index = state.entries.findIndex((item) => item.id === entry.id)
+    if (index < 0) return
+    const removed = state.entries.splice(index, 1)[0]
     render()
+    showSnackbar('已删除 1 条记录', '撤销', () => {
+      state.entries.splice(Math.min(index, state.entries.length), 0, removed)
+      render()
+      setStatus('已撤销删除')
+    })
   }, { danger: true })
   return bar
 }
@@ -1192,12 +1220,24 @@ function bind() {
     }
   })
   $('btn-clear').addEventListener('click', () => {
-    state.entries = []
-    void window.sttDesktop.clearHistory()
-    render()
-    setStatus('已清空对话')
-    $('input').focus()
+    if (!state.entries.length) {
+      setStatus('没有可清空的对话')
+      return
+    }
+    const count = state.entries.length
+    showSnackbar('确定清空全部 ' + count + ' 条对话？', '清空', () => {
+      const removed = state.entries.slice()
+      state.entries = []
+      void window.sttDesktop.clearHistory()
+      render()
+      showSnackbar('已清空 ' + count + ' 条对话', '撤销', () => {
+        state.entries = removed
+        render()
+        setStatus('已撤销清空')
+      })
+    })
   })
+  $('snackbar-close').addEventListener('click', hideSnackbar)
   const input = $('input')
   input.addEventListener('input', updateComposer)
   input.addEventListener('keydown', (event) => {

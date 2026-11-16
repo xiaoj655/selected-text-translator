@@ -525,6 +525,15 @@ button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duratio
   font-size: var(--md-sys-typescale-label-large-size);
 }
 
+/* M3 snackbar — undo / confirm surface */
+.snackbar { position: absolute; left: 50%; bottom: 92px; z-index: 30; display: flex; align-items: center; gap: 8px; min-width: 280px; max-width: min(520px, calc(100% - 40px)); padding: 6px 8px 6px 16px; border-radius: var(--md-sys-shape-small); background: var(--md-sys-color-inverse-surface); color: var(--md-sys-color-inverse-on-surface); box-shadow: var(--md-sys-elevation-level3); font-size: var(--md-sys-typescale-body-size); animation: snackbar-in var(--md-motion-duration-medium1) var(--md-motion-easing-emphasized-decelerate) both; }
+.snackbar[hidden] { display: none; }
+.snackbar-label { flex: 1; }
+.snackbar-action { color: var(--md-sys-color-inverse-primary); font-weight: 600; white-space: nowrap; padding: 8px 12px; border-radius: var(--md-sys-shape-small); }
+.snackbar-close { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; opacity: .8; }
+.snackbar-close svg { width: 15px; height: 15px; }
+@keyframes snackbar-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,
