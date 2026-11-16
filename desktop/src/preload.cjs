@@ -159,6 +159,9 @@ window.sttDesktop = {
   hideCard() {
     ipcRenderer.send('stt:hide-card')
   },
+  resizeCard(height) {
+    ipcRenderer.send('stt:card-resize', height)
+  },
   openMainWithText(text) {
     return ipcRenderer.invoke('stt:open-main-text', text)
   },

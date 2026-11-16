@@ -1,3 +1,5 @@
+import { localizeErrorMessage } from './messages.js'
+
 const $ = (id) => document.getElementById(id)
 
 const state = {
@@ -322,7 +324,7 @@ function handleTranslationEvent(payload) {
     case 'missing-configuration':
     case 'error':
       entry.status = 'error'
-      entry.error = payload.message || '请求失败,请重试。'
+      entry.error = localizeErrorMessage(payload)
       setStatus(entry.error)
       if (payload.status === 'missing-configuration') void checkConfig()
       break
@@ -566,7 +568,7 @@ function renderEntryEl(entry) {
   const card = el('div', 'entry-card')
   const head = el('div', 'entry-head')
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
-  head.append(el('span', '', new Date(entry.createdAt).toLocaleTimeString()))
+  head.append(el('span', '', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
   head.append(el('span', '', `${entry.text.length} 字`))
   card.append(head)

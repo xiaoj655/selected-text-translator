@@ -1,3 +1,5 @@
+import { localizeErrorMessage } from './messages.js'
+
 const $ = (id) => document.getElementById(id)
 
 const state = {
@@ -19,17 +21,24 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${state.counter}`
 }
 
-function setTheme(theme) {
-  document.documentElement.dataset.theme = theme || 'system'
+function applyPrefs(prefs) {
+  const root = document.documentElement
+  root.dataset.theme = ['system', 'light', 'dark'].includes(prefs?.theme) ? prefs.theme : 'system'
+  root.dataset.font = ['small', 'normal', 'large'].includes(prefs?.font) ? prefs.font : 'normal'
+  root.dataset.motion = prefs?.reducedMotion ? 'reduced' : 'full'
 }
 
-async function initTheme() {
+async function initPrefs() {
   try {
     const saved = await chrome.storage.sync.get(['desktop_prefs'])
-    setTheme(saved?.desktop_prefs?.theme)
+    applyPrefs(saved?.desktop_prefs)
   } catch {
-    setTheme('system')
+    applyPrefs(null)
   }
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'sync' || !changes?.desktop_prefs) return
+    applyPrefs(changes.desktop_prefs.newValue)
+  })
 }
 
 function cancelActiveRequest() {
@@ -56,6 +65,7 @@ function stopSpeech() {
 function startSelection(payload) {
   const text = String(payload?.text || '').trim().slice(0, 12000)
   if (!text) return
+  if (payload?.prefs) applyPrefs(payload.prefs)
   cancelActiveRequest()
   stopSpeech()
   state.reported = false
@@ -128,7 +138,7 @@ function handleTranslationEvent(payload) {
     case 'missing-configuration':
     case 'error':
       entry.status = 'error'
-      entry.error = payload.message || '请求失败,请重试。'
+      entry.error = localizeErrorMessage(payload)
       break
     default:
       return
@@ -229,6 +239,21 @@ function openInMainWindow() {
   void window.sttDesktop.openMainWithText(entry?.text || '')
 }
 
+let resizeScheduled = false
+let lastRequestedHeight = 0
+
+function scheduleResize() {
+  if (resizeScheduled) return
+  resizeScheduled = true
+  requestAnimationFrame(() => {
+    resizeScheduled = false
+    const height = Math.ceil($('card').getBoundingClientRect().height)
+    if (Math.abs(height - lastRequestedHeight) < 4) return
+    lastRequestedHeight = height
+    window.sttDesktop.resizeCard(height)
+  })
+}
+
 function render() {
   const entry = state.entry
   if (!entry) return
@@ -256,6 +281,7 @@ function render() {
   }
 
   renderActions()
+  scheduleResize()
 }
 
 function renderLexical(entry) {
@@ -348,5 +374,6 @@ function bind() {
   })
 }
 
-void initTheme()
+void initPrefs()
 bind()
+scheduleResize()

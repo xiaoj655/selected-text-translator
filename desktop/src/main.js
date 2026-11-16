@@ -19,6 +19,7 @@ let windows
 let shortcuts
 let capture
 let dispatch
+let storageRef
 
 function logger(event, detail) {
   let text = ''
@@ -51,8 +52,17 @@ async function onHotkey() {
     payload = { text: '', context: '', contextStart: null, contextEnd: null, source: 'error' }
   }
   try {
-    if (payload.text) await windows.showCardWindow(payload)
-    else await windows.showMainWindow(payload)
+    if (payload.text) {
+      try {
+        const saved = await storageRef?.sync.get(['desktop_prefs'])
+        payload.prefs = saved?.desktop_prefs || null
+      } catch {
+        payload.prefs = null
+      }
+      await windows.showCardWindow(payload)
+    } else {
+      await windows.showMainWindow(payload)
+    }
   } catch (error) {
     logger('show-failed', error)
   }
@@ -110,6 +120,7 @@ function installIpc(storage, history) {
   })
   ipcMain.on('stt:hide', () => windows.hideMainWindow())
   ipcMain.on('stt:hide-card', () => windows.hideCardWindow())
+  ipcMain.on('stt:card-resize', (_event, height) => windows.resizeCardWindow(height))
   ipcMain.handle('stt:card-entry', (_event, entry) => {
     windows.sendToMainWindow('stt:card-entry', entry)
     return true
@@ -141,6 +152,7 @@ async function bootstrap() {
   }
 
   const storage = createStorage(userDataDir)
+  storageRef = storage
   const history = createHistory(userDataDir)
   const tts = createTts({ logger })
   windows = createWindows({ desktopDir, userDataDir, logger })

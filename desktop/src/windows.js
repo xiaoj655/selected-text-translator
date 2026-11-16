@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BrowserWindow, Menu, Tray, nativeImage, screen } from 'electron'
+import { BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen } from 'electron'
 
 const AUX_FILES = {
   settings: 'popup.html',
@@ -11,6 +11,8 @@ const AUX_FILES = {
 
 const CARD_WIDTH = 380
 const CARD_HEIGHT = 300
+const CARD_MIN_HEIGHT = 120
+const CARD_MAX_HEIGHT = 520
 const CARD_MARGIN = 14
 
 function clamp(value, min, max) {
@@ -139,6 +141,26 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   }
 
   let cardShownAt = 0
+  let escRegistered = false
+
+  function registerCardEscape() {
+    if (escRegistered) return
+    try {
+      escRegistered = globalShortcut.register('Escape', () => hideCardWindow())
+    } catch {
+      escRegistered = false
+    }
+  }
+
+  function unregisterCardEscape() {
+    if (!escRegistered) return
+    try {
+      globalShortcut.unregister('Escape')
+    } catch {
+      // the shortcut may already be gone
+    }
+    escRegistered = false
+  }
 
   function ensureCardWindow() {
     if (card && !card.isDestroyed()) return card
@@ -171,6 +193,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       card.webContents.once('did-finish-load', resolve)
     })
     card.on('closed', () => {
+      unregisterCardEscape()
       aux.delete('card')
       card = null
       cardReady = null
@@ -178,7 +201,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     card.on('blur', () => {
       if (!card || card.isDestroyed() || !card.isVisible()) return
       if (Date.now() - cardShownAt < 500) return
-      card.hide()
+      hideCardWindow()
     })
     aux.set('card', card)
     return card
@@ -192,11 +215,23 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     win.webContents.send('stt:selection', payload || {})
     cardShownAt = Date.now()
     win.showInactive()
+    registerCardEscape()
   }
 
   function hideCardWindow() {
     cancelCardSpeech()
+    unregisterCardEscape()
     if (card && !card.isDestroyed()) card.hide()
+  }
+
+  function resizeCardWindow(height) {
+    if (!card || card.isDestroyed() || !card.isVisible()) return
+    const next = clamp(Math.round(Number(height) || 0), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT)
+    const bounds = card.getBounds()
+    if (Math.abs(bounds.height - next) < 4) return
+    const area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea
+    const y = clamp(bounds.y, area.y, area.y + area.height - next)
+    card.setBounds({ x: bounds.x, y, width: CARD_WIDTH, height: next })
   }
 
   function cancelCardSpeech() {
@@ -288,6 +323,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     hideMainWindow,
     showCardWindow,
     hideCardWindow,
+    resizeCardWindow,
     toggleMainWindow,
     setAlwaysOnTop,
     setTheme,
