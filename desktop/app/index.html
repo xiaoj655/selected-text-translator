@@ -67,7 +67,7 @@
     </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
-    <aside class="sidebar" id="sidebar" hidden>
+    <aside class="sidebar" id="sidebar" role="dialog" aria-modal="true" aria-label="历史记录" hidden>
       <div class="sidebar-head">
         <div><h2>历史记录</h2><p class="drawer-tip">点击条目跳转到对话中对应位置</p></div>
         <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭">
@@ -84,7 +84,8 @@
 
     <div class="notice" id="notice" hidden></div>
 
-    <section class="drawer" id="settings-panel" hidden>
+    <div class="settings-backdrop" id="settings-backdrop" hidden></div>
+    <section class="drawer" id="settings-panel" role="dialog" aria-modal="true" aria-label="设置" hidden>
       <div class="drawer-head">
         <div><h2>设置</h2><p class="drawer-tip">所有信息仅保存在本机,不会上传</p></div>
         <button id="btn-close-settings" class="icon-btn" type="button" title="关闭">

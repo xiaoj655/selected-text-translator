@@ -258,6 +258,14 @@
   --md-popover-body: var(--md-sys-color-on-surface);
 }
 
+/* M3 dialog surfaces — shared scrim, shape and elevation */
+:root {
+  --md-dialog-container: var(--md-sys-color-surface-container-high);
+  --md-dialog-shape: var(--md-sys-shape-extra-large);
+  --md-dialog-elevation: var(--md-sys-elevation-level3);
+  --md-dialog-scrim: #10142b59;
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 

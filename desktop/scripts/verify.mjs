@@ -218,4 +218,12 @@ assert.match(appSource, /function restoreDraft/u, 'draft restore helper must exi
 assert.match(appSource, /function showDraftNotice/u, 'draft notice helper must exist')
 assert.match(appSource, /恢复草稿/u, 'restore action must be offered')
 assert.match(appCss, /data-kind="draft"/u, 'draft notice must be visually distinct')
+assert.match(tokensCss, /--md-dialog-scrim:/u, 'M3 dialog scrim token must be defined')
+assert.match(tokensCss, /--md-dialog-shape:/u, 'M3 dialog shape token must be defined')
+assert.match(htmlSource, /id="settings-backdrop"/u, 'settings dialog needs a scrim backdrop')
+assert.match(htmlSource, /aria-label="设置"/u, 'settings panel must be a labelled dialog')
+assert.match(appSource, /function trapFocus/u, 'dialogs must trap keyboard focus')
+assert.match(appSource, /function closeTransientPanels/u, 'panels must be mutually exclusive')
+assert.match(appCss, /\[role="dialog"\] :focus-visible/u, 'dialog focus must be clearly visible')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

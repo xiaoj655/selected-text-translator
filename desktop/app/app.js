@@ -80,19 +80,52 @@ function showCopyDone(button) {
 }
 
 function showHelp() {
+  closeTransientPanels()
   $('help-hotkey').textContent = state.hotkey || '未注册'
   $('help-overlay').hidden = false
   $('btn-close-help').focus()
 }
 
 function hideHelp() {
+  const wasOpen = !$('help-overlay').hidden
   $('help-overlay').hidden = true
-  $('input').focus()
+  if (wasOpen) $('btn-help').focus()
 }
 
 function toggleHelp() {
   if ($('help-overlay').hidden) showHelp()
   else hideHelp()
+}
+
+function focusables(container) {
+  const selector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  return [...container.querySelectorAll(selector)]
+    .filter((node) => !node.hidden && !node.disabled && node.getClientRects().length)
+}
+
+function trapFocus(event, container) {
+  if (event.key !== 'Tab') return
+  const items = focusables(container)
+  if (!items.length) return
+  const first = items[0]
+  const last = items[items.length - 1]
+  const active = document.activeElement
+  if (event.shiftKey) {
+    if (active === first || !container.contains(active)) {
+      event.preventDefault()
+      last.focus()
+    }
+  } else if (active === last || !container.contains(active)) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+function closeTransientPanels() {
+  hideHelp()
+  closeExportMenu()
+  closeSidebar()
+  closeSettings()
 }
 
 function updateScrollFab() {
@@ -106,6 +139,7 @@ function isSidebarOpen() {
 }
 
 function openSidebar() {
+  closeTransientPanels()
   $('sidebar').hidden = false
   $('sidebar-backdrop').hidden = false
   $('btn-history').classList.add('is-active')
@@ -114,9 +148,11 @@ function openSidebar() {
 }
 
 function closeSidebar() {
+  const wasOpen = isSidebarOpen()
   $('sidebar').hidden = true
   $('sidebar-backdrop').hidden = true
   $('btn-history').classList.remove('is-active')
+  if (wasOpen) $('btn-history').focus()
 }
 
 function toggleSidebar() {
@@ -308,8 +344,7 @@ function toggleExportMenu() {
     closeExportMenu()
     return
   }
-  $('help-overlay').hidden = true
-  closeSidebar()
+  closeTransientPanels()
   openExportMenu()
 }
 
@@ -410,6 +445,8 @@ function showDraftNotice() {
 }
 
 function openSettings() {
+  closeTransientPanels()
+  $('settings-backdrop').hidden = false
   $('settings-panel').hidden = false
   void loadSettings()
   void loadFlags()
@@ -418,8 +455,10 @@ function openSettings() {
 }
 
 function closeSettings() {
+  const wasOpen = !$('settings-panel').hidden
+  $('settings-backdrop').hidden = true
   $('settings-panel').hidden = true
-  $('input').focus()
+  if (wasOpen) $('btn-settings').focus()
 }
 
 async function loadFlags() {
@@ -1109,8 +1148,11 @@ function bind() {
     if (event.key === 'Escape') {
       event.stopPropagation()
       closeSettings()
+      return
     }
+    trapFocus(event, $('settings-panel'))
   })
+  $('settings-backdrop').addEventListener('click', closeSettings)
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())
   $('opt-always-on-top').addEventListener('change', (event) => {
@@ -1245,7 +1287,9 @@ function bind() {
     if (event.key === 'Escape') {
       event.stopPropagation()
       hideHelp()
+      return
     }
+    trapFocus(event, $('help-overlay'))
   })
   $('btn-scroll-bottom').addEventListener('click', () => {
     const stream = $('stream')
@@ -1260,7 +1304,9 @@ function bind() {
     if (event.key === 'Escape') {
       event.stopPropagation()
       closeSidebar()
+      return
     }
+    trapFocus(event, $('sidebar'))
   })
   $('history-search').addEventListener('input', renderHistory)
   $('history-list').addEventListener('click', (event) => {

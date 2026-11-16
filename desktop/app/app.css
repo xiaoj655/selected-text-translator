@@ -474,6 +474,22 @@ button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duratio
 
 .notice[data-kind="draft"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
+/* M3 dialogs — one scrim, one shape, one elevation, one focus model */
+.overlay, .sidebar-backdrop, .settings-backdrop { background: var(--md-dialog-scrim); }
+.settings-backdrop {
+  position: absolute; inset: 0; z-index: 19;
+  animation: fade var(--t) both;
+}
+.settings-backdrop[hidden] { display: none; }
+.drawer, .sidebar, .help-pop {
+  background: var(--md-dialog-container);
+  box-shadow: var(--md-dialog-elevation);
+  border-color: transparent;
+}
+.drawer { border-radius: var(--md-dialog-shape) 0 0 var(--md-dialog-shape); }
+.sidebar { border-radius: 0 var(--md-dialog-shape) var(--md-dialog-shape) 0; }
+[role="dialog"] :focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,
