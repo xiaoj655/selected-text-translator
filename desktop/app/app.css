@@ -490,6 +490,21 @@ button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duratio
 .sidebar { border-radius: 0 var(--md-dialog-shape) var(--md-dialog-shape) 0; }
 [role="dialog"] :focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
 
+/* M3 reading typography — comfortable measure, CJK stack, divided lexical list */
+.entry-body > .result {
+  max-width: var(--md-reading-measure);
+  font-family: var(--md-reading-font-family);
+  line-height: var(--md-reading-line);
+  letter-spacing: var(--md-reading-tracking);
+  text-wrap: pretty;
+}
+.entry-body .result::selection { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.lexical { background: transparent; border: 0; border-radius: 0; padding: 6px 0 0; }
+.lexical .lexical-row { margin: 0; padding: 7px 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.lexical .lexical-row:last-child { border-bottom: 0; }
+.lexical .lexical-label { color: var(--md-sys-color-primary); }
+.hint, .answer { line-height: var(--md-reading-line); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

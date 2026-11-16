@@ -234,4 +234,11 @@ assert.match(resultTextSource, /answerRevealed/u, 'shared helper must respect re
 assert.match(appSource, /from '\.\/result-text\.js'/u, 'main window must import the shared helper')
 assert.match(cardSource, /resultPlainText/u, 'floating card must use the shared result text')
 
+assert.match(tokensCss, /--md-reading-font-family:/u, 'reading font stack must be defined')
+assert.match(tokensCss, /--md-reading-measure:/u, 'reading measure must be defined')
+assert.match(tokensCss, /--md-reading-line:/u, 'reading line height must be defined')
+assert.match(appCss, /max-width: var\(--md-reading-measure\)/u, 'result must use a reading measure')
+assert.match(appCss, /text-wrap: pretty/u, 'result should avoid orphan lines')
+assert.match(appCss, /\.entry-body \.result::selection/u, 'reading text selection must use the M3 container color')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
