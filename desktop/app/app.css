@@ -505,6 +505,26 @@ button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duratio
 .lexical .lexical-label { color: var(--md-sys-color-primary); }
 .hint, .answer { line-height: var(--md-reading-line); }
 
+/* M3 error container — calm, readable, clear actions */
+.result.is-error {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  border-radius: var(--md-sys-shape-medium);
+  padding: 12px 14px;
+  font-size: var(--md-sys-typescale-body-size);
+}
+.result.is-error .error-title { display: block; font-weight: 600; margin-bottom: 4px; }
+.result.is-error .error-tools { display: flex; gap: 8px; margin-top: 10px; }
+.result.is-error button {
+  margin: 0;
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-error-container);
+  border-radius: var(--md-btn-shape);
+  padding: 6px 14px;
+  font-size: var(--md-sys-typescale-label-large-size);
+}
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

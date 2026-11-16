@@ -241,4 +241,11 @@ assert.match(appCss, /max-width: var\(--md-reading-measure\)/u, 'result must use
 assert.match(appCss, /text-wrap: pretty/u, 'result should avoid orphan lines')
 assert.match(appCss, /\.entry-body \.result::selection/u, 'reading text selection must use the M3 container color')
 
+assert.match(appSource, /function restoreFailedText/u, 'failed text must be restorable')
+assert.match(appSource, /restoreFailedText\(entry\)/u, 'error path must restore the submitted text')
+assert.match(appSource, /error-message/u, 'errors need a structured message')
+assert.match(appSource, /setAttribute\('role', 'alert'\)/u, 'errors must be announced to screen readers')
+assert.match(appCss, /--md-sys-color-error-container/u, 'errors must use the M3 error container')
+assert.match(appCss, /\.error-tools/u, 'error actions need an M3 layout')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

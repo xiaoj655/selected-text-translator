@@ -597,10 +597,19 @@ function sendRequest(entry, forceRefresh = false) {
   }
 }
 
+function restoreFailedText(entry) {
+  const input = $('input')
+  if (!entry?.text || input.value.trim()) return
+  input.value = entry.text
+  updateComposer()
+  input.focus()
+}
+
 function failEntry(entry, message) {
   entry.status = 'error'
   entry.error = message
   setStatus(message)
+  restoreFailedText(entry)
   renderEntry(entry)
 }
 
@@ -672,6 +681,7 @@ function handleTranslationEvent(payload) {
       entry.status = 'error'
       entry.error = localizeErrorMessage(payload)
       setStatus(entry.error)
+      restoreFailedText(entry)
       if (payload.status === 'missing-configuration') void checkConfig()
       break
     default:
@@ -872,14 +882,18 @@ function renderResult(entry) {
   const result = el('div', 'result')
   if (entry.status === 'error') {
     result.classList.add('is-error')
-    result.textContent = entry.error
+    result.setAttribute('role', 'alert')
+    const message = el('div', 'error-message')
+    message.append(el('strong', 'error-title', '处理失败'), el('span', '', entry.error || '请重试'))
+    const tools = el('div', 'error-tools')
     const retry = el('button', '', '重试')
     retry.type = 'button'
     retry.addEventListener('click', () => regenerate(entry))
     const fix = el('button', '', '去设置')
     fix.type = 'button'
     fix.addEventListener('click', openSettings)
-    result.append(' ', retry, ' ', fix)
+    tools.append(retry, fix)
+    result.append(message, tools)
     return result
   }
   if (entry.status === 'pending' || entry.status === 'loading') {
