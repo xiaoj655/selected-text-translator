@@ -166,4 +166,11 @@ assert.match(appCss, /--md-sys-typescale-body-large-size/u, 'main window must ap
 assert.match(appCss, /--md-sys-elevation-level2/u, 'cards must respond with M3 elevation')
 assert.match(cardCss, /--md-sys-elevation-level3/u, 'floating card must use M3 elevation')
 
+assert.match(tokensCss, /--md-btn-filled-container:/u, 'M3 button roles must be defined')
+assert.match(tokensCss, /--md-btn-fab-container:/u, 'M3 FAB roles must be defined')
+assert.match(appCss, /--md-state-hover/u, 'state layers must use M3 hover opacity')
+assert.match(appCss, /isolation: isolate/u, 'main window buttons need a stacking context for the state layer')
+assert.match(appCss, /--md-btn-tonal-container/u, 'main window buttons must use tonal roles')
+assert.match(cardCss, /isolation: isolate/u, 'floating card buttons need the same state layer')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

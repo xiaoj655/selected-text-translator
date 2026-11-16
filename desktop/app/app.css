@@ -336,6 +336,73 @@ body { font-family: var(--md-font-family); font-size: var(--md-font-size); line-
 .help-pop { border-radius: var(--md-sys-shape-extra-large); box-shadow: var(--md-sys-elevation-level3); }
 .export-menu { box-shadow: var(--md-sys-elevation-level2); }
 
+/* M3 buttons: a single state layer driven by currentColor, plus role shapes */
+button { position: relative; isolation: isolate; }
+button:not(.accent-swatch)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t);
+  z-index: -1;
+}
+button:not(.accent-swatch):hover::after { opacity: var(--md-state-hover); }
+button:not(.accent-swatch):focus-visible::after { opacity: var(--md-state-focus); }
+button:not(.accent-swatch):active::after { opacity: var(--md-state-pressed); }
+button:disabled::after { opacity: 0 !important; }
+
+.primary, .notice button, .empty-examples button, .guide-tools button,
+.actions button, .drawer-actions button, .drawer-hotkey button,
+.composer-left button, .top-actions button, .icon-btn, .scroll-fab {
+  border-radius: var(--md-btn-shape);
+}
+.export-menu button { border-radius: var(--md-sys-shape-medium); }
+.icon-btn { border-radius: var(--md-sys-shape-full); }
+
+.mode.is-active {
+  background: var(--md-btn-tonal-container);
+  color: var(--md-btn-tonal-label);
+  box-shadow: none;
+}
+.empty-examples button, .guide-tools button, .actions button,
+.drawer-actions button:not(.primary), .drawer-hotkey button {
+  background: var(--md-btn-tonal-container);
+  color: var(--md-btn-tonal-label);
+  border: 1px solid transparent;
+}
+.empty-examples button:hover, .guide-tools button:hover, .actions button:hover,
+.drawer-actions button:not(.primary):hover, .drawer-hotkey button:hover {
+  background: var(--md-btn-tonal-container);
+  border-color: transparent;
+  color: var(--md-btn-tonal-label);
+  transform: none;
+}
+.actions button.is-done:hover {
+  background: var(--success-soft);
+  border-color: transparent;
+  color: var(--success);
+}
+.top-actions button:hover, .composer-left button:hover, .icon-btn:hover {
+  background: transparent;
+  color: var(--accent);
+}
+.scroll-fab {
+  border-radius: var(--md-sys-shape-large);
+  border: 0;
+  background: var(--md-btn-fab-container);
+  color: var(--md-btn-fab-label);
+  box-shadow: var(--md-sys-elevation-level3);
+}
+.scroll-fab:hover {
+  background: var(--md-btn-fab-container);
+  border-color: transparent;
+  color: var(--md-btn-fab-label);
+  box-shadow: var(--md-sys-elevation-level3);
+}
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

@@ -72,6 +72,25 @@ svg { display: block; }
 .actions button[aria-busy="true"] { opacity: .6; }
 .actions button.is-done { color: var(--success); background: var(--success-soft); border-color: transparent; }
 
+/* M3 button state layer — same interaction model as the main window */
+button { position: relative; isolation: isolate; }
+button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t);
+  z-index: -1;
+}
+button:hover::after { opacity: var(--md-state-hover); }
+button:focus-visible::after { opacity: var(--md-state-focus); }
+button:active::after { opacity: var(--md-state-pressed); }
+.card-head button { border-radius: var(--md-sys-shape-full); }
+.actions button { border-radius: var(--md-btn-shape); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

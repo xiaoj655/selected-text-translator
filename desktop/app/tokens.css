@@ -188,6 +188,21 @@
   --md-sys-elevation-level3: var(--md-elev-3);
 }
 
+/* M3 button / FAB roles — one state layer driven by currentColor for every variant */
+:root {
+  --md-btn-height: 40px;
+  --md-btn-shape: var(--md-sys-shape-full);
+  --md-btn-filled-container: var(--md-sys-color-primary);
+  --md-btn-filled-label: var(--md-sys-color-on-primary);
+  --md-btn-tonal-container: var(--md-sys-color-secondary-container);
+  --md-btn-tonal-label: var(--md-sys-color-on-secondary-container);
+  --md-btn-outlined-label: var(--md-sys-color-primary);
+  --md-btn-outlined-outline: var(--md-sys-color-outline);
+  --md-btn-icon-label: var(--md-sys-color-on-surface-variant);
+  --md-btn-fab-container: var(--md-sys-color-primary-container);
+  --md-btn-fab-label: var(--md-sys-color-on-primary-container);
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
