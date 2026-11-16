@@ -534,6 +534,18 @@ button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duratio
 .snackbar-close svg { width: 15px; height: 15px; }
 @keyframes snackbar-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+/* M3 settings — inline validation, key visibility, status semantics */
+.drawer label.has-toggle { position: relative; }
+.drawer label.has-toggle input { padding-right: 42px; }
+.field-toggle { position: absolute; right: 5px; bottom: 5px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--md-sys-shape-full); color: var(--md-field-label); }
+.field-toggle svg { width: 16px; height: 16px; }
+.field-toggle.is-on { color: var(--md-sys-color-primary); }
+.field-error { margin: -8px 0 10px; font-size: var(--md-sys-typescale-label-small-size); color: var(--danger); }
+.field-error[hidden] { display: none; }
+.drawer input[aria-invalid="true"]:not(:focus) { border-color: var(--danger); }
+.drawer-status[data-kind="success"] { color: var(--success); }
+.drawer-status[data-kind="error"] { color: var(--danger); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

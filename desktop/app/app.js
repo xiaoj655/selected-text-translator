@@ -502,14 +502,70 @@ async function loadSettings() {
     $('cfg-api-key').value = String(values?.api_key || '')
     $('cfg-model').value = String(values?.model || '')
     $('cfg-learning').value = String(values?.learning_model || '')
+    $('cfg-api-key').type = 'password'
+    $('btn-toggle-key').setAttribute('aria-pressed', 'false')
+    $('btn-toggle-key').classList.remove('is-on')
+    updateSettingsValidity()
   } catch {
     setStatus('读取设置失败')
   }
 }
 
+function settingsFieldValues() {
+  return {
+    base_url: $('cfg-base-url').value.trim(),
+    api_key: $('cfg-api-key').value.trim(),
+    model: $('cfg-model').value.trim(),
+  }
+}
+function isValidBaseUrl(value) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+function setFieldError(fieldId, message) {
+  const input = $(fieldId)
+  const error = $(fieldId + '-error')
+  const invalid = Boolean(message)
+  if (error) {
+    error.textContent = message || ''
+    error.hidden = !invalid
+  }
+  input.setAttribute('aria-invalid', invalid ? 'true' : 'false')
+}
+function updateSettingsValidity() {
+  const values = settingsFieldValues()
+  const urlMissing = !values.base_url
+  const urlBad = Boolean(values.base_url) && !isValidBaseUrl(values.base_url)
+  setFieldError('cfg-base-url', urlMissing ? '请填写 API 地址' : urlBad ? '请输入以 http(s):// 开头的有效地址' : '')
+  setFieldError('cfg-api-key', values.api_key ? '' : '请填写 API Key')
+  setFieldError('cfg-model', values.model ? '' : '请填写翻译模型')
+  const canConnect = isValidBaseUrl(values.base_url) && Boolean(values.api_key)
+  const canSave = canConnect && Boolean(values.model)
+  $('btn-discover').disabled = !canConnect
+  $('btn-save-settings').disabled = !canSave
+  return canSave
+}
+function toggleKeyVisibility() {
+  const input = $('cfg-api-key')
+  const button = $('btn-toggle-key')
+  const visible = input.type === 'text'
+  input.type = visible ? 'password' : 'text'
+  button.setAttribute('aria-pressed', String(!visible))
+  const label = visible ? '显示密钥' : '隐藏密钥'
+  button.setAttribute('aria-label', label)
+  button.title = label
+  button.classList.toggle('is-on', !visible)
+}
+
 async function saveSettings() {
+  if (!updateSettingsValidity()) return
   const button = $('btn-save-settings')
   button.disabled = true
+  $('settings-status').dataset.kind = ''
   $('settings-status').textContent = '正在保存…'
   const values = {
     base_url: $('cfg-base-url').value.trim(),
@@ -520,6 +576,7 @@ async function saveSettings() {
   try {
     await chrome.storage.sync.set(values)
     $('settings-status').textContent = '已保存。'
+    $('settings-status').dataset.kind = 'success'
     await checkConfig()
     if (state.configured) {
       closeSettings()
@@ -527,11 +584,14 @@ async function saveSettings() {
     }
   } catch {
     $('settings-status').textContent = '保存失败,请重试。'
+    $('settings-status').dataset.kind = 'error'
   }
-  button.disabled = false
+  updateSettingsValidity()
 }
 
 async function discoverModels() {
+  const values = settingsFieldValues()
+  if (!isValidBaseUrl(values.base_url) || !values.api_key) { updateSettingsValidity(); return }
   const button = $('btn-discover')
   button.disabled = true
   $('settings-status').textContent = '正在连接并读取模型…'
@@ -542,6 +602,8 @@ async function discoverModels() {
     })
     if (!response?.ok) {
       $('settings-status').textContent = response?.message || '连接失败,请重试。'
+      $('settings-status').dataset.kind = 'error'
+      updateSettingsValidity()
       return
     }
     const models = (response.models || []).filter((model) => !/image|audio|realtime|embedding|rerank|\basr\b|\btts\b/iu.test(model))
@@ -556,7 +618,7 @@ async function discoverModels() {
   } catch {
     $('settings-status').textContent = '连接失败,请检查网络。'
   }
-  button.disabled = false
+  updateSettingsValidity()
 }
 
 async function checkConfig() {
@@ -1182,6 +1244,10 @@ function bind() {
   $('btn-close-settings').addEventListener('click', closeSettings)
   $('btn-save-settings').addEventListener('click', () => void saveSettings())
   $('btn-discover').addEventListener('click', () => void discoverModels())
+  for (const id of ['cfg-base-url', 'cfg-api-key', 'cfg-model', 'cfg-learning']) {
+    $(id).addEventListener('input', updateSettingsValidity)
+  }
+  $('btn-toggle-key').addEventListener('click', (event) => { event.preventDefault(); toggleKeyVisibility() })
   $('settings-panel').addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.stopPropagation()

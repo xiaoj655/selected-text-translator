@@ -95,16 +95,23 @@
       <div class="drawer-body">
         <div class="drawer-section">
           <h3>模型连接</h3>
-          <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1"></label>
-          <label>API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></label>
-          <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash"></label>
+          <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1" aria-describedby="cfg-base-url-error"></label>
+          <p class="field-error" id="cfg-base-url-error" hidden></p>
+          <label class="has-toggle">API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-describedby="cfg-api-key-error">
+            <button class="field-toggle" id="btn-toggle-key" type="button" title="显示密钥" aria-label="显示密钥" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </label>
+          <p class="field-error" id="cfg-api-key-error" hidden></p>
+          <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash" aria-describedby="cfg-model-error"></label>
+          <p class="field-error" id="cfg-model-error" hidden></p>
           <label>学习模型(可选)<input id="cfg-learning" list="model-list" spellcheck="false" placeholder="引导理解与音标"></label>
           <datalist id="model-list"></datalist>
           <div class="drawer-actions">
             <button id="btn-discover" type="button">检测连接</button>
             <button id="btn-save-settings" class="primary" type="button">保存</button>
           </div>
-          <p class="drawer-status" id="settings-status"></p>
+          <p class="drawer-status" id="settings-status" role="status"></p>
         </div>
         <div class="drawer-section">
           <h3>通用</h3>

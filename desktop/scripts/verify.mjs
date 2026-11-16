@@ -255,4 +255,12 @@ assert.match(appSource, /确定清空/u, 'clear must ask for confirmation')
 assert.match(appSource, /已撤销删除/u, 'delete must be undoable')
 assert.match(appCss, /\.snackbar/u, 'snackbar must use the M3 surface')
 
+assert.match(htmlSource, /id="btn-toggle-key"/u, 'settings need a key visibility toggle')
+assert.match(htmlSource, /id="cfg-base-url-error"/u, 'settings need inline field errors')
+assert.match(appSource, /function updateSettingsValidity/u, 'settings validity must be computed')
+assert.match(appSource, /function isValidBaseUrl/u, 'the API URL must be validated')
+assert.match(appSource, /aria-invalid/u, 'invalid fields need aria-invalid')
+assert.match(appCss, /\.field-error/u, 'field errors must be styled')
+assert.match(appCss, /\.field-toggle/u, 'the key toggle must be styled')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
