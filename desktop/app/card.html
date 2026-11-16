@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;">
+  <title>划词翻译</title>
+  <link rel="stylesheet" href="./card.css">
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="card-head">
+      <span class="tag">翻译</span>
+      <span class="src" id="src" title=""></span>
+      <span class="spacer"></span>
+      <button id="btn-popout" type="button" title="在主窗口打开">↗</button>
+      <button id="btn-close" type="button" title="关闭 · Esc">×</button>
+    </div>
+    <div class="result is-loading" id="result" role="status">正在请求模型…</div>
+    <div class="actions" id="actions"></div>
+  </div>
+  <script type="module" src="./card.js"></script>
+</body>
+</html>

@@ -814,6 +814,27 @@ function bind() {
       $('input').focus()
     }
   })
+  window.sttDesktop.onCardEntry((entry) => {
+    if (!entry || typeof entry.text !== 'string' || !entry.text.trim()) return
+    if (state.entries.some((item) => item.requestId === entry.requestId)) return
+    state.entries.push({
+      id: String(entry.id || makeId('s')),
+      requestId: String(entry.requestId || makeId('r')),
+      text: entry.text.slice(0, 12000),
+      mode: 'translate',
+      status: entry.status === 'done' ? 'done' : 'error',
+      translatedText: String(entry.translatedText || ''),
+      lexical: entry.lexical && typeof entry.lexical === 'object' ? entry.lexical : null,
+      guide: null,
+      error: String(entry.error || ''),
+      createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+      hintCount: 1,
+      answerRevealed: false,
+    })
+    persistHistory()
+    render()
+    setStatus('悬浮卡片的翻译已同步到对话')
+  })
   window.sttDesktop.onStatus((info) => {
     if (info?.hotkey) state.hotkey = info.hotkey
     if (info?.message) setStatus(info.message)

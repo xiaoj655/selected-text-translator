@@ -76,5 +76,21 @@ assert.equal(result.text, 'clipboard word')
 assert.equal(result.source, 'clipboard')
 assert.equal(clipboardText, '  clipboard word  ')
 
+// Electron 45 returns a Promise from clipboard.readText(); capture must await it.
+const asyncClipboard = createCapture({
+  clipboard: {
+    readText: async () => '  async clipboard sentence  ',
+    writeText: async (value) => {
+      clipboardText = value
+    },
+  },
+  run: async () => true,
+  delay: async () => {},
+})
+const asyncResult = await asyncClipboard.capture()
+assert.equal(asyncResult.text, 'async clipboard sentence')
+assert.equal(typeof asyncResult.text, 'string')
+assert.ok(!(asyncResult.text instanceof Promise), 'capture text must never be a Promise')
+
 rmSync(userDataDir, { recursive: true, force: true })
 console.log('[smoke] ok - storage, chrome shim, background message chain, capture fallback')

@@ -1,11 +1,20 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BrowserWindow, Menu, Tray, nativeImage } from 'electron'
+import { BrowserWindow, Menu, Tray, nativeImage, screen } from 'electron'
 
 const AUX_FILES = {
   settings: 'popup.html',
   options: 'options.html',
   library: 'library.html',
+  card: 'card.html',
+}
+
+const CARD_WIDTH = 380
+const CARD_HEIGHT = 300
+const CARD_MARGIN = 14
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
 export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
@@ -16,6 +25,8 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const aux = new Map()
   let main = null
   let mainReady = null
+  let card = null
+  let cardReady = null
   let isQuitting = false
   let alwaysOnTop = false
   let windowBackground = '#f7f8f6'
@@ -119,6 +130,85 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     if (main && !main.isDestroyed()) main.hide()
   }
 
+  function positionCardWindow(win) {
+    const point = screen.getCursorScreenPoint()
+    const area = screen.getDisplayNearestPoint(point).workArea
+    const x = clamp(point.x + CARD_MARGIN, area.x, area.x + area.width - CARD_WIDTH)
+    const y = clamp(point.y + CARD_MARGIN, area.y, area.y + area.height - CARD_HEIGHT)
+    win.setBounds({ x, y, width: CARD_WIDTH, height: CARD_HEIGHT })
+  }
+
+  let cardShownAt = 0
+
+  function ensureCardWindow() {
+    if (card && !card.isDestroyed()) return card
+    card = new BrowserWindow({
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      maximizable: false,
+      minimizable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      show: false,
+      backgroundColor: '#00000000',
+      title: '划词翻译',
+      webPreferences: {
+        preload: preloadPath,
+        contextIsolation: false,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    })
+    if (process.platform === 'darwin') {
+      card.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    }
+    card.setAlwaysOnTop(true, 'screen-saver')
+    card.loadFile(join(appDir, 'card.html'))
+    cardReady = new Promise((resolve) => {
+      card.webContents.once('did-finish-load', resolve)
+    })
+    card.on('closed', () => {
+      aux.delete('card')
+      card = null
+      cardReady = null
+    })
+    card.on('blur', () => {
+      if (!card || card.isDestroyed() || !card.isVisible()) return
+      if (Date.now() - cardShownAt < 500) return
+      card.hide()
+    })
+    aux.set('card', card)
+    return card
+  }
+
+  async function showCardWindow(payload) {
+    const win = ensureCardWindow()
+    await cardReady
+    if (win.isDestroyed()) return
+    positionCardWindow(win)
+    win.webContents.send('stt:selection', payload || {})
+    cardShownAt = Date.now()
+    win.showInactive()
+  }
+
+  function hideCardWindow() {
+    cancelCardSpeech()
+    if (card && !card.isDestroyed()) card.hide()
+  }
+
+  function cancelCardSpeech() {
+    if (card && !card.isDestroyed()) {
+      card.webContents.send('stt:message', { type: 'CARD_HIDE' })
+    }
+  }
+
+  function sendToMainWindow(channel, payload) {
+    if (main && !main.isDestroyed()) main.webContents.send(channel, payload)
+  }
+
   function setTheme(isDark) {
     windowBackground = isDark ? '#1b211d' : '#f7f8f6'
     if (main && !main.isDestroyed()) main.setBackgroundColor(windowBackground)
@@ -191,10 +281,13 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   return {
     broadcast,
     sendToWindow,
+    sendToMainWindow,
     senderFor,
     ensureMainWindow,
     showMainWindow,
     hideMainWindow,
+    showCardWindow,
+    hideCardWindow,
     toggleMainWindow,
     setAlwaysOnTop,
     setTheme,

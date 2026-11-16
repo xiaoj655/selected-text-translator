@@ -51,7 +51,8 @@ async function onHotkey() {
     payload = { text: '', context: '', contextStart: null, contextEnd: null, source: 'error' }
   }
   try {
-    await windows.showMainWindow(payload)
+    if (payload.text) await windows.showCardWindow(payload)
+    else await windows.showMainWindow(payload)
   } catch (error) {
     logger('show-failed', error)
   }
@@ -108,13 +109,31 @@ function installIpc(storage, history) {
     return true
   })
   ipcMain.on('stt:hide', () => windows.hideMainWindow())
+  ipcMain.on('stt:hide-card', () => windows.hideCardWindow())
+  ipcMain.handle('stt:card-entry', (_event, entry) => {
+    windows.sendToMainWindow('stt:card-entry', entry)
+    return true
+  })
+  ipcMain.handle('stt:open-main-text', async (_event, text) => {
+    await windows.showMainWindow({ text: String(text || ''), source: 'card' })
+    return true
+  })
 }
 
 async function bootstrap() {
   const userDataDir = app.getPath('userData')
   mkdirSync(userDataDir, { recursive: true })
   logFile = join(userDataDir, 'desktop.log')
+  let cryptoReady = false
   if (typeof safeStorage.encryptString === 'function' && typeof safeStorage.decryptString === 'function') {
+    try {
+      const probe = safeStorage.encryptString('stt-crypto-probe')
+      cryptoReady = safeStorage.decryptString(probe) === 'stt-crypto-probe'
+    } catch {
+      cryptoReady = false
+    }
+  }
+  if (cryptoReady) {
     setCrypto({
       encrypt: (value) => safeStorage.encryptString(value).toString('base64'),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),

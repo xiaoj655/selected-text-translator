@@ -153,4 +153,16 @@ window.sttDesktop = {
   setTheme(theme) {
     return ipcRenderer.invoke('stt:set-theme', theme)
   },
+  reportEntry(entry) {
+    return ipcRenderer.invoke('stt:card-entry', entry)
+  },
+  hideCard() {
+    ipcRenderer.send('stt:hide-card')
+  },
+  openMainWithText(text) {
+    return ipcRenderer.invoke('stt:open-main-text', text)
+  },
+  onCardEntry(callback) {
+    ipcRenderer.on('stt:card-entry', (_event, entry) => callback(entry))
+  },
 }

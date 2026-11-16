@@ -38,41 +38,44 @@ export function createCapture({ clipboard, platform = process.platform, delay = 
     }
   }
 
-  async function capture() {
-    let before = ''
+  async function readClipboardText() {
     try {
-      before = clipboard.readText() || ''
+      return String(await clipboard.readText() || '')
     } catch {
       // clipboard may be locked by another app
+      return ''
     }
+  }
+
+  async function writeClipboardText(value) {
+    try {
+      await clipboard.writeText(String(value || ''))
+    } catch {
+      // restoring is best effort
+    }
+  }
+
+  async function capture() {
+    const before = await readClipboardText()
 
     const didCopy = mode === 'clipboard' ? false : await simulateCopy()
     let after = before
     if (didCopy) {
       for (let attempt = 0; attempt < 8; attempt += 1) {
         await delay(40)
-        let current = ''
-        try {
-          current = clipboard.readText() || ''
-        } catch {
-          // keep polling
-        }
+        const current = await readClipboardText()
         if (current && current !== before) {
           after = current
           break
         }
       }
       if (after !== before) {
-        try {
-          clipboard.writeText(before)
-        } catch {
-          // restoring is best effort
-        }
+        await writeClipboardText(before)
       }
     }
 
     return {
-      text: String(after || '').trim().slice(0, 12000),
+      text: after.trim().slice(0, 12000),
       context: '',
       contextStart: null,
       contextEnd: null,
