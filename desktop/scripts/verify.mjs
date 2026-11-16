@@ -159,4 +159,11 @@ assert.match(tokensCss, /forced-colors: active/u, 'color roles need forced-color
 assert.match(tokensCss, /::selection/u, 'selection must use M3 role colors')
 assert.match(htmlSource, /name="color-scheme"/u, 'color-scheme meta prevents an unthemed flash')
 
+assert.match(tokensCss, /--md-sys-typescale-body-large-size:/u, 'M3 type scale must be defined')
+assert.match(tokensCss, /--md-sys-elevation-level1:/u, 'M3 elevation levels must be defined')
+assert.match(tokensCss, /--md-sys-shape-large:/u, 'M3 shape roles must be defined')
+assert.match(appCss, /--md-sys-typescale-body-large-size/u, 'main window must apply the M3 type scale')
+assert.match(appCss, /--md-sys-elevation-level2/u, 'cards must respond with M3 elevation')
+assert.match(cardCss, /--md-sys-elevation-level3/u, 'floating card must use M3 elevation')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

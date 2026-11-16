@@ -151,6 +151,43 @@
   --t: 170ms cubic-bezier(.4, 0, .2, 1);
 }
 
+/* M3 typography scale — every size derives from one base so the font preference scales the whole UI */
+:root {
+  --md-font-family: 'Roboto Flex', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --md-font-size: 14px;
+  --md-type-line-body: 1.6;
+  --md-type-line-result: 1.8;
+  --md-type-line-headline: 1.3;
+  --md-type-weight-regular: 400;
+  --md-type-weight-medium: 500;
+  --md-type-weight-semibold: 600;
+  --md-type-weight-bold: 700;
+  --md-type-tracking-tight: -.01em;
+  --md-type-tracking-normal: 0;
+  --md-type-tracking-wide: .01em;
+  --md-type-tracking-label: .08em;
+
+  --md-sys-typescale-display-size: calc(var(--md-font-size) * 1.571);
+  --md-sys-typescale-headline-size: calc(var(--md-font-size) * 1.357);
+  --md-sys-typescale-title-size: calc(var(--md-font-size) * 1.214);
+  --md-sys-typescale-body-large-size: calc(var(--md-font-size) * 1.071);
+  --md-sys-typescale-body-size: var(--md-font-size);
+  --md-sys-typescale-label-large-size: calc(var(--md-font-size) * 0.893);
+  --md-sys-typescale-label-medium-size: calc(var(--md-font-size) * 0.821);
+  --md-sys-typescale-label-small-size: calc(var(--md-font-size) * 0.75);
+
+  --md-sys-shape-small: var(--md-shape-sm);
+  --md-sys-shape-medium: var(--md-shape-md);
+  --md-sys-shape-large: var(--md-shape-lg);
+  --md-sys-shape-extra-large: var(--md-shape-xl);
+  --md-sys-shape-full: var(--md-shape-full);
+
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: var(--md-elev-1);
+  --md-sys-elevation-level2: var(--md-elev-2);
+  --md-sys-elevation-level3: var(--md-elev-3);
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 

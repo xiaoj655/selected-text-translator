@@ -1,10 +1,10 @@
 @import './tokens.css';
 
 :root {
-  --font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font: 14px/1.6 var(--md-font-family);
 }
-:root[data-font="small"] { --font: 13px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-:root[data-font="large"] { --font: 16px/1.75 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+:root[data-font="small"] { --font: 13px/1.55 var(--md-font-family); --md-font-size: 13px; }
+:root[data-font="large"] { --font: 16px/1.75 var(--md-font-family); --md-font-size: 16px; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -313,6 +313,28 @@ svg { display: block; }
 
 .status-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .status-stats { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* M3 typography, shape and elevation applied across the interface */
+body { font-family: var(--md-font-family); font-size: var(--md-font-size); line-height: var(--md-type-line-body); }
+#input, .drawer input, .drawer select, .sidebar-search input { font-family: var(--md-font-family); font-size: var(--md-sys-typescale-body-size); }
+
+.brand h1 { font-size: var(--md-sys-typescale-title-size); font-weight: var(--md-type-weight-bold); line-height: var(--md-type-line-headline); letter-spacing: var(--md-type-tracking-tight); }
+.brand small { font-size: var(--md-sys-typescale-label-small-size); letter-spacing: var(--md-type-tracking-wide); }
+.mode, .notice, .empty-examples button, .guide-tools button, .actions button, .drawer label, .drawer-actions button, .accent-label, .drawer-hotkey button, .help-list dt, .help-list dd, .sidebar-search input, .hi-text, .history-empty, .export-menu button strong { font-size: var(--md-sys-typescale-label-large-size); }
+.top-actions button, .composer-hint, .composer-left button, .char-count, .mini-toggle, .drawer-tip, .drawer-status, .help-foot, .sidebar-meta, .hi-result, .export-menu button small, .export-note, .statusbar, .status-stats { font-size: var(--md-sys-typescale-label-medium-size); }
+.drawer-section h3, .drawer-diag, .hi-tag, .hi-time, .export-head, .result-label { font-size: var(--md-sys-typescale-label-small-size); }
+.empty h2 { font-size: var(--md-sys-typescale-headline-size); line-height: var(--md-type-line-headline); }
+.empty p, .bubble, .result, .result.is-error, .lexical, .hint, .answer, .drawer input, .drawer select { font-size: var(--md-sys-typescale-body-size); }
+.empty kbd { font-size: var(--md-sys-typescale-label-medium-size); }
+.entry-head, .entry-head .tag { font-size: var(--md-sys-typescale-label-medium-size); }
+.drawer-head h2, .help-head h2, .sidebar-head h2 { font-size: var(--md-sys-typescale-title-size); line-height: var(--md-type-line-headline); }
+.entry-body > .result { font-size: var(--md-sys-typescale-body-large-size); line-height: var(--md-type-line-result); letter-spacing: var(--md-type-tracking-wide); }
+
+.entry-card { border-radius: var(--md-sys-shape-large); box-shadow: var(--md-sys-elevation-level1); transition: border-color var(--t), box-shadow var(--t); }
+.entry-card:hover { box-shadow: var(--md-sys-elevation-level2); }
+.composer-box, .export-menu { border-radius: var(--md-sys-shape-large); }
+.help-pop { border-radius: var(--md-sys-shape-extra-large); box-shadow: var(--md-sys-elevation-level3); }
+.export-menu { box-shadow: var(--md-sys-elevation-level2); }
 
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
