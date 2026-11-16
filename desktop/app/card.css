@@ -95,6 +95,67 @@ button:active::after { opacity: var(--md-state-pressed); }
 .card, .actions button, .card-head button { transition-timing-function: var(--md-motion-easing-standard); transition-duration: var(--md-motion-duration-short4); }
 button::after { transition-duration: var(--md-motion-duration-short2); }
 
+/* M3 floating card — compact elevated surface with tonal header and chips */
+.card {
+  position: relative;
+  background: var(--md-popover-container);
+  border: 1px solid var(--md-popover-outline);
+  border-radius: var(--md-popover-shape);
+  box-shadow: var(--md-popover-elevation);
+  color: var(--md-popover-body);
+}
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 3px;
+  background: var(--md-popover-rail);
+  z-index: 2;
+}
+.card-head {
+  background: var(--md-popover-head);
+  border-bottom: 0;
+  padding: 11px 12px 9px;
+}
+.card-head .tag {
+  border-radius: var(--md-chip-shape);
+  border: 1px solid transparent;
+  background: var(--md-chip-selected-container);
+  color: var(--md-chip-selected-label);
+  font-size: var(--md-sys-typescale-label-small-size);
+  font-weight: var(--md-type-weight-semibold);
+}
+.card-head .tag::before { background: var(--md-sys-color-primary); }
+.card-head .src { color: var(--md-sys-color-on-surface-variant); }
+.card-head button { color: var(--md-btn-icon-label); }
+.card-head button:hover { background: transparent; color: var(--md-sys-color-primary); }
+.card-head button.is-active { background: var(--md-btn-filled-container); color: var(--md-btn-filled-label); }
+.result { padding: 14px 16px; font-size: var(--md-sys-typescale-body-large-size); line-height: var(--md-type-line-result); }
+.result.is-error {
+  margin: 10px 12px;
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-small);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+.lexical {
+  border-radius: var(--md-sys-shape-medium);
+  background: var(--md-sys-color-surface-container-high);
+  border: 0;
+  padding: 11px 13px;
+}
+.lexical-label { color: var(--md-sys-color-primary); }
+.actions { background: var(--md-popover-head); border-top: 0; padding: 8px 12px 12px; }
+.actions button {
+  background: var(--md-btn-tonal-container);
+  color: var(--md-btn-tonal-label);
+  border: 1px solid transparent;
+  font-size: var(--md-sys-typescale-label-large-size);
+}
+.actions button:hover { background: var(--md-btn-tonal-container); color: var(--md-btn-tonal-label); border-color: transparent; }
+.actions button.is-done { background: var(--success-soft); color: var(--success); }
+.caret { background: var(--md-sys-color-primary); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

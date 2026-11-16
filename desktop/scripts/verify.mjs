@@ -187,4 +187,11 @@ assert.match(appCss, /--md-motion-easing-emphasized-decelerate/u, 'dialogs must 
 assert.match(appCss, /animation-timing-function/u, 'surfaces need an M3 animation easing')
 assert.match(cardCss, /--md-motion-easing-standard/u, 'floating card must share the M3 easing')
 
+assert.match(tokensCss, /--md-popover-container:/u, 'M3 floating card roles must be defined')
+assert.match(tokensCss, /--md-popover-rail:/u, 'floating card needs a primary top rail')
+assert.match(cardCss, /--md-popover-container/u, 'floating card must use the M3 popover surface')
+assert.match(cardCss, /--md-chip-selected-container/u, 'floating card tag must be an M3 chip')
+assert.match(cardCss, /--md-sys-color-error-container/u, 'card errors must use the M3 error container')
+assert.match(cardCss, /--md-btn-tonal-container/u, 'card actions must use M3 tonal buttons')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

@@ -247,6 +247,17 @@
   --t: var(--md-motion-duration-short4) var(--md-motion-easing-standard);
 }
 
+/* M3 floating card roles — compact elevated surface */
+:root {
+  --md-popover-container: var(--md-sys-color-surface-container-low);
+  --md-popover-outline: var(--md-sys-color-outline-variant);
+  --md-popover-head: var(--md-sys-color-surface-container-high);
+  --md-popover-shape: var(--md-sys-shape-large);
+  --md-popover-elevation: var(--md-sys-elevation-level3);
+  --md-popover-rail: var(--md-sys-color-primary);
+  --md-popover-body: var(--md-sys-color-on-surface);
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
