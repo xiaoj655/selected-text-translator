@@ -150,4 +150,13 @@ assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
 assert.match(appSource, /createTextNode\(entry\.translatedText/u, 'stream text must be written as a text node')
 
+assert.match(tokensCss, /--md-sys-color-primary:/u, 'M3 color roles must define a primary')
+assert.match(tokensCss, /--md-sys-color-surface-container:/u, 'M3 surface container roles are required')
+assert.match(tokensCss, /--md-state-hover:/u, 'M3 state-layer opacities are required')
+assert.match(tokensCss, /--md-shape-md:/u, 'M3 shape scale is required')
+assert.match(tokensCss, /light-dark\(/u, 'color roles must adapt via light-dark()')
+assert.match(tokensCss, /forced-colors: active/u, 'color roles need forced-colors fallbacks')
+assert.match(tokensCss, /::selection/u, 'selection must use M3 role colors')
+assert.match(htmlSource, /name="color-scheme"/u, 'color-scheme meta prevents an unthemed flash')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

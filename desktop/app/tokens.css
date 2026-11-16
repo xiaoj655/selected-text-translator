@@ -1,97 +1,203 @@
+/* Material 3 color system: reference tones -> system roles -> legacy aliases */
+
 :root {
   color-scheme: light dark;
+  accent-color: var(--md-sys-color-primary);
 
   --accent-base: #4f57d6;
   --accent-dark: #9aa0ff;
   --accent-2: #7b5cf0;
 
-  --bg: #edf0f7;
-  --surface: #ffffff;
-  --surface-2: #f6f8fc;
-  --surface-3: #eef2f9;
-  --ink: #1a2340;
-  --ink-2: #4a5573;
-  --muted: #8b95ad;
-  --line: #e5e9f1;
-  --line-2: #d6dcea;
+  /* M3 state-layer opacities */
+  --md-state-hover: 0.08;
+  --md-state-focus: 0.1;
+  --md-state-pressed: 0.1;
+  --md-state-dragged: 0.16;
 
-  --accent: var(--accent-base);
+  /* M3 shape scale */
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 999px;
+
+  /* M3 neutral palette */
+  --md-n6: #0f0d13;
+  --md-n10: #1d1b20;
+  --md-n12: #141218;
+  --md-n17: #1d1b20;
+  --md-n20: #322f35;
+  --md-n22: #211f26;
+  --md-n24: #2b2930;
+  --md-n27: #36343b;
+  --md-n30: #48454f;
+  --md-n90: #e6e0e9;
+  --md-n92: #ebe5ee;
+  --md-n94: #f0ebf3;
+  --md-n95: #f3eef7;
+  --md-n96: #f7f2fa;
+  --md-n99: #fffbfe;
+  --md-n100: #ffffff;
+  --md-nv30: #49454f;
+  --md-nv50: #79747e;
+  --md-nv60: #938f99;
+  --md-nv80: #cac4d0;
+
+  /* M3 error palette */
+  --md-e10: #410e0b;
+  --md-e30: #93000a;
+  --md-e40: #b3261e;
+  --md-e80: #ffb4ab;
+  --md-e90: #ffdad6;
+
+  /* M3 success palette */
+  --md-ok10: #0a2d1c;
+  --md-ok30: #005234;
+  --md-ok40: #1b6c4b;
+  --md-ok80: #8bd5ac;
+  --md-ok90: #c6f0d8;
+
+  /* M3 primary tonal ramp (indigo default) */
+  --md-p10: #14156b;
+  --md-p20: #242b98;
+  --md-p30: #3740bd;
+  --md-p40: var(--accent-base);
+  --md-p80: var(--accent-dark);
+  --md-p90: #e1e0ff;
+  --md-p95: #f0efff;
+
+  /* M3 secondary / tertiary, derived from the seed */
+  --md-s10: color-mix(in oklab, var(--md-p40) 38%, #0c0a10);
+  --md-s20: color-mix(in oklab, var(--md-p40) 48%, #15121a);
+  --md-s30: color-mix(in oklab, var(--md-p40) 58%, #2b2530);
+  --md-s40: color-mix(in oklab, var(--md-p40) 62%, #625b71);
+  --md-s80: color-mix(in oklab, var(--md-p80) 58%, #cbc4db);
+  --md-s90: color-mix(in oklab, var(--md-p40) 15%, white);
+  --md-t10: color-mix(in oklab, var(--accent-2) 48%, black);
+  --md-t30: color-mix(in oklab, var(--accent-2) 72%, black);
+  --md-t40: var(--accent-2);
+  --md-t80: color-mix(in oklab, var(--accent-2) 48%, white);
+  --md-t90: color-mix(in oklab, var(--accent-2) 18%, white);
+
+  /* M3 system color roles */
+  --md-sys-color-primary: light-dark(var(--md-p40), var(--md-p80));
+  --md-sys-color-on-primary: light-dark(#ffffff, var(--md-p20));
+  --md-sys-color-primary-container: light-dark(var(--md-p90), var(--md-p30));
+  --md-sys-color-on-primary-container: light-dark(var(--md-p10), var(--md-p90));
+  --md-sys-color-secondary: light-dark(var(--md-s40), var(--md-s80));
+  --md-sys-color-on-secondary: light-dark(#ffffff, var(--md-s20));
+  --md-sys-color-secondary-container: light-dark(var(--md-s90), var(--md-s30));
+  --md-sys-color-on-secondary-container: light-dark(var(--md-s10), var(--md-s90));
+  --md-sys-color-tertiary: light-dark(var(--md-t40), var(--md-t80));
+  --md-sys-color-on-tertiary: light-dark(#ffffff, var(--md-t30));
+  --md-sys-color-tertiary-container: light-dark(var(--md-t90), var(--md-t30));
+  --md-sys-color-on-tertiary-container: light-dark(var(--md-t10), var(--md-t90));
+  --md-sys-color-surface: light-dark(var(--md-n99), var(--md-n12));
+  --md-sys-color-surface-dim: light-dark(var(--md-n90), var(--md-n6));
+  --md-sys-color-surface-bright: light-dark(var(--md-n100), var(--md-n24));
+  --md-sys-color-surface-container-lowest: light-dark(var(--md-n100), var(--md-n6));
+  --md-sys-color-surface-container-low: light-dark(var(--md-n96), var(--md-n17));
+  --md-sys-color-surface-container: light-dark(var(--md-n94), var(--md-n22));
+  --md-sys-color-surface-container-high: light-dark(var(--md-n92), var(--md-n24));
+  --md-sys-color-surface-container-highest: light-dark(var(--md-n90), var(--md-n27));
+  --md-sys-color-on-surface: light-dark(var(--md-n10), var(--md-n90));
+  --md-sys-color-on-surface-variant: light-dark(var(--md-nv30), var(--md-nv80));
+  --md-sys-color-outline: light-dark(var(--md-nv50), var(--md-nv60));
+  --md-sys-color-outline-variant: light-dark(var(--md-nv80), var(--md-nv30));
+  --md-sys-color-error: light-dark(var(--md-e40), var(--md-e80));
+  --md-sys-color-on-error: light-dark(#ffffff, var(--md-e10));
+  --md-sys-color-error-container: light-dark(var(--md-e90), var(--md-e30));
+  --md-sys-color-on-error-container: light-dark(var(--md-e10), var(--md-e90));
+  --md-sys-color-inverse-surface: light-dark(var(--md-n20), var(--md-n90));
+  --md-sys-color-inverse-on-surface: light-dark(var(--md-n95), var(--md-n20));
+  --md-sys-color-inverse-primary: light-dark(var(--md-p80), var(--md-p40));
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-surface-tint: var(--md-sys-color-primary);
+
+  /* M3 elevation */
+  --md-elev-1: 0 1px 2px color-mix(in oklab, #000 18%, transparent), 0 1px 3px 1px color-mix(in oklab, #000 8%, transparent);
+  --md-elev-2: 0 2px 6px 2px color-mix(in oklab, #000 12%, transparent), 0 8px 20px color-mix(in oklab, #000 10%, transparent);
+  --md-elev-3: 0 6px 12px 3px color-mix(in oklab, #000 14%, transparent), 0 16px 36px color-mix(in oklab, #000 12%, transparent);
+
+  /* Legacy aliases — keep every existing selector working */
+  --bg: var(--md-sys-color-surface-container);
+  --surface: var(--md-sys-color-surface-container-lowest);
+  --surface-2: var(--md-sys-color-surface-container-low);
+  --surface-3: var(--md-sys-color-surface-container-high);
+  --ink: var(--md-sys-color-on-surface);
+  --ink-2: var(--md-sys-color-on-surface-variant);
+  --muted: var(--md-sys-color-outline);
+  --line: light-dark(color-mix(in oklab, var(--md-nv80) 62%, var(--md-n99)), color-mix(in oklab, var(--md-nv30) 62%, var(--md-n12)));
+  --line-2: light-dark(color-mix(in oklab, var(--md-nv80) 88%, var(--md-n99)), color-mix(in oklab, var(--md-nv30) 88%, var(--md-n12)));
+  --accent: var(--md-sys-color-primary);
   --accent-ink: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent-base) 11%, var(--surface));
-  --accent-soft-2: color-mix(in srgb, var(--accent-base) 18%, var(--surface));
-  --grad: linear-gradient(135deg, var(--accent-base) 0%, var(--accent-2) 100%);
-  --grad-glow: color-mix(in srgb, var(--accent-base) 28%, transparent);
-
-  --danger: #d24a5f;
-  --danger-soft: #fdecef;
-  --success: #169c72;
-  --success-soft: #e7f7f0;
-
-  --shadow-sm: 0 1px 2px #16204a0d, 0 2px 8px #16204a0a;
-  --shadow-md: 0 4px 14px #16204a12, 0 14px 34px #16204a0d;
-  --shadow-lg: -14px 0 44px #16204a1f;
-  --ring: 0 0 0 3px var(--accent-soft);
-
-  --radius: 16px;
-  --radius-sm: 10px;
-  --radius-lg: 22px;
+  --accent-soft: var(--md-sys-color-primary-container);
+  --accent-soft-2: var(--md-sys-color-secondary-container);
+  --grad: linear-gradient(135deg, var(--md-p40) 0%, var(--accent-2) 100%);
+  --grad-glow: color-mix(in oklab, var(--md-p40) 30%, transparent);
+  --danger: var(--md-sys-color-error);
+  --danger-soft: var(--md-sys-color-error-container);
+  --success: light-dark(var(--md-ok40), var(--md-ok80));
+  --success-soft: light-dark(var(--md-ok90), var(--md-ok30));
+  --shadow-sm: var(--md-elev-1);
+  --shadow-md: var(--md-elev-2);
+  --shadow-lg: -14px 0 44px color-mix(in oklab, #000 14%, transparent);
+  --ring: 0 0 0 3px color-mix(in oklab, var(--md-p40) 32%, transparent);
+  --radius: var(--md-shape-lg);
+  --radius-sm: var(--md-shape-md);
+  --radius-lg: var(--md-shape-xl);
   --t: 170ms cubic-bezier(.4, 0, .2, 1);
 }
 
-:root[data-theme="dark"] {
-  --bg: #0d1018;
-  --surface: #161b27;
-  --surface-2: #1c2230;
-  --surface-3: #232a3a;
-  --ink: #eef1fa;
-  --ink-2: #b5bfd6;
-  --muted: #7f8aa4;
-  --line: #28303f;
-  --line-2: #333c4e;
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
-  --accent: var(--accent-dark);
-  --accent-soft: color-mix(in srgb, var(--accent-base) 20%, var(--surface));
-  --accent-soft-2: color-mix(in srgb, var(--accent-base) 32%, var(--surface));
-  --grad-glow: color-mix(in srgb, var(--accent-base) 40%, transparent);
-
-  --danger: #ff8497;
-  --danger-soft: #3a2230;
-  --success: #4fd0a1;
-  --success-soft: #17342a;
-
-  --shadow-sm: 0 1px 2px #0006, 0 2px 8px #0004;
-  --shadow-md: 0 6px 18px #0006, 0 16px 40px #0005;
-  --shadow-lg: -14px 0 44px #0008;
-  --ring: 0 0 0 3px var(--accent-soft);
+::selection {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
-    --bg: #0d1018;
-    --surface: #161b27;
-    --surface-2: #1c2230;
-    --surface-3: #232a3a;
-    --ink: #eef1fa;
-    --ink-2: #b5bfd6;
-    --muted: #7f8aa4;
-    --line: #28303f;
-    --line-2: #333c4e;
-    --accent: var(--accent-dark);
-    --accent-soft: color-mix(in srgb, var(--accent-base) 20%, var(--surface));
-    --accent-soft-2: color-mix(in srgb, var(--accent-base) 32%, var(--surface));
-    --grad-glow: color-mix(in srgb, var(--accent-base) 40%, transparent);
-    --danger: #ff8497;
-    --danger-soft: #3a2230;
-    --success: #4fd0a1;
-    --success-soft: #17342a;
-    --shadow-sm: 0 1px 2px #0006, 0 2px 8px #0004;
-    --shadow-md: 0 6px 18px #0006, 0 16px 40px #0005;
-    --shadow-lg: -14px 0 44px #0008;
-    --ring: 0 0 0 3px var(--accent-soft);
+@media (prefers-contrast: more) {
+  :root {
+    --line: var(--md-sys-color-outline);
+    --line-2: var(--md-sys-color-outline);
+    --muted: var(--md-sys-color-on-surface-variant);
   }
 }
 
-:root[data-accent="ocean"] { --accent-base: #0e7c9b; --accent-dark: #74d4ea; --accent-2: #17a9b8; }
-:root[data-accent="emerald"] { --accent-base: #0f8a5f; --accent-dark: #74e0ac; --accent-2: #34b37e; }
-:root[data-accent="rose"] { --accent-base: #c8436b; --accent-dark: #ffa3bd; --accent-2: #ec6a9c; }
-:root[data-accent="amber"] { --accent-base: #a86411; --accent-dark: #f5c477; --accent-2: #e5a02b; }
+@media (forced-colors: active) {
+  :root {
+    --md-sys-color-primary: Highlight;
+    --md-sys-color-on-primary: HighlightText;
+    --md-sys-color-primary-container: Canvas;
+    --md-sys-color-on-primary-container: CanvasText;
+    --md-sys-color-secondary: ButtonText;
+    --md-sys-color-secondary-container: Canvas;
+    --md-sys-color-tertiary: LinkText;
+    --md-sys-color-tertiary-container: Canvas;
+    --md-sys-color-surface: Canvas;
+    --md-sys-color-surface-container: Canvas;
+    --md-sys-color-surface-container-lowest: Canvas;
+    --md-sys-color-surface-container-low: Canvas;
+    --md-sys-color-surface-container-high: Canvas;
+    --md-sys-color-surface-container-highest: Canvas;
+    --md-sys-color-on-surface: CanvasText;
+    --md-sys-color-on-surface-variant: CanvasText;
+    --md-sys-color-outline: CanvasText;
+    --md-sys-color-outline-variant: CanvasText;
+    --md-sys-color-error: LinkText;
+    --md-sys-color-error-container: Canvas;
+    --success: CanvasText;
+    --success-soft: Canvas;
+    --accent-ink: HighlightText;
+  }
+  ::selection { background: Highlight; color: HighlightText; }
+}
+
+:root[data-accent="indigo"] { --accent-base: #4f57d6; --accent-dark: #9aa0ff; --accent-2: #7b5cf0; --md-p10: #14156b; --md-p20: #242b98; --md-p30: #3740bd; --md-p90: #e1e0ff; --md-p95: #f0efff; }
+:root[data-accent="ocean"] { --accent-base: #0e7c9b; --accent-dark: #74d4ea; --accent-2: #17a9b8; --md-p10: #003544; --md-p20: #004f66; --md-p30: #00667f; --md-p90: #c2e8f5; --md-p95: #e0f4fa; }
+:root[data-accent="emerald"] { --accent-base: #0f8a5f; --accent-dark: #74e0ac; --accent-2: #34b37e; --md-p10: #003822; --md-p20: #005234; --md-p30: #006b45; --md-p90: #b7f1d3; --md-p95: #dcf8e9; }
+:root[data-accent="rose"] { --accent-base: #c8436b; --accent-dark: #ffa3bd; --accent-2: #ec6a9c; --md-p10: #4a0c22; --md-p20: #6b1735; --md-p30: #8e2449; --md-p90: #ffd9e3; --md-p95: #ffeef2; }
+:root[data-accent="amber"] { --accent-base: #a86411; --accent-dark: #f5c477; --accent-2: #e5a02b; --md-p10: #3d2200; --md-p20: #5a3400; --md-p30: #7a4700; --md-p90: #ffe0a8; --md-p95: #fff1d8; }
