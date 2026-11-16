@@ -44,7 +44,7 @@
 - `scripts/smoke.mjs`:纯 Node 验证存储、双层 `chrome` shim、`background.js` 消息链、取词回退。
 - `src/`:Electron 主进程、消息路由、`chrome` 兼容层、取词、TTS、窗口、历史、日志。
 - `app/`:主窗口(`index.html` + `app.js` + `app.css`)与悬浮翻译卡片(`card.html` + `card.js` + `card.css`),直接以消息协议驱动后台。
-- `.github/workflows/desktop-build.yml`:在 macOS / Windows runner 上产出安装包。
+- `.github/workflows/desktop-build.yml`:在 macOS(x64 + arm64)/ Windows / Linux runner 上产出安装包;推送 `desktop-v*` 标签(须与 `package.json` 版本一致)时自动以 `desktop/CHANGELOG.md` 对应版本的说明创建 GitHub Release,附全部安装包与 SHA256 校验和。
 
 `src/` 下除 `main.js` / `windows.js` / `preload.cjs` 外都不 import Electron,便于在纯 Node 下测试。
 

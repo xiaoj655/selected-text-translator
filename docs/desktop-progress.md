@@ -68,7 +68,7 @@
 回传时请附:平台 + 系统版本 + 代码版本(commit)、操作步骤、预期 vs 实际、日志、截图。截图注意避开 API Key 输入框。
 
 ### 清单 1 — 主交互(两平台通用)
-1. 从 Actions 的 Artifacts 下载安装包。**macOS 选对架构**:Intel 用 `Selected Text Translator-<版本>.dmg`,Apple Silicon 用 `...-arm64.dmg`。当前产物未签名,macOS 首次打开需在「系统设置 → 隐私与安全性」允许,Windows 可能出现 SmartScreen 提示。
+1. 从 GitHub Releases(推 `desktop-v*` 标签自动发布,含版本说明)或 Actions 的 Artifacts 下载安装包。**macOS 选对架构**:Intel 用 `Selected Text Translator-<版本>.dmg`,Apple Silicon 用 `...-arm64.dmg`。当前产物未签名,macOS 首次打开需在「系统设置 → 隐私与安全性」允许,Windows 可能出现 SmartScreen 提示。
 2. 启动 App,托盘/菜单栏图标出现,不弹主窗口(启动已预加载,热键响应更快)。
 3. 首次启动应自动展开内嵌设置面板;填入 API 地址、API Key、翻译模型,点「检测连接」应能拉到模型列表,保存后面板收起。
 4. **关键回归**:在记事本/浏览器里选中一段英文,按 `Alt+Shift+E`。预期:**鼠标附近弹出悬浮翻译卡片**(主窗口不弹出),卡片流式显示译文;点其他窗口或 `Esc` 卡片关闭,主窗口消息流里出现这条记录。
@@ -124,3 +124,4 @@
 | 2026-11-15 | v0.8.10 | 空状态示例、启动预加载窗口加速热键、README 与进度文档更新 | `verify` 通过;Xvfb 运行时验证发现并修复 `window.chrome` 与 Chromium 内置对象冲突(preload 改为主世界注入);真实 API 端到端 4 条链路通过;Linux 解包构建成功 |
 | 2026-11-16 | v0.8.11 | 修复热键翻译显示 `[object Promise]`:Electron 45 的 `clipboard.readText()` 返回 Promise,取词全部改为 await(同时修复剪贴板恢复被写入 Promise 的问题);safeStorage 加密改为探针验证(无 keyring 的 Linux 上保存设置不再失败);新增**悬浮翻译卡片**:热键取到文字时在鼠标附近弹出置顶小窗显示译文(流式),不打断当前工作,卡片可复制/朗读/重新生成/收藏/转入主窗口,完成自动同步进主窗口历史 | `verify`/`smoke` 通过(新增异步剪贴板回归);Xvfb + XTEST 实键端到端:普通+流式两链路卡片渲染正确、空剪贴板回退主窗口、历史同步正确 |
 | 2026-11-16 | v0.8.12 | 修复 `Esc` 无法关闭卡片:卡片不抢焦点,页面内按键监听收不到,改为卡片可见期间注册全局 `Escape` 快捷键(关闭即注销);卡片高度随内容自适应(120–520px,短结果不再留大片空白);卡片跟随主窗口主题 / 字号 / 减少动效设置,热键载荷即时下发 + storage 变更实时同步;桌面端错误消息中文化(未配置、超时、流式解析失败等,新增 `app/messages.js` 共享映射);主窗口时间戳改为 zh-CN 24 小时制 | `verify` 通过(新增 Esc/resize/本地化断言);Xvfb + XTEST 端到端:Esc 后卡片关闭、短结果卡片高 136px、中文错误渲染正确 |
+| 2026-11-16 | v0.8.13 | 桌面端发布流水线:推 `desktop-v*` 标签构建 Windows / macOS(x64+arm64)/ Linux(AppImage,新增)三平台安装包,标签先与 `desktop/package.json` 版本校验,再从 `desktop/CHANGELOG.md` 抽取对应版本说明创建 GitHub Release,附 SHA256 校验和;`verify` 新增「更新记录必须覆盖当前版本」断言,漏写说明直接验收失败 | `verify` 通过;`release-notes.mjs` 抽取 0.8.12 正确、缺版本正确报错 |

@@ -75,5 +75,8 @@ assert.match(windowsSource, /resizeCardWindow/u, 'main process must resize the c
 const cardCss = readFileSync(join(root, 'app', 'card.css'), 'utf8')
 assert.match(cardCss, /data-font/u, 'card must follow the font-size preference')
 assert.match(cardCss, /data-motion/u, 'card must honor reduced motion')
+const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
+assert.ok(changelog.split('\n').some((line) => line.startsWith(`## ${pkg.version}`)),
+  `CHANGELOG.md must document v${pkg.version} (used for release notes)`)
 
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
