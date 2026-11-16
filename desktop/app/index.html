@@ -9,6 +9,9 @@
 <body>
   <div class="app">
     <header class="topbar">
+      <button id="btn-history" class="history-trigger" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>
+      </button>
       <div class="brand">
         <span class="brand-mark">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
@@ -41,6 +44,22 @@
         </button>
       </div>
     </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+    <aside class="sidebar" id="sidebar" hidden>
+      <div class="sidebar-head">
+        <div><h2>历史记录</h2><p class="drawer-tip">点击条目跳转到对话中对应位置</p></div>
+        <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="sidebar-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="history-search" type="search" spellcheck="false" autocomplete="off" placeholder="搜索原文 / 译文…">
+      </div>
+      <div class="sidebar-meta" id="history-count">共 0 条</div>
+      <div class="sidebar-list" id="history-list"></div>
+    </aside>
 
     <div class="notice" id="notice" hidden></div>
 
@@ -128,6 +147,7 @@
         <dl class="help-list">
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></dt><dd>发送并翻译</dd></div>
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></dt><dd>聚焦输入框</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>H</kbd></dt><dd>打开 / 关闭历史侧栏</dd></div>
           <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>/</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
           <div><dt><kbd>?</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
           <div><dt><kbd>Esc</kbd></dt><dd>隐藏窗口 / 关闭面板</dd></div>

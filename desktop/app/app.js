@@ -97,6 +97,88 @@ function updateScrollFab() {
   $('btn-scroll-bottom').hidden = !far
 }
 
+function isSidebarOpen() {
+  return !$('sidebar').hidden
+}
+
+function openSidebar() {
+  $('sidebar').hidden = false
+  $('sidebar-backdrop').hidden = false
+  $('btn-history').classList.add('is-active')
+  renderHistory()
+  $('history-search').focus()
+}
+
+function closeSidebar() {
+  $('sidebar').hidden = true
+  $('sidebar-backdrop').hidden = true
+  $('btn-history').classList.remove('is-active')
+}
+
+function toggleSidebar() {
+  if (isSidebarOpen()) closeSidebar()
+  else openSidebar()
+}
+
+function historySnippet(entry) {
+  if (entry.status === 'done') return resultText(entry) || (entry.mode === 'guide' ? '引导理解' : '（无结果）')
+  if (entry.error) return entry.error
+  return '处理中…'
+}
+
+function renderHistory() {
+  const sidebar = $('sidebar')
+  if (!sidebar || sidebar.hidden) return
+  const query = $('history-search').value.trim().toLowerCase()
+  const list = $('history-list')
+  list.replaceChildren()
+  const items = [...state.entries].reverse()
+  const matched = items.filter((entry) => {
+    if (!query) return true
+    const haystack = `${entry.text} ${historySnippet(entry)} ${entry.mode === 'guide' ? '引导理解' : '翻译'}`.toLowerCase()
+    return haystack.includes(query)
+  })
+  $('history-count').textContent = query
+    ? `共 ${items.length} 条 · 匹配 ${matched.length} 条`
+    : `共 ${items.length} 条`
+  if (!matched.length) {
+    const empty = el('div', 'history-empty')
+    const icon = el('div')
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+    empty.append(icon)
+    empty.append(el('div', '', query ? '没有匹配的记录' : '还没有翻译记录'))
+    empty.append(el('div', '', query ? '换个关键词试试' : '开始翻译后会自动记录在这里'))
+    list.append(empty)
+    return
+  }
+  for (const entry of matched) {
+    const item = el('button', 'history-item')
+    item.type = 'button'
+    item.dataset.entryId = entry.id
+    item.title = entry.text
+    const top = el('div', 'hi-top')
+    top.append(el('span', 'hi-tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
+    top.append(el('span', 'hi-time', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
+    item.append(top)
+    item.append(el('div', 'hi-text', entry.text))
+    item.append(el('div', 'hi-result', historySnippet(entry)))
+    list.append(item)
+  }
+}
+
+function jumpToEntry(id) {
+  const entry = state.entries.find((item) => item.id === id)
+  if (!entry) return
+  state.collapsed.delete(id)
+  renderEntry(entry)
+  closeSidebar()
+  const node = $('stream').querySelector(`[data-entry-id="${id}"]`)
+  if (!node) return
+  node.scrollIntoView({ behavior: state.prefs.reducedMotion ? 'auto' : 'smooth', block: 'center' })
+  node.classList.add('is-highlight')
+  setTimeout(() => node.classList.remove('is-highlight'), 1600)
+}
+
 async function savePrefs() {
   try {
     await chrome.storage.sync.set({ desktop_prefs: state.prefs })
@@ -652,6 +734,7 @@ function render() {
   else for (const entry of state.entries) stream.append(renderEntryEl(entry))
   stream.scrollTop = stream.scrollHeight
   updateScrollFab()
+  renderHistory()
 }
 
 function renderEntry(entry) {
@@ -664,6 +747,7 @@ function renderEntry(entry) {
   node.replaceWith(renderEntryEl(entry))
   if (['pending', 'loading', 'streaming'].includes(entry.status)) stream.scrollTop = stream.scrollHeight
   updateScrollFab()
+  renderHistory()
 }
 
 function cancelRequest(entry) {
@@ -810,6 +894,11 @@ function bind() {
         hideHelp()
         return
       }
+      if (isSidebarOpen()) {
+        event.stopPropagation()
+        closeSidebar()
+        return
+      }
       window.sttDesktop.hide()
       return
     }
@@ -877,12 +966,32 @@ function bind() {
   })
   $('stream').addEventListener('scroll', updateScrollFab, { passive: true })
 
+  $('btn-history').addEventListener('click', toggleSidebar)
+  $('btn-close-sidebar').addEventListener('click', closeSidebar)
+  $('sidebar-backdrop').addEventListener('click', closeSidebar)
+  $('sidebar').addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      closeSidebar()
+    }
+  })
+  $('history-search').addEventListener('input', renderHistory)
+  $('history-list').addEventListener('click', (event) => {
+    const item = event.target.closest('.history-item')
+    if (item) jumpToEntry(item.dataset.entryId)
+  })
+
   document.addEventListener('keydown', (event) => {
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key.toLowerCase() === 'k' && $('help-overlay').hidden) {
       event.preventDefault()
       $('input').focus()
       $('input').select()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'h') {
+      event.preventDefault()
+      toggleSidebar()
       return
     }
     if ((mod && event.key === '/') || (event.key === '?' && !isTyping(event.target))) {
@@ -893,6 +1002,10 @@ function bind() {
     if (event.key === 'Escape') {
       if (!$('help-overlay').hidden) {
         hideHelp()
+        return
+      }
+      if (isSidebarOpen()) {
+        closeSidebar()
         return
       }
       window.sttDesktop.hide()
