@@ -121,6 +121,7 @@ function installIpc(storage, history) {
   ipcMain.on('stt:hide', () => windows.hideMainWindow())
   ipcMain.on('stt:hide-card', () => windows.hideCardWindow())
   ipcMain.on('stt:card-resize', (_event, height) => windows.resizeCardWindow(height))
+  ipcMain.on('stt:card-pin', (_event, flag) => windows.setCardPinned(flag))
   ipcMain.handle('stt:card-entry', (_event, entry) => {
     windows.sendToMainWindow('stt:card-entry', entry)
     return true

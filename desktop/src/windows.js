@@ -142,6 +142,11 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
 
   let cardShownAt = 0
   let escRegistered = false
+  let cardPinned = false
+
+  function setCardPinned(flag) {
+    cardPinned = Boolean(flag)
+  }
 
   function registerCardEscape() {
     if (escRegistered) return
@@ -200,6 +205,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     })
     card.on('blur', () => {
       if (!card || card.isDestroyed() || !card.isVisible()) return
+      if (cardPinned) return
       if (Date.now() - cardShownAt < 500) return
       hideCardWindow()
     })
@@ -211,6 +217,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     const win = ensureCardWindow()
     await cardReady
     if (win.isDestroyed()) return
+    cardPinned = false
     positionCardWindow(win)
     win.webContents.send('stt:selection', payload || {})
     cardShownAt = Date.now()
@@ -324,6 +331,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     showCardWindow,
     hideCardWindow,
     resizeCardWindow,
+    setCardPinned,
     toggleMainWindow,
     setAlwaysOnTop,
     setTheme,

@@ -162,6 +162,9 @@ window.sttDesktop = {
   resizeCard(height) {
     ipcRenderer.send('stt:card-resize', height)
   },
+  setCardPinned(flag) {
+    ipcRenderer.send('stt:card-pin', flag)
+  },
   openMainWithText(text) {
     return ipcRenderer.invoke('stt:open-main-text', text)
   },

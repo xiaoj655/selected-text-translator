@@ -7,6 +7,7 @@ const state = {
   counter: 0,
   speechId: null,
   reported: false,
+  pinned: false,
 }
 
 function el(tag, className, text) {
@@ -62,12 +63,23 @@ function stopSpeech() {
   }
 }
 
+function setPinned(flag) {
+  state.pinned = Boolean(flag)
+  $('btn-pin').classList.toggle('is-active', state.pinned)
+  try {
+    window.sttDesktop.setCardPinned(state.pinned)
+  } catch {
+    // pin state is best effort
+  }
+}
+
 function startSelection(payload) {
   const text = String(payload?.text || '').trim().slice(0, 12000)
   if (!text) return
   if (payload?.prefs) applyPrefs(payload.prefs)
   cancelActiveRequest()
   stopSpeech()
+  setPinned(false)
   state.reported = false
   state.entry = {
     id: makeId('s'),
@@ -360,6 +372,7 @@ function renderActions() {
 function bind() {
   $('btn-close').addEventListener('click', () => window.sttDesktop.hideCard())
   $('btn-popout').addEventListener('click', openInMainWindow)
+  $('btn-pin').addEventListener('click', () => setPinned(!state.pinned))
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') window.sttDesktop.hideCard()
   })
