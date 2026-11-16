@@ -205,4 +205,11 @@ assert.match(appSource, /aria-pressed/u, 'speech buttons must expose pressed sta
 assert.match(appSource, /state\.speechEntryId/u, 'active speech must be scoped to its entry')
 assert.match(appSource, /STOP_SPEECH/u, 'new submissions must stop stale speech')
 
+assert.match(appSource, /function revealNextHint/u, 'progressive hints must reveal in place')
+assert.match(appSource, /data-hint-more/u, 'progressive hints need an in-place reveal control')
+assert.match(appSource, /hints\.dataset\.hints/u, 'hints container must be patchable in place')
+assert.doesNotMatch(appSource, /hint is-hidden/u, 'no fake hidden placeholder rows may be rendered')
+assert.match(appCss, /@keyframes hint-in/u, 'newly revealed hints must animate in')
+assert.match(appCss, /data-hint-more/u, 'reveal control gets a lighter M3 treatment')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

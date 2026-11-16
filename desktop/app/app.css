@@ -112,8 +112,10 @@ svg { display: block; }
 
 .hints { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
 .hint { padding: 10px 13px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
-.hint:not(.is-hidden) { border-left: 3px solid var(--accent); }
-.hint.is-hidden { opacity: .45; }
+.hint { border-left: 3px solid var(--accent); }
+.hint.is-new { animation: hint-in var(--md-motion-duration-medium1) var(--md-motion-easing-emphasized-decelerate) both; }
+@keyframes hint-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+.guide-tools button[data-hint-more] { background: transparent; border-style: dashed; }
 .guide-tools { display: flex; gap: 8px; margin-top: 10px; }
 .guide-tools button { padding: 6px 13px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line-2); color: var(--accent); font-size: 12px; font-weight: 600; transition: var(--t); }
 .guide-tools button:hover { background: var(--accent-soft); border-color: var(--accent); }

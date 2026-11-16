@@ -721,6 +721,37 @@ function lexicalRow(label, value) {
   return row
 }
 
+function revealedHints(entry, hints) {
+  const n = Number(entry.hintCount)
+  return Math.max(1, Math.min(Number.isFinite(n) ? n : 1, hints.length))
+}
+
+function hintNode(hint, index, isNew) {
+  return el('div', isNew ? 'hint is-new' : 'hint', `${index + 1}. ${hint}`)
+}
+
+function revealNextHint(entry) {
+  const guide = entry.guide
+  if (!guide || !Array.isArray(guide.hints)) return
+  const count = revealedHints(entry, guide.hints)
+  if (count >= guide.hints.length) return
+  const node = document.querySelector(`[data-entry-id="${entry.id}"]`)
+  const hints = node?.querySelector('[data-hints]')
+  const more = node?.querySelector('[data-hint-more]')
+  if (!hints || !more) {
+    entry.hintCount = count + 1
+    renderEntry(entry)
+    return
+  }
+  entry.hintCount = count + 1
+  hints.append(hintNode(guide.hints[count], count, true))
+  const remaining = guide.hints.length - entry.hintCount
+  if (remaining > 0) more.textContent = `再提示一点 · 还有 ${remaining} 条`
+  else more.remove()
+  persistHistory()
+  updateScrollFab()
+}
+
 function renderGuide(entry) {
   const guide = entry.guide
   if (!guide) return null
@@ -729,18 +760,15 @@ function renderGuide(entry) {
   if (guide.phonetic) box.append(lexicalRow('音标', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
     const hints = el('div', 'hints')
-    guide.hints.forEach((hint, index) => {
-      hints.append(el('div', index < entry.hintCount ? 'hint' : 'hint is-hidden',
-        index < entry.hintCount ? `${index + 1}. ${hint}` : '再提示一点,查看下一条线索'))
-    })
+    hints.dataset.hints = 'true'
+    const revealed = revealedHints(entry, guide.hints)
+    guide.hints.slice(0, revealed).forEach((hint, index) => hints.append(hintNode(hint, index)))
     box.append(hints)
-    if (entry.hintCount < guide.hints.length) {
-      const more = el('button', '', '再提示一点')
+    if (revealed < guide.hints.length) {
+      const more = el('button', '', `再提示一点 · 还有 ${guide.hints.length - revealed} 条`)
       more.type = 'button'
-      more.addEventListener('click', () => {
-        entry.hintCount += 1
-        renderEntry(entry)
-      })
+      more.dataset.hintMore = 'true'
+      more.addEventListener('click', () => revealNextHint(entry))
       tools.append(more)
     }
   }
