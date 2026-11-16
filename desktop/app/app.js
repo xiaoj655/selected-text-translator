@@ -176,7 +176,7 @@ function renderHistory() {
   if (!matched.length) {
     const empty = el('div', 'history-empty')
     const icon = el('div')
-    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+    icon.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
     empty.append(icon)
     empty.append(el('div', '', query ? '没有匹配的记录' : '还没有翻译记录'))
     empty.append(el('div', '', query ? '换个关键词试试' : '开始翻译后会自动记录在这里'))
@@ -802,7 +802,7 @@ function stopActiveSpeech() {
 function renderEmpty() {
   const box = el('div', 'empty')
   const hero = el('div', 'empty-hero')
-  hero.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
+  hero.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
   box.append(hero)
   box.append(el('h2', '', '随时查词、翻译,或理解一句话'))
   const line1 = el('p', '', '在输入框粘贴或输入文字即可开始;图片、PDF、视频里不能选中的文字也适用。')
@@ -1075,7 +1075,7 @@ function renderEntryEl(entry) {
   head.append(el('span', 'spacer'))
   head.append(el('span', 'meta', `${entry.text.length} 字`))
   const chevron = el('span', 'chevron')
-  chevron.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
+  chevron.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
   head.append(chevron)
   head.addEventListener('click', () => {
     if (state.collapsed.has(entry.id)) state.collapsed.delete(entry.id)

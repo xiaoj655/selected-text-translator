@@ -280,4 +280,11 @@ assert.match(cardSource, /from '\.\/ui-text\.js'/u, 'floating card must use the 
 assert.match(cardSource, /ACTION_LABELS\.stopSpeak/u, 'card speech wording must match the main window')
 assert.match(cardSource, /ACTION_LABELS\.cancel/u, 'card cancel wording must match the main window')
 
+assert.match(htmlSource, /id="statusbar" role="status" aria-live="polite"/u, 'status bar must be a polite live region')
+assert.match(htmlSource, /aria-atomic="true"/u, 'status bar must announce atomically')
+assert.match(htmlSource, /<svg aria-hidden="true"/u, 'main window decorative svgs must be hidden from AT')
+assert.match(cardHtml, /<svg aria-hidden="true"/u, 'card decorative svgs must be hidden from AT')
+assert.match(appSource, /<svg aria-hidden="true"/u, 'dynamically rendered svgs must be hidden from AT')
+assert.match(cardHtml, /role="status"/u, 'card result must remain a live region')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
