@@ -173,4 +173,11 @@ assert.match(appCss, /isolation: isolate/u, 'main window buttons need a stacking
 assert.match(appCss, /--md-btn-tonal-container/u, 'main window buttons must use tonal roles')
 assert.match(cardCss, /isolation: isolate/u, 'floating card buttons need the same state layer')
 
+assert.match(tokensCss, /--md-field-outline-focus:/u, 'M3 outlined field roles must be defined')
+assert.match(tokensCss, /--md-card-container:/u, 'M3 card roles must be defined')
+assert.match(tokensCss, /--md-chip-shape:/u, 'M3 chip roles must be defined')
+assert.match(tokensCss, /--md-fab-elevation-hover:/u, 'M3 FAB elevation must be defined')
+assert.match(appCss, /--md-field-outline-focus/u, 'main window must apply the outlined field role')
+assert.match(appCss, /--md-chip-selected-container/u, 'main window must apply M3 chips')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

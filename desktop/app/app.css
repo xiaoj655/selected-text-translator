@@ -403,6 +403,62 @@ button:disabled::after { opacity: 0 !important; }
   box-shadow: var(--md-sys-elevation-level3);
 }
 
+/* M3 cards, outlined text fields, FAB and chips */
+.entry-card {
+  background: var(--md-card-container);
+  border: 1px solid var(--md-card-outline);
+  border-radius: var(--md-card-shape);
+  box-shadow: var(--md-card-elevation-rest);
+}
+.entry-card::before { background: var(--md-sys-color-primary); }
+.entry-card:hover { box-shadow: var(--md-card-elevation-hover); }
+
+.composer-box {
+  background: var(--md-field-container);
+  border: 1px solid var(--md-field-outline);
+  border-radius: var(--md-field-shape);
+  box-shadow: none;
+}
+.composer-box:focus-within {
+  border-color: var(--md-field-outline-focus);
+  box-shadow: 0 0 0 1px var(--md-field-outline-focus);
+  background: var(--md-field-container-focus);
+}
+#input::placeholder, .composer-hint, .char-count { color: var(--md-field-label); }
+.drawer input, .drawer select, .sidebar-search {
+  background: var(--md-field-container);
+  border: 1px solid var(--md-field-outline);
+  border-radius: var(--md-sys-shape-small);
+}
+.drawer input:focus, .drawer select:focus, .sidebar-search:focus-within {
+  border-color: var(--md-field-outline-focus);
+  box-shadow: 0 0 0 1px var(--md-field-outline-focus);
+  background: var(--md-field-container-focus);
+}
+.drawer input::placeholder, .sidebar-search input::placeholder { color: var(--md-field-label); }
+
+.scroll-fab {
+  background: var(--md-fab-container);
+  color: var(--md-fab-label);
+  border-radius: var(--md-fab-shape);
+  box-shadow: var(--md-fab-elevation-rest);
+}
+.scroll-fab:hover { box-shadow: var(--md-fab-elevation-hover); }
+
+.entry-head .tag, .hi-tag {
+  border-radius: var(--md-chip-shape);
+  border: 1px solid transparent;
+  background: var(--md-chip-selected-container);
+  color: var(--md-chip-selected-label);
+}
+.entry-head .tag::before { background: var(--md-sys-color-primary); }
+.result-label {
+  border-radius: var(--md-chip-shape);
+  border: 1px solid var(--md-chip-outline);
+  background: transparent;
+  color: var(--md-chip-label);
+}
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

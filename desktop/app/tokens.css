@@ -203,6 +203,34 @@
   --md-btn-fab-label: var(--md-sys-color-on-primary-container);
 }
 
+/* M3 cards, outlined text fields, FAB and chips */
+:root {
+  --md-sys-elevation-level4: 0 8px 14px 3px color-mix(in oklab, #000 16%, transparent), 0 18px 40px color-mix(in oklab, #000 12%, transparent);
+  --md-card-container: var(--md-sys-color-surface-container-low);
+  --md-card-outline: var(--md-sys-color-outline-variant);
+  --md-card-shape: var(--md-sys-shape-large);
+  --md-card-elevation-rest: var(--md-sys-elevation-level1);
+  --md-card-elevation-hover: var(--md-sys-elevation-level2);
+  --md-field-container: var(--md-sys-color-surface);
+  --md-field-container-focus: var(--md-sys-color-surface);
+  --md-field-outline: var(--md-sys-color-outline);
+  --md-field-outline-focus: var(--md-sys-color-primary);
+  --md-field-label: var(--md-sys-color-on-surface-variant);
+  --md-field-shape: var(--md-sys-shape-large);
+  --md-fab-container: var(--md-sys-color-primary-container);
+  --md-fab-label: var(--md-sys-color-on-primary-container);
+  --md-fab-shape: var(--md-sys-shape-large);
+  --md-fab-elevation-rest: var(--md-sys-elevation-level3);
+  --md-fab-elevation-hover: var(--md-sys-elevation-level4);
+  --md-chip-container: var(--md-sys-color-surface-container-low);
+  --md-chip-label: var(--md-sys-color-on-surface-variant);
+  --md-chip-outline: var(--md-sys-color-outline-variant);
+  --md-chip-selected-container: var(--md-sys-color-secondary-container);
+  --md-chip-selected-label: var(--md-sys-color-on-secondary-container);
+  --md-chip-shape: var(--md-shape-sm);
+  --md-chip-height: 32px;
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
