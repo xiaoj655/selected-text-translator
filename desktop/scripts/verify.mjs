@@ -199,4 +199,10 @@ assert.match(cardSource, /patchStreamResult\(entry\)/u, 'stream events must use 
 assert.match(cardSource, /createTextNode\(entry\.translatedText/u, 'stream patch must keep text in place without rebuilding actions')
 assert.match(cardSource, /resultEl\.className = 'result'/u, 'stream patch must clear stale loading state')
 
+assert.match(appSource, /function patchSpeechButtons/u, 'speech changes must patch buttons without a full render')
+assert.match(appSource, /data-speech-button/u, 'speech buttons must be individually addressable')
+assert.match(appSource, /aria-pressed/u, 'speech buttons must expose pressed state')
+assert.match(appSource, /state\.speechEntryId/u, 'active speech must be scoped to its entry')
+assert.match(appSource, /STOP_SPEECH/u, 'new submissions must stop stale speech')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

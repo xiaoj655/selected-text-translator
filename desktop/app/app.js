@@ -10,6 +10,7 @@ const state = {
   counter: 0,
   configured: false,
   speechId: null,
+  speechEntryId: null,
   hotkey: '',
   capture: null,
   lastElapsed: 0,
@@ -572,6 +573,7 @@ function submit() {
     hintCount: 1,
     answerRevealed: false,
   }
+  stopActiveSpeech()
   state.entries.push(entry)
   $('input').value = ''
   updateComposer()
@@ -624,8 +626,31 @@ function handleSpeechEvent(payload) {
   if (payload.speechId !== state.speechId) return
   if (!['end', 'error', 'interrupted', 'cancelled'].includes(payload.status)) return
   state.speechId = null
+  state.speechEntryId = null
   if (payload.message) setStatus(payload.message)
-  render()
+  patchSpeechButtons()
+}
+
+function patchSpeechButtons() {
+  const stream = $('stream')
+  for (const button of stream.querySelectorAll('[data-speech-button]')) {
+    const id = button.closest('.entry')?.dataset.entryId
+    const speaking = Boolean(state.speechId) && state.speechEntryId === id
+    button.textContent = speaking ? '■ 停止朗读' : '▷ 朗读原文'
+    button.setAttribute('aria-pressed', speaking ? 'true' : 'false')
+  }
+}
+
+function stopActiveSpeech() {
+  const speechId = state.speechId
+  state.speechId = null
+  state.speechEntryId = null
+  if (!speechId) return
+  try {
+    chrome.runtime.sendMessage({ type: 'STOP_SPEECH', payload: { speechId } }, () => {})
+  } catch {
+    // ignore
+  }
 }
 
 function resultText(entry) {
@@ -828,7 +853,10 @@ function renderActions(entry) {
     $('input').focus()
     setStatus('已回填到输入框')
   })
-  add(state.speechId ? '■ 停止朗读' : '▷ 朗读原文', () => toggleSpeech(entry))
+  const speaking = Boolean(state.speechId) && state.speechEntryId === entry.id
+  const speechButton = add(speaking ? '■ 停止朗读' : '▷ 朗读原文', () => toggleSpeech(entry))
+  speechButton.dataset.speechButton = 'true'
+  speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
   if (['pending', 'loading', 'streaming'].includes(entry.status)) {
     add('取消请求', () => cancelRequest(entry), { danger: true })
   } else {
@@ -962,32 +990,30 @@ function regenerate(entry) {
 
 function toggleSpeech(entry) {
   if (state.speechId) {
-    const speechId = state.speechId
-    state.speechId = null
-    try {
-      chrome.runtime.sendMessage({ type: 'STOP_SPEECH', payload: { speechId } }, () => {})
-    } catch {
-      // ignore
-    }
-    render()
+    stopActiveSpeech()
+    patchSpeechButtons()
     return
   }
   const speechId = makeId('speech')
   state.speechId = speechId
+  state.speechEntryId = entry.id
   setStatus('正在朗读…')
+  patchSpeechButtons()
   try {
     chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text: entry.text } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
         state.speechId = null
+        state.speechEntryId = null
         setStatus(response?.message || '朗读不可用')
-        render()
+        patchSpeechButtons()
       }
     })
   } catch {
     state.speechId = null
+    state.speechEntryId = null
     setStatus('朗读不可用')
+    patchSpeechButtons()
   }
-  render()
 }
 
 async function saveVocabulary(entry, button) {
