@@ -212,4 +212,10 @@ assert.doesNotMatch(appSource, /hint is-hidden/u, 'no fake hidden placeholder ro
 assert.match(appCss, /@keyframes hint-in/u, 'newly revealed hints must animate in')
 assert.match(appCss, /data-hint-more/u, 'reveal control gets a lighter M3 treatment')
 
+assert.match(appSource, /draft: null/u, 'composer draft state must exist')
+assert.match(appSource, /function stashDraft/u, 'draft stashing helper must exist')
+assert.match(appSource, /function restoreDraft/u, 'draft restore helper must exist')
+assert.match(appSource, /function showDraftNotice/u, 'draft notice helper must exist')
+assert.match(appSource, /恢复草稿/u, 'restore action must be offered')
+assert.match(appCss, /data-kind="draft"/u, 'draft notice must be visually distinct')
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

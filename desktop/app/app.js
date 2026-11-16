@@ -13,6 +13,7 @@ const state = {
   speechEntryId: null,
   hotkey: '',
   capture: null,
+  draft: null,
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
@@ -386,6 +387,28 @@ function hideNotice() {
   $('notice').hidden = true
 }
 
+function stashDraft(incoming) {
+  const current = $('input').value
+  if (!current.trim() || current === incoming) return
+  state.draft = current
+}
+function restoreDraft() {
+  if (!state.draft) return
+  $('input').value = state.draft
+  state.draft = null
+  updateComposer()
+  hideNotice()
+  setStatus('已恢复草稿')
+  $('input').focus()
+}
+function showDraftNotice() {
+  if (!state.draft) return
+  showNotice(`已暂存未发送的内容（${state.draft.length} 字）,可随时恢复。`, 'draft', {
+    label: '恢复草稿',
+    run: restoreDraft,
+  })
+}
+
 function openSettings() {
   $('settings-panel').hidden = false
   void loadSettings()
@@ -487,7 +510,7 @@ async function checkConfig() {
       label: '去设置',
       run: openSettings,
     })
-  } else if ($('notice').dataset.kind !== 'error') {
+  } else if (!['error', 'draft'].includes($('notice').dataset.kind)) {
     hideNotice()
   }
 }
@@ -1300,13 +1323,16 @@ function bind() {
     const text = String(payload?.text || '').trim()
     void checkConfig()
     if (text) {
+      stashDraft(text)
       $('input').value = text
       updateComposer()
       setStatus(`已取到 ${text.length} 字 · 来源:${payload.source || '剪贴板'}`)
       submit()
+      showDraftNotice()
     } else {
       setStatus('没有取到选中文字,可以直接粘贴到这里翻译')
-      showNotice('没能自动取词。把文字粘贴到下面的输入框即可,或先复制再按热键。', 'info')
+      if (state.draft) showDraftNotice()
+      else showNotice('没能自动取词。把文字粘贴到下面的输入框即可,或先复制再按热键。', 'info')
       $('input').focus()
     }
   })

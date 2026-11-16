@@ -472,6 +472,8 @@ button:disabled::after { opacity: 0 !important; }
 }
 button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duration-short2); }
 
+.notice[data-kind="draft"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,
