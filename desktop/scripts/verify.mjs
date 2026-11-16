@@ -146,4 +146,8 @@ assert.match(appCss, /\.export-menu/u, 'export menu must be styled')
 assert.match(appCss, /\.result-label/u, 'result label must be styled')
 assert.match(appCss, /\.status-stats/u, 'stats element must be styled')
 
+assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
+assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
+assert.match(appSource, /createTextNode\(entry\.translatedText/u, 'stream text must be written as a text node')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

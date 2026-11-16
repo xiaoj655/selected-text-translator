@@ -613,6 +613,10 @@ function handleTranslationEvent(payload) {
       return
   }
   if (['done', 'error'].includes(entry.status)) persistHistory()
+  if (payload.status === 'stream') {
+    patchStreamResult(entry)
+    return
+  }
   renderEntry(entry)
 }
 
@@ -894,6 +898,25 @@ function render() {
   stream.scrollTop = stream.scrollHeight
   updateScrollFab()
   renderHistory()
+  updateStats()
+}
+
+function patchStreamResult(entry) {
+  const stream = $('stream')
+  const node = stream.querySelector(`[data-entry-id="${entry.id}"]`)
+  const result = node?.querySelector('.entry-body > .result')
+  if (!result) {
+    renderEntry(entry)
+    return
+  }
+  const label = node.querySelector('.entry-body > .result-label')
+  if (label) label.textContent = '正在处理'
+  result.classList.remove('is-error', 'is-loading')
+  result.replaceChildren(document.createTextNode(entry.translatedText || ''), el('span', 'caret'))
+  const lexical = renderLexical(entry)
+  if (lexical) result.append(lexical)
+  stream.scrollTop = stream.scrollHeight
+  updateScrollFab()
   updateStats()
 }
 
