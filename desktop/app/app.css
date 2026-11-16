@@ -459,6 +459,17 @@ button:disabled::after { opacity: 0 !important; }
   color: var(--md-chip-label);
 }
 
+/* M3 motion — shared transitions for surfaces and state layers */
+.drawer, .sidebar, .help-pop, .export-menu, .overlay, .sidebar-backdrop {
+  animation-duration: var(--md-motion-duration-medium2);
+  animation-timing-function: var(--md-motion-easing-emphasized-decelerate);
+}
+.entry-card, .composer-box, .mode, .top-actions button, .actions button, .empty-examples button, .guide-tools button, .drawer-actions button, .accent-swatch, .scroll-fab, .primary, .bubble {
+  transition-duration: var(--md-motion-duration-short4);
+  transition-timing-function: var(--md-motion-easing-standard);
+}
+button:not(.accent-swatch)::after { transition-duration: var(--md-motion-duration-short2); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

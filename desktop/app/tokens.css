@@ -231,6 +231,22 @@
   --md-chip-height: 32px;
 }
 
+/* M3 motion — emphasized easing and duration scale */
+:root {
+  --md-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
+  --md-motion-easing-emphasized-decelerate: cubic-bezier(.05, .7, .1, 1);
+  --md-motion-easing-emphasized-accelerate: cubic-bezier(.3, 0, .8, .15);
+  --md-motion-duration-short1: 50ms;
+  --md-motion-duration-short2: 100ms;
+  --md-motion-duration-short3: 150ms;
+  --md-motion-duration-short4: 200ms;
+  --md-motion-duration-medium1: 250ms;
+  --md-motion-duration-medium2: 300ms;
+  --md-motion-duration-long1: 350ms;
+  --md-motion-duration-long2: 500ms;
+  --t: var(--md-motion-duration-short4) var(--md-motion-easing-standard);
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 

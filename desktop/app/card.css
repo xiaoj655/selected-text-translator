@@ -91,6 +91,10 @@ button:active::after { opacity: var(--md-state-pressed); }
 .card-head button { border-radius: var(--md-sys-shape-full); }
 .actions button { border-radius: var(--md-btn-shape); }
 
+/* M3 motion — same easing model as the main window */
+.card, .actions button, .card-head button { transition-timing-function: var(--md-motion-easing-standard); transition-duration: var(--md-motion-duration-short4); }
+button::after { transition-duration: var(--md-motion-duration-short2); }
+
 :root[data-motion="reduced"] .caret { animation: none; }
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,

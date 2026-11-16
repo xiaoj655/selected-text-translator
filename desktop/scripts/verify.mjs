@@ -180,4 +180,11 @@ assert.match(tokensCss, /--md-fab-elevation-hover:/u, 'M3 FAB elevation must be 
 assert.match(appCss, /--md-field-outline-focus/u, 'main window must apply the outlined field role')
 assert.match(appCss, /--md-chip-selected-container/u, 'main window must apply M3 chips')
 
+assert.match(tokensCss, /--md-motion-easing-standard:/u, 'M3 standard easing must be defined')
+assert.match(tokensCss, /--md-motion-duration-short4:/u, 'M3 duration scale must be defined')
+assert.match(tokensCss, /--t: var\(--md-motion-duration-short4\)/u, 'legacy --t must use M3 motion tokens')
+assert.match(appCss, /--md-motion-easing-emphasized-decelerate/u, 'dialogs must use emphasized easing')
+assert.match(appCss, /animation-timing-function/u, 'surfaces need an M3 animation easing')
+assert.match(cardCss, /--md-motion-easing-standard/u, 'floating card must share the M3 easing')
+
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)
