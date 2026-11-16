@@ -1,5 +1,6 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
+import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -68,17 +69,6 @@ function isTyping(node) {
   if (!node) return false
   const tag = node.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable === true
-}
-
-function showCopyDone(button) {
-  if (button.classList.contains('is-done')) return
-  const original = button.textContent
-  button.textContent = '✓ 已复制'
-  button.classList.add('is-done')
-  setTimeout(() => {
-    button.textContent = original
-    button.classList.remove('is-done')
-  }, 1400)
 }
 
 function showHelp() {
@@ -792,7 +782,7 @@ function patchSpeechButtons() {
   for (const button of stream.querySelectorAll('[data-speech-button]')) {
     const id = button.closest('.entry')?.dataset.entryId
     const speaking = Boolean(state.speechId) && state.speechEntryId === id
-    button.textContent = speaking ? '■ 停止朗读' : '▷ 朗读原文'
+    button.textContent = speaking ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak
     button.setAttribute('aria-pressed', speaking ? 'true' : 'false')
   }
 }
@@ -1019,13 +1009,13 @@ function renderActions(entry) {
 
   const text = resultPlainText(entry)
   if (text && entry.status === 'done') {
-    add('复制结果', (event) => {
+    add(ACTION_LABELS.copyResult, (event) => {
       window.sttDesktop.copyText(text)
       setStatus('结果已复制到剪贴板')
       showCopyDone(event.currentTarget)
     })
   }
-  add('复制原文', (event) => {
+  add(ACTION_LABELS.copySource, (event) => {
     window.sttDesktop.copyText(entry.text)
     setStatus('原文已复制到剪贴板')
     showCopyDone(event.currentTarget)
@@ -1037,13 +1027,13 @@ function renderActions(entry) {
     setStatus('已回填到输入框')
   })
   const speaking = Boolean(state.speechId) && state.speechEntryId === entry.id
-  const speechButton = add(speaking ? '■ 停止朗读' : '▷ 朗读原文', () => toggleSpeech(entry))
+  const speechButton = add(speaking ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, () => toggleSpeech(entry))
   speechButton.dataset.speechButton = 'true'
   speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
   if (['pending', 'loading', 'streaming'].includes(entry.status)) {
-    add('取消请求', () => cancelRequest(entry), { danger: true })
+    add(ACTION_LABELS.cancel, () => cancelRequest(entry), { danger: true })
   } else {
-    add('重新生成', () => regenerate(entry))
+    add(ACTION_LABELS.regenerate, () => regenerate(entry))
   }
   add('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
   add('删除', () => {

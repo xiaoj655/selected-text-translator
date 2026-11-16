@@ -90,6 +90,7 @@ assert.match(tokensCss, /--grad:/u, 'shared tokens must define the accent gradie
 assert.match(tokensCss, /data-theme="dark"/u, 'shared tokens must support dark theme')
 const appCss = readFileSync(join(root, 'app', 'app.css'), 'utf8')
 const resultTextSource = readFileSync(join(root, 'app', 'result-text.js'), 'utf8')
+const uiTextSource = readFileSync(join(root, 'app', 'ui-text.js'), 'utf8')
 assert.match(appCss, /@import '\.\/tokens\.css'/u, 'main window must use shared tokens')
 assert.match(cardCss, /@import '\.\/tokens\.css'/u, 'card must use shared tokens')
 assert.match(appCss, /\.notice\[hidden\]/u, 'hidden notice must stay hidden')
@@ -270,5 +271,13 @@ assert.match(cardHtml, /aria-label="在主窗口打开"/u, 'card controls must h
 assert.match(appCss, /outline: 3px solid var\(--md-sys-color-primary\)/u, 'focus ring must be a crisp M3 outline')
 assert.match(appCss, /forced-colors: active/u, 'focus ring must survive forced-colors mode')
 assert.match(cardCss, /forced-colors: active/u, 'card focus ring must survive forced-colors mode')
+
+assert.match(uiTextSource, /export const ACTION_LABELS = Object\.freeze/u, 'shared action labels must be a frozen object')
+assert.match(uiTextSource, /export function showCopyDone/u, 'copy feedback must be shared from one module')
+assert.match(uiTextSource, /stopSpeak:/u, 'speech labels must be centralized')
+assert.match(appSource, /from '\.\/ui-text\.js'/u, 'main window must use the shared action labels')
+assert.match(cardSource, /from '\.\/ui-text\.js'/u, 'floating card must use the shared action labels')
+assert.match(cardSource, /ACTION_LABELS\.stopSpeak/u, 'card speech wording must match the main window')
+assert.match(cardSource, /ACTION_LABELS\.cancel/u, 'card cancel wording must match the main window')
 
 console.log(`[verify] ok  v${pkg.version}  ${files.length} source files`)

@@ -1,5 +1,6 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultPlainText } from './result-text.js'
+import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -206,15 +207,9 @@ function reportEntry() {
 }
 
 function copyText(text, button) {
+  if (button && button.classList.contains('is-done')) return
   void window.sttDesktop.copyText(text)
-  if (!button || button.classList.contains('is-done')) return
-  const original = button.textContent
-  button.textContent = '✓ 已复制'
-  button.classList.add('is-done')
-  setTimeout(() => {
-    button.textContent = original
-    button.classList.remove('is-done')
-  }, 1400)
+  showCopyDone(button)
 }
 
 function toggleSpeech() {
@@ -361,12 +356,12 @@ function renderActions() {
   }
 
   if (entry.status === 'done' && entry.translatedText) {
-    add('复制结果', (event) => copyText(resultPlainText(entry), event.currentTarget))
+    add(ACTION_LABELS.copyResult, (event) => copyText(resultPlainText(entry), event.currentTarget))
   }
-  add('复制原文', (event) => copyText(entry.text, event.currentTarget))
-  add(state.speechId ? '■ 停止' : '▷ 朗读', toggleSpeech)
+  add(ACTION_LABELS.copySource, (event) => copyText(entry.text, event.currentTarget))
+  add(state.speechId ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, toggleSpeech)
   if (['pending', 'loading', 'streaming'].includes(entry.status)) {
-    add('取消', () => {
+    add(ACTION_LABELS.cancel, () => {
       cancelActiveRequest()
       entry.status = 'error'
       entry.error = '已取消请求,可以重新生成。'
@@ -374,7 +369,7 @@ function renderActions() {
       reportEntry()
     })
   } else {
-    add('重新生成', () => {
+    add(ACTION_LABELS.regenerate, () => {
       entry.requestId = makeId('r')
       entry.status = 'pending'
       entry.translatedText = ''
