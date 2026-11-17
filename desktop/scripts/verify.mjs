@@ -190,6 +190,11 @@ assert.match(appSource, /state\.activeEntryId = entry\.id/u, 'a new lookup must 
 assert.match(appSource, /state\.entries\.find\(\(item\) => item\.id === state\.activeEntryId\)/u,
   'render must show only the focused result')
 assert.match(mainSource, /Menu\.setApplicationMenu\(null\)/u, 'default Electron menu must be removed')
+assert.match(htmlSource, /id="lang-target"/u, 'workspace language bar needs a target-language select')
+assert.match(htmlSource, /for="lang-target"/u, 'language bar select needs an associated label')
+assert.match(appSource, /function setTargetLanguage/u, 'target language must be set through one shared setter')
+assert.match(appSource, /\['lang-target', 'opt-target-language'\]/u, 'both language selects must stay in sync')
+assert.match(appCss, /\.lang-bar/u, 'language bar must be styled')
 assert.match(appSource, /result-label/u, 'results need a labeled typography block')
 assert.match(appSource, /source-label/u, 'study cards need a labeled source row')
 assert.match(appCss, /\.entry-source\s*\{[^}]*border-radius/u, 'source row must join the card as a study header')

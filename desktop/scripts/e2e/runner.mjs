@@ -526,6 +526,52 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('language bar: workspace target select syncs, persists and retranslates', async () => {
+        const capturedBodies = []
+        const waitForCaptured = async (count) => {
+          const deadline = Date.now() + 20000
+          while (capturedBodies.length < count && Date.now() < deadline) await delay(50)
+          assert.ok(capturedBodies.length >= count, `expected ${count} captured requests, got ${capturedBodies.length}`)
+        }
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          capturedBodies.push(body)
+          await defaultResponse({ body, res })
+        })
+        const probe = 'workspace language probe'
+        try {
+          assert.equal(await mainPage.locator('#lang-target').count(), 1)
+          await mainPage.locator('#lang-target').selectOption('Japanese')
+          const saved = await mainPage.evaluate(() => chrome.storage.sync.get('desktop_target_language'))
+          assert.equal(saved.desktop_target_language, 'Japanese')
+          const settingsValue = await mainPage.evaluate(() => document.getElementById('opt-target-language').value)
+          assert.equal(settingsValue, 'Japanese', 'settings select must mirror the workspace bar')
+          assert.match(await mainPage.locator('#statusbar').textContent(), /目标语言已设为 Japanese/u)
+
+          await mainPage.locator('#input').fill(probe)
+          await mainPage.waitForFunction((text) => {
+            const entry = document.querySelector('.entry:last-child')
+            const bubble = entry?.querySelector('.bubble')?.textContent || ''
+            const result = entry?.querySelector('.result')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble.includes(text) && result?.textContent.trim()
+              && !result.classList.contains('is-loading') && /完成/u.test(status))
+          }, probe, { timeout: 20000 })
+          await waitForCaptured(1)
+          assert.equal(capturedBodies[0].translation_options?.target_lang, 'Japanese')
+
+          await mainPage.locator('#lang-target').selectOption('French')
+          await waitForCaptured(2)
+          assert.equal(capturedBodies[1].translation_options?.target_lang, 'French',
+            'changing the workspace language must retranslate the current text')
+          assert.equal((await mainPage.locator('#input').inputValue()).trim(), probe,
+            'retranslation must preserve the source text')
+          await shot(mainPage, 'main-language-bar')
+        } finally {
+          mock.resetHandler()
+          await mainPage.locator('#lang-target').selectOption('auto')
+        }
+      })
+
       await check('learning loop: study progress reminder and vocabulary book visualization', async () => {
         const now = Date.now()
         const DAY = 86400000

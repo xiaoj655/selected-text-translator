@@ -56,6 +56,22 @@ function setStatus(text) {
   renderDiagnostics()
 }
 
+function setTargetLanguage(value, retranslate) {
+  state.targetLanguage = value
+  void chrome.storage.sync.set({ desktop_target_language: value })
+  for (const id of ['lang-target', 'opt-target-language']) {
+    const select = $(id)
+    if (select) select.value = value
+  }
+  const label = value === 'auto' ? '自动(按原文语言判断)' : value
+  if (retranslate && state.liveTranslate && state.configured && $('input').value.trim().length >= 2) {
+    submit({ keepInput: true })
+    setStatus(`目标语言已设为 ${label} · 已重新翻译`)
+    return
+  }
+  setStatus(`目标语言已设为 ${label}`)
+}
+
 function renderDiagnostics() {
   const lines = [
     `配置:${state.configured ? '已连接' : '未连接'}`,
@@ -1760,13 +1776,8 @@ function bind() {
       ? '已停用悬浮翻译卡:快捷键取词会直接在主窗口翻译'
       : '已恢复悬浮翻译卡')
   })
-  $('opt-target-language').addEventListener('change', (event) => {
-    state.targetLanguage = event.target.value
-    void chrome.storage.sync.set({ desktop_target_language: state.targetLanguage })
-    setStatus(state.targetLanguage === 'auto'
-      ? '目标语言已设为自动(按原文语言判断)'
-      : `目标语言已设为 ${event.target.options[event.target.selectedIndex]?.text || state.targetLanguage}`)
-  })
+  $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
+  $('lang-target').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
   $('btn-hotkey').addEventListener('click', async () => {
     const value = $('cfg-hotkey').value.trim()
     if (!value) return
@@ -2156,8 +2167,10 @@ async function init() {
   try {
     const savedTarget = await chrome.storage.sync.get(['desktop_target_language'])
     state.targetLanguage = savedTarget?.desktop_target_language || 'auto'
-    const targetSelect = $('opt-target-language')
-    if (targetSelect) targetSelect.value = state.targetLanguage
+    for (const id of ['lang-target', 'opt-target-language']) {
+      const targetSelect = $(id)
+      if (targetSelect) targetSelect.value = state.targetLanguage
+    }
   } catch {
     // default target language
   }
