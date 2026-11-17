@@ -214,6 +214,20 @@ assert.match(appSource, /writeMemoryEntry\(state\.translationMemory/u, 'main win
 assert.match(appSource, /translation_memory/u, 'translation memory must be persisted across sessions')
 assert.match(appSource, /memory-tag/u, 'memory hits must be labeled on the study card')
 
+const sharedContentSource = readFileSync(new URL('../../src/content.js', import.meta.url), 'utf8')
+assert.match(sharedBackgroundSource, /loadTranslationMemory/u,
+  'extension background must load the shared translation memory')
+assert.match(sharedBackgroundSource, /rememberTranslation/u,
+  'extension background must persist fresh translations to memory')
+assert.match(sharedBackgroundSource, /fromMemory: true/u,
+  'extension background must label memory hits for the content script')
+assert.match(sharedBackgroundSource, /IS_EXTENSION_SERVICE_WORKER/u,
+  'translation memory must stay scoped to the real extension service worker')
+assert.match(sharedContentSource, /stt-memory-badge/u,
+  'extension card must surface a translation-memory badge')
+assert.match(sharedContentSource, /state\.activeSelection\.fromMemory/u,
+  'extension card must track memory hits per selection')
+
 assert.match(sharedAnkiSource, /export function buildAnkiTsv/u, 'Anki TSV builder must be a reusable module')
 assert.match(sharedAnkiSource, /escapeAnkiField/u, 'Anki export must escape untrusted field content')
 assert.match(sharedLibraryHtmlForAnki, /id="export-anki"/u, 'vocabulary book needs an Anki export button')

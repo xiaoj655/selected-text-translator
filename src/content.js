@@ -157,6 +157,7 @@
       savedVocabulary: {},
       cache: {},
       refreshErrors: {},
+      fromMemory: false,
       hintCount: 1,
       answerRevealed: false,
       rect: cloneRect(rect),
@@ -348,6 +349,7 @@
       requestId = makeRequestId()
       state.activeRequest = { selectionId, requestId, kind, forceRefresh, inFlight: true }
       delete state.activeSelection.refreshErrors[kind]
+      state.activeSelection.fromMemory = false
       state.speechMessage = ''
       if ((forceRefresh && cached)
         || (kind === 'pronunciation' && state.activeSelection.cache[state.mode])) renderCurrentCard()
@@ -460,6 +462,7 @@
 
     if (status === TRANSLATION_EVENT_STATUS.SUCCESS) {
       delete state.activeSelection.refreshErrors[state.activeRequest.kind]
+      state.activeSelection.fromMemory = Boolean(payload.fromMemory)
       if (payload.kind === 'guide' || payload.kind === 'pronunciation') {
         state.activeSelection.cache[payload.kind] = payload.result;
         if (payload.kind === 'guide' && payload.result?.phonetic) {
@@ -701,6 +704,9 @@
     }
     const cardEl = renderFrame()
     cardEl.appendChild(createEl('div', 'stt-section-label', 'TRANSLATION'))
+    if (state.activeSelection.fromMemory) {
+      cardEl.appendChild(createEl('div', 'stt-memory-badge', '来自翻译记忆 · 即时'))
+    }
     const translationEl = createEl('div', 'stt-card-block stt-card-block--translation', translatedText)
     cardEl.appendChild(translationEl)
     const lexicalBlock = buildLexicalBlock(sourceText, lexicalDetails)
@@ -1546,6 +1552,7 @@
         padding: 10px 18px 0; color: #94613c; font-size: 11px; white-space: normal; }
       .stt-section-label { color: #8b9684; font-size: 9px; letter-spacing: 1.6px; line-height: 1.5;
         padding: 15px 18px 0; font-weight: 600; white-space: normal; }
+      .stt-memory-badge { color: #648257; font-size: 10px; letter-spacing: .04em; padding: 4px 18px 0; }
       .stt-card-block--translation { padding-top: 8px; color: #384b3c; }
       .stt-guide-heading { display: flex; align-items: baseline; justify-content: space-between; padding-right: 18px; }
       .stt-progress { color: #8a9881; font-size: 10px; }

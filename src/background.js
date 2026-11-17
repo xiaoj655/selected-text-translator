@@ -18,10 +18,40 @@ import {
 import { readProviderSettings } from './provider-settings.js'
 import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings } from './reading-support.js'
 import { handleSpeechMessage } from './speech.js'
+import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from './translation-memory.js'
 
 const LOG_PREFIX = '[selected-text-translation]'
 const activeRequests = new Map()
 const resultCache = createResultCache()
+const MEMORY_STORAGE_KEY = 'translation_memory'
+const IS_EXTENSION_SERVICE_WORKER = typeof ServiceWorkerGlobalScope !== 'undefined'
+let translationMemoryPromise = null
+
+async function loadTranslationMemory() {
+  if (!translationMemoryPromise) {
+    translationMemoryPromise = (async () => {
+      try {
+        const area = chrome?.storage?.local
+        const values = area ? await area.get(MEMORY_STORAGE_KEY) : null
+        const stored = values?.[MEMORY_STORAGE_KEY]
+        return stored && typeof stored === 'object' ? stored : {}
+      } catch {
+        return {}
+      }
+    })()
+  }
+  return translationMemoryPromise
+}
+
+async function rememberTranslation(memory, key, result) {
+  const next = writeMemoryEntry(memory, key, result)
+  translationMemoryPromise = Promise.resolve(next)
+  try {
+    const area = chrome?.storage?.local
+    if (area) await area.set({ [MEMORY_STORAGE_KEY]: next })
+  } catch { }
+  return next
+}
 const inflightCacheStates = new Map()
 let cacheEpoch = 0
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -134,6 +164,20 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     if (controller.signal.aborted) return
     const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
+    const useMemory = kind === 'translate' && IS_EXTENSION_SERVICE_WORKER
+    const memoryKey = useMemory
+      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', model })}`
+        + `\u0000${String(payload?.context || '').slice(0, 2400)}`
+        + `\u0000${payload?.contextStart ?? ''}\u0000${payload?.contextEnd ?? ''}`
+      : null
+    const memory = useMemory ? await loadTranslationMemory() : null
+    const remembered = useMemory && payload?.forceRefresh !== true ? readMemoryEntry(memory, memoryKey) : null
+    if (remembered && controller.signal.aborted === false) {
+      emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
+        translatedText: remembered.translatedText, lexicalDetails: remembered.lexical, fromMemory: true }, false)
+      debugLog('translation_memory_hit', { selectionId, requestId, kind })
+      return
+    }
     const qwenScope = isQwenMtRequest ? createQwenTranslationScope({ text, context: payload?.context,
       contextStart: payload?.contextStart, contextEnd: payload?.contextEnd }) : null
     const requestBody = kind !== 'translate'
@@ -191,6 +235,11 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       : await consumeNonStreamResponse({ response, selectionId, requestId, sourceText: text })
     emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
       translatedText: translationResult.translation, lexicalDetails: translationResult.lexicalDetails })
+    if (useMemory) {
+      await rememberTranslation(memory, memoryKey, {
+        translatedText: translationResult.translation, lexical: translationResult.lexicalDetails,
+      })
+    }
     debugLog('request_success', { selectionId, requestId, elapsedMs: Date.now() - startedAt,
       translatedLength: translationResult.translation.length,
       lexicalFields: summarizeLexicalDetails(translationResult.lexicalDetails) })
