@@ -276,6 +276,8 @@ assert.match(appSource, /function cancelRequest[\s\S]{0,400}restoreFailedText\(e
   'cancel path must restore the submitted text so it is not stranded')
 assert.match(appSource, /function cancelRequest[\s\S]{0,200}entry\.requestId = makeId\('r'\)/u,
   'cancel must rotate requestId so a late stream/success event cannot resurrect the cancelled translation')
+assert.match(cardSource, /function cancelRequest[\s\S]{0,200}entry\.requestId = makeId\('r'\)/u,
+  'floating card cancel must rotate requestId so a late event cannot resurrect the cancelled translation')
 assert.match(appSource, /error-message/u, 'errors need a structured message')
 assert.match(appSource, /setAttribute\('role', 'alert'\)/u, 'errors must be announced to screen readers')
 assert.match(appCss, /--danger-soft/u, 'errors must use the danger wash')

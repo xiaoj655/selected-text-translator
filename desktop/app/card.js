@@ -440,6 +440,7 @@ function cancelRequest() {
   const entry = state.entry
   if (!entry) return
   cancelActiveRequest()
+  entry.requestId = makeId('r')
   entry.status = 'error'
   entry.error = '已取消请求,可以重新生成。'
   render()
