@@ -482,6 +482,10 @@ function renderActions() {
   menuAdd(ACTION_LABELS.copySource, () => copyText(entry.text))
   if (entry.status === 'done' && resultPlainText(entry)) {
     menuAdd('朗读译文', () => toggleSpeech(resultPlainText(entry)))
+    menuAdd('复制双语对照', (button) => {
+      const translated = resultPlainText(entry)
+      copyText(`原文\n${String(entry.text || '').trim()}\n\n译文\n${translated || '（无结果）'}`, button)
+    })
   }
   if (entry.status === 'done') {
     menuAdd('收藏', (button) => void saveVocabulary(button))
