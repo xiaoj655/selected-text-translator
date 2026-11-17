@@ -2,6 +2,7 @@ import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
+import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -10,6 +11,8 @@ const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
 const state = {
   mode: 'translate',
   targetLanguage: 'auto',
+  model: '',
+  translationMemory: {},
   entries: [],
   counter: 0,
   configured: false,
@@ -763,6 +766,7 @@ async function discoverModels() {
 async function checkConfig() {
   try {
     const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model'])
+    state.model = String(values?.model || '')
     state.configured = Boolean(values?.base_url && values?.api_key && values?.model)
   } catch {
     state.configured = false
@@ -886,6 +890,20 @@ function submit() {
     createdAt: Date.now(),
     hintCount: 1,
     answerRevealed: false,
+    fromMemory: false,
+  }
+  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage, model: state.model })
+  const cached = readMemoryEntry(state.translationMemory, memoryKey)
+  if (cached) {
+    entry.status = 'done'
+    entry.translatedText = cached.translatedText || ''
+    entry.lexical = cached.lexical || null
+    entry.guide = cached.guide || null
+    entry.fromMemory = true
+    entry.memoryKey = memoryKey
+    state.lastElapsed = 0
+  } else {
+    entry.memoryKey = memoryKey
   }
   stopActiveSpeech()
   state.entries.push(entry)
@@ -893,7 +911,12 @@ function submit() {
   updateComposer()
   hideNotice()
   render()
-  sendRequest(entry)
+  if (cached) {
+    setStatus('来自翻译记忆 · 即时')
+    persistHistory()
+  } else {
+    sendRequest(entry)
+  }
   $('input').focus()
 }
 
@@ -917,6 +940,16 @@ function handleTranslationEvent(payload) {
       }
       state.lastElapsed = Date.now() - entry.createdAt
       setStatus(`完成 · ${state.lastElapsed} ms`)
+      if (entry.memoryKey) {
+        state.translationMemory = writeMemoryEntry(state.translationMemory, entry.memoryKey, {
+          translatedText: entry.translatedText,
+          lexical: entry.lexical,
+          guide: entry.guide,
+        })
+        try {
+          Promise.resolve(chrome.storage.local.set({ translation_memory: state.translationMemory })).catch(() => {})
+        } catch { }
+      }
       break
     case 'missing-configuration':
     case 'error':
@@ -1350,6 +1383,7 @@ function renderEntryEl(entry) {
   const head = el('div', 'entry-head')
   head.title = '点击折叠 / 展开'
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
+  if (entry.fromMemory) head.append(el('span', 'memory-tag', '翻译记忆'))
   head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
   head.append(el('span', 'meta', `${entry.text.length} 字`))
@@ -1948,6 +1982,14 @@ async function init() {
     if (targetSelect) targetSelect.value = state.targetLanguage
   } catch {
     // default target language
+  }
+  try {
+    const savedMemory = await chrome.storage.local.get('translation_memory')
+    if (savedMemory?.translation_memory && typeof savedMemory.translation_memory === 'object') {
+      state.translationMemory = savedMemory.translation_memory
+    }
+  } catch {
+    // translation memory is optional
   }
   try {
     const savedPrefs = await chrome.storage.sync.get(['desktop_prefs'])

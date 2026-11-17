@@ -73,6 +73,8 @@ const sharedContractsSource = readFileSync(
   fileURLToPath(new URL('../../src/translation-contracts.js', import.meta.url)), 'utf8')
 const sharedBackgroundSource = readFileSync(
   fileURLToPath(new URL('../../src/background.js', import.meta.url)), 'utf8')
+const sharedMemorySource = readFileSync(
+  fileURLToPath(new URL('../../src/translation-memory.js', import.meta.url)), 'utf8')
 const sharedProgressSource = readFileSync(
   fileURLToPath(new URL('../../src/vocabulary-progress.js', import.meta.url)), 'utf8')
 const sharedLibraryHtml = readFileSync(
@@ -203,6 +205,14 @@ assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u
   'request builders must accept a target language override')
 assert.match(sharedContractsSource, /buildTranslationSystemPrompt/u,
   'generic system prompt must honor an explicit target language')
+
+assert.match(sharedMemorySource, /export function makeMemoryKey/u, 'translation memory must have a stable key helper')
+assert.match(sharedMemorySource, /export function readMemoryEntry/u, 'translation memory must support cache lookups')
+assert.match(sharedMemorySource, /export function writeMemoryEntry/u, 'translation memory must support cache writes')
+assert.match(appSource, /readMemoryEntry\(state\.translationMemory/u, 'main window must consult translation memory on submit')
+assert.match(appSource, /writeMemoryEntry\(state\.translationMemory/u, 'main window must fill translation memory on success')
+assert.match(appSource, /translation_memory/u, 'translation memory must be persisted across sessions')
+assert.match(appSource, /memory-tag/u, 'memory hits must be labeled on the study card')
 
 assert.match(sharedAnkiSource, /export function buildAnkiTsv/u, 'Anki TSV builder must be a reusable module')
 assert.match(sharedAnkiSource, /escapeAnkiField/u, 'Anki export must escape untrusted field content')

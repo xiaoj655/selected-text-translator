@@ -540,6 +540,35 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('translation memory: repeat text is served instantly without a new API call', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        const text = 'memory-probe-alpha'
+        const before = mock.requests.length
+        await mainPage.locator('#input').fill(text)
+        await mainPage.locator('#btn-send').click()
+        await mainPage.waitForFunction(() => {
+          const result = document.querySelector('.entry:last-child .result')
+          return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+        }, null, { timeout: 20000 })
+        const afterFirst = mock.requests.length
+        assert.ok(afterFirst > before, 'first submission should reach the model API')
+        const stored = await mainPage.evaluate(() => chrome.storage.local.get('translation_memory'))
+        assert.ok(Object.keys(stored.translation_memory || {}).length >= 1,
+          'completed translation should be persisted to translation memory')
+
+        await mainPage.locator('#input').fill(text)
+        await mainPage.locator('#btn-send').click()
+        await mainPage.waitForFunction(() => {
+          const node = document.querySelector('.entry:last-child')
+          return Boolean(node && node.querySelector('.memory-tag') && node.querySelector('.result')?.textContent.trim())
+        }, null, { timeout: 15000 })
+        assert.equal(mock.requests.length, afterFirst, 'repeat submission must be served from memory, not the API')
+        assert.match(await mainPage.locator('#statusbar').textContent(), /来自翻译记忆/u)
+        await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
+        await delay(200)
+        await shot(mainPage, 'main-translation-memory')
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

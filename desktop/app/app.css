@@ -316,6 +316,7 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .entry-card:hover { box-shadow: var(--shadow-2); }
 .entry-head { display: flex; align-items: center; gap: 9px; padding: 10px 14px; cursor: pointer; user-select: none; }
 .tag { font-size: 11px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-text); }
+.memory-tag { font-size: 11px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
 .meta { font-size: 11px; color: var(--text-3); }
 .spacer { margin-left: auto; }
 .chevron svg { width: 16px; height: 16px; color: var(--text-3); transition: transform var(--t) var(--ease); }
