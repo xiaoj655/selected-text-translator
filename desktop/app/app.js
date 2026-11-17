@@ -128,6 +128,18 @@ function updateScrollFab() {
   $('btn-scroll-bottom').hidden = !far
 }
 
+function isNearBottom() {
+  const stream = $('stream')
+  return stream.scrollHeight - stream.scrollTop - stream.clientHeight < 140
+}
+
+function followStreamBottom() {
+  if (!isNearBottom()) return
+  const stream = $('stream')
+  stream.scrollTop = stream.scrollHeight
+  updateScrollFab()
+}
+
 function isSidebarOpen() {
   return !$('sidebar').hidden
 }
@@ -1296,14 +1308,15 @@ function renderEntryEl(entry) {
   return wrapper
 }
 
-function render() {
+function render(forceBottom = true) {
   hideSelectionToolbar()
   persistHistory()
   const stream = $('stream')
+  const stick = forceBottom || isNearBottom()
   stream.replaceChildren()
   if (!state.entries.length) stream.append(renderEmpty())
   else for (const entry of state.entries) stream.append(renderEntryEl(entry))
-  stream.scrollTop = stream.scrollHeight
+  if (stick) stream.scrollTop = stream.scrollHeight
   updateScrollFab()
   renderHistory()
   updateStats()
@@ -1323,8 +1336,7 @@ function patchStreamResult(entry) {
   result.replaceChildren(document.createTextNode(entry.translatedText || ''), el('span', 'caret'))
   const lexical = renderLexical(entry)
   if (lexical) result.append(lexical)
-  stream.scrollTop = stream.scrollHeight
-  updateScrollFab()
+  followStreamBottom()
   updateStats()
 }
 
@@ -1336,7 +1348,7 @@ function renderEntry(entry) {
     return
   }
   node.replaceWith(renderEntryEl(entry))
-  if (['pending', 'loading', 'streaming'].includes(entry.status)) stream.scrollTop = stream.scrollHeight
+  if (['pending', 'loading', 'streaming'].includes(entry.status)) followStreamBottom()
   updateScrollFab()
   renderHistory()
   updateStats()

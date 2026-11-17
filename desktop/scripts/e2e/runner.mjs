@@ -263,6 +263,39 @@ export async function runE2E(mode = 'core') {
         assert.match(source, /clipboard selection test/u)
       })
 
+      await check('main window: scrolling up during streaming is not yanked back', async () => {
+        const translation = '这是一段很长的流式译文,足够让内容超出可视区域。'.repeat(12)
+        mock.setHandler(async ({ body, res }) => {
+          if (!body?.stream) {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ translation }) } }] }))
+            return
+          }
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+          for (const char of [...translation]) {
+            if (res.destroyed) return
+            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: char } }] })}\n\n`)
+            await delay(6)
+          }
+          res.write('data: [DONE]\n\n')
+          res.end()
+        })
+        try {
+          await mainPage.locator('#input').fill('streaming scroll regression source text '.repeat(8))
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const s = document.getElementById('stream')
+            return Boolean(s && s.scrollHeight - s.clientHeight > 160)
+          }, null, { timeout: 15000 })
+          await mainPage.evaluate(() => { document.getElementById('stream').scrollTop = 0 })
+          await delay(400)
+          const scrollTop = await mainPage.evaluate(() => document.getElementById('stream').scrollTop)
+          assert.ok(scrollTop < 60, `stream was yanked back during streaming: scrollTop=${scrollTop}`)
+        } finally {
+          mock.resetHandler()
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)
