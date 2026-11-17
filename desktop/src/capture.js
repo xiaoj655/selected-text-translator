@@ -61,8 +61,8 @@ export function createCapture({ clipboard, platform = process.platform, delay = 
     const didCopy = mode === 'clipboard' ? false : await simulateCopy()
     let after = before
     if (didCopy) {
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        await delay(40)
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        await delay(50)
         const current = await readClipboardText()
         if (current && current !== before) {
           after = current

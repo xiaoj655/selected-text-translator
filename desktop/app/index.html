@@ -11,7 +11,7 @@
   <div class="app">
     <header class="topbar">
       <button id="btn-history" class="history-trigger" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏" aria-keyshortcuts="Control+H Meta+H">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       </button>
       <div class="brand">
         <span class="brand-mark">
@@ -125,6 +125,8 @@
             <label class="mini-toggle"><input type="checkbox" id="opt-always-on-top">窗口置顶</label>
             <label class="mini-toggle"><input type="checkbox" id="opt-login-item">开机自启</label>
             <label class="mini-toggle"><input type="checkbox" id="opt-clipboard-only">仅用剪贴板取词</label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-paste" checked>粘贴后自动翻译</label>
+            <label class="mini-toggle"><input type="checkbox" id="opt-enter">Enter 发送</label>
           </div>
         </div>
         <div class="drawer-section">
@@ -166,8 +168,6 @@
             <button id="btn-clear-input" type="button" title="清空输入框">清空输入</button>
             <span class="composer-hint" id="composer-hint">Ctrl+Enter 发送 · Enter 换行</span>
             <span class="char-count" id="char-count">0 字</span>
-            <label class="mini-toggle"><input type="checkbox" id="opt-paste" checked>粘贴后自动翻译</label>
-            <label class="mini-toggle"><input type="checkbox" id="opt-enter">Enter 发送</label>
           </div>
           <button id="btn-send" class="primary" type="button">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>翻译

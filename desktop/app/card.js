@@ -347,8 +347,8 @@ function renderActions() {
   const bar = $('actions')
   bar.replaceChildren()
   if (!entry) return
-  const add = (label, handler) => {
-    const button = el('button', '', label)
+  const add = (label, handler, variant = '') => {
+    const button = el('button', variant, label)
     button.type = 'button'
     button.addEventListener('click', handler)
     bar.append(button)
@@ -356,7 +356,7 @@ function renderActions() {
   }
 
   if (entry.status === 'done' && entry.translatedText) {
-    add(ACTION_LABELS.copyResult, (event) => copyText(resultPlainText(entry), event.currentTarget))
+    add(ACTION_LABELS.copyResult, (event) => copyText(resultPlainText(entry), event.currentTarget), 'is-primary')
   }
   add(ACTION_LABELS.copySource, (event) => copyText(entry.text, event.currentTarget))
   add(state.speechId ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, toggleSpeech)

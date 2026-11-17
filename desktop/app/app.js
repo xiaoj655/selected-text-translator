@@ -222,12 +222,10 @@ function entryHeading(entry, index) {
   return `${index + 1}. ${kind} · ${time}`
 }
 
-function buildMarkdown() {
-  const lines = ['# 划词翻译记录', '']
-  lines.push(`> 导出时间:${new Date().toLocaleString('zh-CN', { hour12: false })} · 共 ${state.entries.length} 条记录`, '')
-  state.entries.forEach((entry, index) => {
-    lines.push('---', '', `## ${entryHeading(entry, index)}`, '')
-    lines.push('**原文**', '', `> ${String(entry.text || '').replace(/\n/g, '\n> ')}`, '')
+function entryToMarkdown(entry, index) {
+  const lines = []
+  lines.push(`## ${entryHeading(entry, index)}`, '')
+  lines.push('**原文**', '', `> ${String(entry.text || '').replace(/\n/g, '\n> ')}`, '')
     if (entry.status === 'error') {
       lines.push('**状态**:失败', '', `> ${entry.error || '未知错误'}`, '')
       return
@@ -267,6 +265,14 @@ function buildMarkdown() {
       if (lexical.contextual_analysis) lines.push(`- **语境分析**:${lexical.contextual_analysis}`)
       lines.push('')
     }
+  return lines.join('\n')
+}
+
+function buildMarkdown() {
+  const lines = ['# 划词翻译记录', '']
+  lines.push(`> 导出时间:${new Date().toLocaleString('zh-CN', { hour12: false })} · 共 ${state.entries.length} 条记录`, '')
+  state.entries.forEach((entry, index) => {
+    lines.push('---', '', entryToMarkdown(entry, index))
   })
   return lines.join('\n')
 }
@@ -980,7 +986,10 @@ function renderResult(entry) {
     const fix = el('button', '', '去设置')
     fix.type = 'button'
     fix.addEventListener('click', openSettings)
-    tools.append(retry, fix)
+    const remove = el('button', 'is-danger', '删除')
+    remove.type = 'button'
+    remove.addEventListener('click', () => deleteEntry(entry))
+    tools.append(retry, fix, remove)
     result.append(message, tools)
     return result
   }
@@ -1011,57 +1020,106 @@ function renderResult(entry) {
   return result
 }
 
+function deleteEntry(entry) {
+  const index = state.entries.findIndex((item) => item.id === entry.id)
+  if (index < 0) return
+  const removed = state.entries.splice(index, 1)[0]
+  render()
+  showSnackbar('已删除 1 条记录', '撤销', () => {
+    state.entries.splice(Math.min(index, state.entries.length), 0, removed)
+    render()
+    setStatus('已撤销删除')
+  })
+}
+
 function renderActions(entry) {
   const bar = el('div', 'actions')
-  const add = (label, handler, options = {}) => {
-    const button = el('button', '', label)
-    button.type = 'button'
-    if (options.danger) button.classList.add('is-danger')
-    button.addEventListener('click', handler)
-    bar.append(button)
-    return button
-  }
 
   const text = resultPlainText(entry)
   if (text && entry.status === 'done') {
-    add(ACTION_LABELS.copyResult, (event) => {
+    const copy = el('button', 'is-primary', ACTION_LABELS.copyResult)
+    copy.type = 'button'
+    copy.addEventListener('click', (event) => {
       window.sttDesktop.copyText(text)
       setStatus('结果已复制到剪贴板')
       showCopyDone(event.currentTarget)
     })
+    bar.append(copy)
   }
-  add(ACTION_LABELS.copySource, (event) => {
+
+  const speaking = Boolean(state.speechId) && state.speechEntryId === entry.id
+  const speechButton = el('button', '', speaking ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak)
+  speechButton.type = 'button'
+  speechButton.dataset.speechButton = 'true'
+  speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
+  speechButton.addEventListener('click', () => toggleSpeech(entry))
+  bar.append(speechButton)
+
+  if (['pending', 'loading', 'streaming'].includes(entry.status)) {
+    const cancel = el('button', 'is-danger', ACTION_LABELS.cancel)
+    cancel.type = 'button'
+    cancel.addEventListener('click', () => cancelRequest(entry))
+    bar.append(cancel)
+  } else {
+    const regenerate = el('button', '', ACTION_LABELS.regenerate)
+    regenerate.type = 'button'
+    regenerate.addEventListener('click', () => regenerate(entry))
+    bar.append(regenerate)
+  }
+
+  const more = el('button', 'action-more', '⋯')
+  more.type = 'button'
+  more.title = '更多操作'
+  more.setAttribute('aria-label', '更多操作')
+  more.setAttribute('aria-expanded', 'false')
+  const menu = el('div', 'action-menu')
+  menu.hidden = true
+  const menuAdd = (label, handler, danger = false) => {
+    const button = el('button', danger ? 'is-danger' : '', label)
+    button.type = 'button'
+    button.addEventListener('click', (event) => {
+      menu.hidden = true
+      more.setAttribute('aria-expanded', 'false')
+      handler(event)
+    })
+    menu.append(button)
+  }
+  menuAdd(ACTION_LABELS.copySource, (event) => {
     window.sttDesktop.copyText(entry.text)
     setStatus('原文已复制到剪贴板')
     showCopyDone(event.currentTarget)
   })
-  add('回填输入框', () => {
+  menuAdd('复制双语对照', (event) => {
+    const bilingual = `原文\n${String(entry.text || '').trim()}\n\n译文\n${text || '（无结果）'}`
+    window.sttDesktop.copyText(bilingual)
+    setStatus('双语对照已复制到剪贴板')
+    showCopyDone(event.currentTarget)
+  })
+  menuAdd('回填输入框', () => {
     $('input').value = entry.text
     updateComposer()
     $('input').focus()
     setStatus('已回填到输入框')
   })
-  const speaking = Boolean(state.speechId) && state.speechEntryId === entry.id
-  const speechButton = add(speaking ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, () => toggleSpeech(entry))
-  speechButton.dataset.speechButton = 'true'
-  speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
-  if (['pending', 'loading', 'streaming'].includes(entry.status)) {
-    add(ACTION_LABELS.cancel, () => cancelRequest(entry), { danger: true })
-  } else {
-    add(ACTION_LABELS.regenerate, () => regenerate(entry))
-  }
-  add('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
-  add('删除', () => {
-    const index = state.entries.findIndex((item) => item.id === entry.id)
-    if (index < 0) return
-    const removed = state.entries.splice(index, 1)[0]
-    render()
-    showSnackbar('已删除 1 条记录', '撤销', () => {
-      state.entries.splice(Math.min(index, state.entries.length), 0, removed)
-      render()
-      setStatus('已撤销删除')
-    })
-  }, { danger: true })
+  menuAdd('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
+  menuAdd('导出此条为 Markdown', () => {
+    const index = state.entries.indexOf(entry)
+    const filename = `译文-${entry.id || index + 1}.md`
+    downloadText(filename, entryToMarkdown(entry, index), 'text/markdown')
+    setStatus('已导出此条为 Markdown')
+  })
+  menuAdd('删除', () => deleteEntry(entry), true)
+  more.addEventListener('click', (event) => {
+    event.stopPropagation()
+    const wasOpen = !menu.hidden
+    document.querySelectorAll('.action-menu').forEach((item) => { item.hidden = true })
+    document.querySelectorAll('.action-more').forEach((item) => item.setAttribute('aria-expanded', 'false'))
+    if (!wasOpen) {
+      menu.hidden = false
+      more.setAttribute('aria-expanded', 'true')
+    }
+  })
+  bar.append(more, menu)
   return bar
 }
 
@@ -1105,7 +1163,7 @@ function renderEntryEl(entry) {
       : entry.mode === 'guide' ? '引导解析' : '译文'
   body.append(el('div', 'result-label', label))
   body.append(renderResult(entry))
-  body.append(renderActions(entry))
+  if (entry.status !== 'error') body.append(renderActions(entry))
   if (collapsed) body.hidden = true
   card.append(body)
   wrapper.append(card)
@@ -1410,6 +1468,15 @@ function bind() {
     if ($('more-menu').hidden) return
     if ($('more-menu').contains(event.target) || $('btn-more').contains(event.target)) return
     closeMoreMenu()
+  })
+  document.addEventListener('click', (event) => {
+    document.querySelectorAll('.action-menu').forEach((menu) => {
+      if (menu.hidden || menu.contains(event.target)) return
+      const more = menu.previousElementSibling
+      if (more && more.contains(event.target)) return
+      menu.hidden = true
+      more?.setAttribute('aria-expanded', 'false')
+    })
   })
 
   $('btn-help').addEventListener('click', toggleHelp)
