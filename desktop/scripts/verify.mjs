@@ -295,6 +295,10 @@ assert.match(sharedArchiveSource, /export function migrateArchive/u, 'archives m
 assert.match(sharedArchiveSource, /export function planArchiveImport/u, 'shared module must plan conflict-safe imports')
 
 assert.match(sharedMemorySource, /export function makeMemoryKey/u, 'translation memory must have a stable key helper')
+assert.match(sharedMemorySource, /export function memoryTextKey/u,
+  'translation memory must keep selected-text case significant in its key')
+assert.match(sharedMemorySource, /memoryTextKey\(text\)/u,
+  'translation memory key must use the case-preserving text normalizer')
 assert.match(sharedMemorySource, /sourceLanguage = 'auto'/u,
   'translation memory key must account for pinned source language')
 assert.match(appSource, /sourceLanguage: state\.sourceLanguage/u,

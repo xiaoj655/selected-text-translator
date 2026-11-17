@@ -1295,6 +1295,43 @@ export async function runE2E(mode = 'core') {
         await shot(mainPage, 'main-translation-memory')
       })
 
+      await check('translation memory: case-differing texts are not confused', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        await openSettings(mainPage)
+        await mainPage.locator('#opt-live-translate').uncheck()
+        await mainPage.locator('#btn-close-settings').click()
+        try {
+          const upper = 'MemoryCase-Probe-Alpha'
+          const lower = 'memorycase-probe-alpha'
+          const before = mock.requests.length
+          await mainPage.locator('#input').fill(upper)
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return /完成/u.test(status)
+          }, null, { timeout: 20000 })
+          const afterFirst = mock.requests.length
+          assert.ok(afterFirst > before, 'the first probe should reach the API')
+
+          await mainPage.locator('#input').fill(lower)
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const bubble = document.querySelector('.entry:last-child .bubble')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble && bubble.textContent.includes('memorycase-probe-alpha') && /完成/u.test(status))
+          }, null, { timeout: 20000 })
+          assert.equal(mock.requests.length, afterFirst + 1,
+            'a different-cased text must reach the API, not be served from the other case\'s memory')
+          assert.equal(await mainPage.locator('.entry:last-child .memory-tag').count(), 0,
+            'the second result must not be flagged as coming from translation memory')
+          await shot(mainPage, 'main-memory-case-sensitive')
+        } finally {
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

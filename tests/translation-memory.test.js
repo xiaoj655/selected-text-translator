@@ -4,6 +4,7 @@ import {
   MEMORY_MAX_AGE_MS,
   makeMemoryKey,
   memorySize,
+  memoryTextKey,
   normalizeMemoryText,
   pruneMemory,
   readMemoryEntry,
@@ -16,14 +17,24 @@ test('normalizeMemoryText collapses whitespace and lowercases', () => {
   assert.equal(normalizeMemoryText('A\tB\nC'), 'a b c');
 });
 
-test('makeMemoryKey separates mode, target language, model and text', () => {
-  const base = { text: 'Record', mode: 'translate', targetLanguage: 'auto', model: 'qwen-mt-flash' };
+test('makeMemoryKey collapses text whitespace but keeps text case significant', () => {
+  const base = { text: 'record', mode: 'translate', targetLanguage: 'auto', model: 'qwen-mt-flash' };
   const key = makeMemoryKey(base);
-  assert.equal(key, makeMemoryKey({ ...base, text: '  record ' }));
+  assert.equal(key, makeMemoryKey({ ...base, text: '  record  ' }));
+  assert.notEqual(key, makeMemoryKey({ ...base, text: 'Record' }));
+  assert.notEqual(makeMemoryKey({ ...base, text: 'May' }), makeMemoryKey({ ...base, text: 'may' }));
+  assert.notEqual(makeMemoryKey({ ...base, text: 'Turkey' }), makeMemoryKey({ ...base, text: 'turkey' }));
   assert.notEqual(key, makeMemoryKey({ ...base, mode: 'guide' }));
   assert.notEqual(key, makeMemoryKey({ ...base, targetLanguage: 'Japanese' }));
   assert.notEqual(key, makeMemoryKey({ ...base, model: 'qwen3-flash' }));
   assert.notEqual(key, makeMemoryKey({ ...base, text: 'recording' }));
+});
+
+test('memoryTextKey trims and collapses whitespace without lowercasing', () => {
+  assert.equal(memoryTextKey('  Hello   world  '), 'Hello world');
+  assert.equal(memoryTextKey('A\tB\nC'), 'A B C');
+  assert.equal(memoryTextKey(null), '');
+  assert.equal(memoryTextKey('May'), 'May');
 });
 
 test('makeMemoryKey separates pinned source language so cached results cannot collide', () => {
