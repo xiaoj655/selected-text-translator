@@ -482,7 +482,8 @@ function showSelectionToolbar(entry, text, rect) {
   let left = rect.left + rect.width / 2 - width / 2
   left = Math.max(8, Math.min(window.innerWidth - width - 8, left))
   const above = rect.top - height - 8
-  const top = above >= 8 ? above : rect.bottom + 8
+  const maxTop = Math.max(8, window.innerHeight - height - 8)
+  const top = Math.max(8, Math.min(maxTop, above >= 8 ? above : rect.bottom + 8))
   bar.style.left = `${Math.round(left)}px`
   bar.style.top = `${Math.round(top)}px`
 }

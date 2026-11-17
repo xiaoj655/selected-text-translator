@@ -225,8 +225,10 @@ function showSelectionToolbar(text, rect) {
   const barRect = bar.getBoundingClientRect()
   const left = Math.max(8, Math.min(window.innerWidth - barRect.width - 8, rect.left + rect.width / 2 - barRect.width / 2))
   const above = rect.top - barRect.height - 8
+  const maxTop = Math.max(8, window.innerHeight - barRect.height - 8)
+  const top = Math.max(8, Math.min(maxTop, above >= 8 ? above : rect.bottom + 8))
   bar.style.left = `${Math.round(left)}px`
-  bar.style.top = `${Math.round(above >= 8 ? above : rect.bottom + 8)}px`
+  bar.style.top = `${Math.round(top)}px`
 }
 
 function selectionInResult() {

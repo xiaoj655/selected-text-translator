@@ -217,6 +217,21 @@ async function selectResultText(page, selector) {
   const copyFeedback = await page.locator('#selection-toolbar [data-sel-action="copy"]').textContent()
   check('card copy feedback visible', () => assert.match(copyFeedback, /已复制/))
 
+  await page.evaluate(() => {
+    const result = document.getElementById('result')
+    result.innerHTML = '<div style="height:600px">above</div><div>选中靠近底部的文字来验证工具栏不会超出窗口。</div>'
+    result.scrollTop = result.scrollHeight
+  })
+  await selectResultText(page, '#result')
+  const bounds = await page.locator('#selection-toolbar').evaluate((bar) => {
+    const r = bar.getBoundingClientRect()
+    return { top: r.top, bottom: r.bottom, vw: window.innerWidth, vh: window.innerHeight }
+  })
+  check('card toolbar stays within viewport', () => {
+    assert.ok(bounds.top >= 0, `toolbar top ${bounds.top} above viewport`)
+    assert.ok(bounds.bottom <= bounds.vh, `toolbar bottom ${bounds.bottom} beyond viewport height ${bounds.vh}`)
+  })
+
   check('no page errors (card)', () => assert.deepEqual(pageerrors, []))
   await ctx.close()
 }
