@@ -70,6 +70,12 @@ const baseInit = ({ history = [], copyLog = [], messageLog = [], historyLog = []
   window.__copyLog = copyLog
   window.__messageLog = messageLog
   window.__historyLog = historyLog
+  window.__downloads = []
+  const realCreateObjectURL = URL.createObjectURL.bind(URL)
+  URL.createObjectURL = (blob) => {
+    window.__downloads.push(blob)
+    return realCreateObjectURL(blob)
+  }
   window.sttDesktop = {
     loadHistory: async () => history,
     saveHistory: async (entries) => { historyLog.push(entries) },
@@ -273,6 +279,43 @@ async function selectResultText(page, selector) {
   })
 
   check('no page errors (card)', () => assert.deepEqual(pageerrors, []))
+  await ctx.close()
+}
+
+// ---- anki export (end-to-end download) ----
+{
+  const ctx = await browser.newContext({ viewport: { width: 1080, height: 780 }, acceptDownloads: true })
+  await ctx.addInitScript(baseInit, { history: entries })
+  const page = await ctx.newPage()
+  const pageerrors = []
+  page.on('pageerror', (e) => pageerrors.push(e.message))
+  await page.goto(indexUrl, { waitUntil: 'load' })
+  await page.waitForTimeout(350)
+  console.log('anki export:')
+  await page.click('#btn-export')
+  await page.click('[data-export="anki"]')
+  await page.waitForTimeout(200)
+  const downloads = await page.evaluate(async () => {
+    const blobs = window.__downloads || []
+    return Promise.all(blobs.map((blob) => blob.text()))
+  })
+  check('anki export produced a file', () => assert.equal(downloads.length, 1))
+  const content = downloads[0] || ''
+  check('anki row count', () => assert.equal(content.trim().split('\n').length, 2))
+  check('anki TSV columns', () => {
+    for (const line of content.trim().split('\n')) assert.equal(line.split('\t').length, 2)
+  })
+  check('anki cells sanitized', () => {
+    for (const line of content.trim().split('\n')) {
+      const [src, result] = line.split('\t')
+      assert.ok(!/[\t\r\n]/u.test(src) && !/[\t\r\n]/u.test(result))
+    }
+  })
+  check('anki source cells match entries', () => {
+    const lines = content.trim().split('\n')
+    for (const entry of entries) assert.ok(lines.some((line) => line.startsWith(`${entry.text}\t`)))
+  })
+  check('no page errors (anki)', () => assert.deepEqual(pageerrors, []))
   await ctx.close()
 }
 
