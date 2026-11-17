@@ -124,6 +124,13 @@ function installIpc(storage, history) {
     clipboard.writeText(String(text || ''))
     return true
   })
+  ipcMain.handle('stt:read-clipboard', async () => {
+    try {
+      return String(await clipboard.readText() || '')
+    } catch {
+      return ''
+    }
+  })
   ipcMain.handle('stt:open-log', () => {
     if (logFile) void shell.openPath(logFile)
     return true

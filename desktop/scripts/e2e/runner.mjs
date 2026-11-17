@@ -93,6 +93,12 @@ async function setConfig(mainPage, config) {
   await mainPage.evaluate(async (values) => {
     await chrome.storage.sync.set(values)
   }, config)
+  await mainPage.waitForFunction(() => {
+    const panel = document.getElementById('settings-panel')
+    if (!panel || panel.hidden) return true
+    document.getElementById('btn-close-settings')?.click()
+    return false
+  }, null, { timeout: 5000 }).catch(() => {})
 }
 
 async function waitForResult(cardPage, { error = false, expect = /./u, timeout = 25000 } = {}) {
@@ -244,6 +250,19 @@ export async function runE2E(mode = 'core') {
     })
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {
+      await check('paste and translate: clipboard text becomes a translation without hotkey', async () => {
+        const clipText = 'clipboard selection test'
+        await mainPage.evaluate((text) => window.sttDesktop.copyText(text), clipText)
+        await mainPage.locator('#btn-paste-translate').click()
+        await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length >= 1, null, { timeout: 15000 })
+        await mainPage.waitForFunction(() => {
+          const result = document.querySelector('.entry .result')
+          return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+        }, null, { timeout: 25000 })
+        const source = await mainPage.locator('.entry .bubble').first().textContent()
+        assert.match(source, /clipboard selection test/u)
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

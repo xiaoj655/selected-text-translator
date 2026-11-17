@@ -808,6 +808,22 @@ function failEntry(entry, message) {
   renderEntry(entry)
 }
 
+async function pasteAndTranslate() {
+  try {
+    const text = String(await window.sttDesktop.readClipboard() || '').trim()
+    if (!text) {
+      setStatus('剪贴板里没有文字,请先复制要翻译的内容')
+      $('input').focus()
+      return
+    }
+    $('input').value = text
+    updateComposer()
+    submit()
+  } catch {
+    setStatus('读取剪贴板失败')
+  }
+}
+
 function submit() {
   const text = $('input').value.trim()
   if (!text) {
@@ -927,7 +943,7 @@ function renderEmpty() {
   hero.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
   box.append(hero)
   box.append(el('h2', '', '随时查词、翻译,或理解一句话'))
-  const line1 = el('p', '', '把文字粘贴到下方输入框,或选中文字后按热键自动带入。')
+  const line1 = el('p', '', '复制内容后点「粘贴并翻译」即可,按热键或粘贴到输入框也可以。')
   box.append(line1)
   const line2 = el('p')
   line2.append('全局热键 ')
@@ -1527,6 +1543,7 @@ function bind() {
     updateComposer()
     input.focus()
   })
+  $('btn-paste-translate').addEventListener('click', () => void pasteAndTranslate())
   $('opt-paste').addEventListener('change', (event) => {
     state.prefs.pasteAutoSubmit = event.target.checked
     void savePrefs()

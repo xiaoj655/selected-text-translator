@@ -150,6 +150,9 @@ window.sttDesktop = {
   setCaptureMode(mode) {
     return ipcRenderer.invoke('stt:set-capture-mode', mode)
   },
+  readClipboard() {
+    return ipcRenderer.invoke('stt:read-clipboard')
+  },
   setFloatingCardDisabled(disabled) {
     return ipcRenderer.invoke('stt:set-floating-card-disabled', disabled)
   },
