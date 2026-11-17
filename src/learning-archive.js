@@ -82,6 +82,32 @@ function parseHistory(section) {
   return entries;
 }
 
+function normalizedSections(raw) {
+  const sections = isObject(raw) ? raw : {};
+  return {
+    vocabulary: isObject(sections.vocabulary) ? sections.vocabulary : { entries: [] },
+    translationMemory: isObject(sections.translationMemory) ? sections.translationMemory : { entries: {} },
+    history: isObject(sections.history) ? sections.history : { entries: [] },
+  };
+}
+
+export function migrateArchive(data) {
+  if (!isObject(data) || data.format !== ARCHIVE_FORMAT) {
+    throw new Error('Invalid learning archive: expected a Selected learning archive.');
+  }
+  const version = data.version;
+  if (version === ARCHIVE_VERSION || version === String(ARCHIVE_VERSION)) {
+    return { ...data, version: ARCHIVE_VERSION, sections: normalizedSections(data.sections) };
+  }
+  if (version === undefined || version === null || version === 0 || version === '0') {
+    return { ...data, version: ARCHIVE_VERSION, sections: normalizedSections(data.sections) };
+  }
+  if (typeof version === 'number' && Number.isInteger(version) && version > ARCHIVE_VERSION) {
+    throw new Error(`Invalid learning archive: expected a Selected version ${ARCHIVE_VERSION} archive, got version ${version}. Please update Selected to open this file.`);
+  }
+  throw new Error(`Invalid learning archive: expected a Selected version ${ARCHIVE_VERSION} archive.`);
+}
+
 export function parseLearningArchive(text) {
   if (typeof text !== 'string' || !text.trim()) {
     throw new Error('Invalid learning archive: the file is empty.');
@@ -95,15 +121,16 @@ export function parseLearningArchive(text) {
   } catch {
     throw new Error('Invalid learning archive: unable to read this file.');
   }
-  if (!isObject(data) || data.format !== ARCHIVE_FORMAT || data.version !== ARCHIVE_VERSION
-    || !isSafeTimestamp(data.exportedAt) || !isObject(data.sections)) {
-    throw new Error('Invalid learning archive: expected a Selected version 1 learning archive.');
+  const archive = migrateArchive(data);
+  if (!isSafeTimestamp(archive.exportedAt)) {
+    throw new Error(`Invalid learning archive: expected a Selected version ${ARCHIVE_VERSION} archive.`);
   }
   return {
-    exportedAt: data.exportedAt,
-    vocabularyEntries: parseVocabulary(data.sections.vocabulary),
-    translationMemory: parseTranslationMemory(data.sections.translationMemory),
-    historyEntries: parseHistory(data.sections.history),
+    version: archive.version,
+    exportedAt: archive.exportedAt,
+    vocabularyEntries: parseVocabulary(archive.sections.vocabulary),
+    translationMemory: parseTranslationMemory(archive.sections.translationMemory),
+    historyEntries: parseHistory(archive.sections.history),
   };
 }
 
@@ -118,4 +145,72 @@ export function mergeHistoryEntries(existing, incoming) {
     merged.push(entry);
   }
   return merged.slice(-MAX_HISTORY_ENTRIES);
+}
+
+function vocabularyKey(entry) {
+  return `${entry.text}\n${entry.meaning}`;
+}
+
+function historyId(entry) {
+  return String(entry.id || `${entry.createdAt || 0}:${entry.text}`);
+}
+
+export function planArchiveImport(existing = {}, incoming = {}) {
+  const existingVocabulary = Array.isArray(existing.vocabularyEntries) ? existing.vocabularyEntries : [];
+  const existingMemory = isObject(existing.translationMemory) ? existing.translationMemory : {};
+  const existingHistory = Array.isArray(existing.history) ? existing.history : [];
+  const incomingVocabulary = Array.isArray(incoming.vocabularyEntries) ? incoming.vocabularyEntries : [];
+  const incomingMemory = isObject(incoming.translationMemory) ? incoming.translationMemory : {};
+  const incomingHistory = Array.isArray(incoming.historyEntries) ? incoming.historyEntries : [];
+
+  const seenVocabulary = new Set(existingVocabulary.map(vocabularyKey));
+  const vocabularyEntries = [...existingVocabulary];
+  let vocabularyAdded = 0;
+  let vocabularyConflicts = 0;
+  for (const entry of incomingVocabulary) {
+    const key = vocabularyKey(entry);
+    if (seenVocabulary.has(key)) {
+      vocabularyConflicts += 1;
+      continue;
+    }
+    seenVocabulary.add(key);
+    vocabularyEntries.push(entry);
+    vocabularyAdded += 1;
+  }
+
+  const translationMemory = { ...existingMemory };
+  let memoryAdded = 0;
+  let memoryConflicts = 0;
+  for (const [key, value] of Object.entries(incomingMemory)) {
+    if (Object.prototype.hasOwnProperty.call(translationMemory, key)) {
+      memoryConflicts += 1;
+      continue;
+    }
+    translationMemory[key] = value;
+    memoryAdded += 1;
+  }
+
+  const seenHistory = new Set(existingHistory.map(historyId));
+  let historyAdded = 0;
+  for (const entry of incomingHistory) {
+    const id = historyId(entry);
+    if (seenHistory.has(id)) continue;
+    seenHistory.add(id);
+    historyAdded += 1;
+  }
+  const history = mergeHistoryEntries(existingHistory, incomingHistory);
+
+  return {
+    vocabularyEntries,
+    translationMemory,
+    history,
+    counts: {
+      vocabularyAdded,
+      vocabularyConflicts,
+      memoryAdded,
+      memoryConflicts,
+      historyAdded,
+      totalConflicts: vocabularyConflicts + memoryConflicts,
+    },
+  };
 }

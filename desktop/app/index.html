@@ -156,6 +156,13 @@
           </div>
           <input id="archive-file" type="file" accept="application/json,.json" hidden>
           <p class="drawer-status" id="archive-status" role="status"></p>
+          <div class="archive-conflict" id="archive-conflict" hidden>
+            <p id="archive-conflict-text" role="alert"></p>
+            <div class="drawer-actions">
+              <button id="archive-conflict-keep" type="button">保留现有,仅导入新增</button>
+              <button id="archive-conflict-cancel" type="button">取消导入</button>
+            </div>
+          </div>
         </div>
         <div class="drawer-section">
           <h3>外观</h3>

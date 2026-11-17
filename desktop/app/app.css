@@ -231,6 +231,10 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .drawer-status { margin: 10px 0 0; font-size: 12px; min-height: 16px; color: var(--text-2); }
 .drawer-status[data-kind='success'] { color: var(--success); }
 .drawer-status[data-kind='error'] { color: var(--danger); }
+.archive-conflict { margin-top: 10px; padding: 10px 12px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r-sm); }
+.archive-conflict[hidden] { display: none; }
+.archive-conflict p { margin: 0 0 8px; font-size: 12px; line-height: 1.6; color: var(--accent-text); }
+.archive-conflict .drawer-actions button { font-size: 12px; }
 .drawer-flags, .drawer-appearance { display: flex; flex-direction: column; gap: 8px; }
 .mini-toggle { display: inline-flex !important; align-items: center; gap: 7px; font-size: 13px !important; color: var(--text) !important; cursor: pointer; }
 .mini-toggle input { margin: 0; accent-color: var(--accent); }

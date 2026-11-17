@@ -681,6 +681,117 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('learning archive import: conflicts protect existing data and legacy versions migrate', async () => {
+        const before = await mainPage.evaluate(async () => ({
+          vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],
+          memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
+          history: await window.sttDesktop.loadHistory(),
+        }))
+        try {
+          await delay(400)
+          await mainPage.evaluate(async () => {
+            await chrome.storage.local.set({
+              vocabulary_entries: [{ id: 'conflict-existing', text: 'shared word', meaning: '现有释义', reviewCount: 7 }],
+              translation_memory: { 'k-shared': { translatedText: '现有译文', savedAt: 1 } },
+            })
+            window.sttDesktop.saveHistory([{ id: 'conflict-h', text: 'shared word', status: 'done', createdAt: Date.now() }])
+          })
+          await mainPage.waitForFunction(async () => {
+            const vocab = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || []
+            return vocab.some((entry) => entry.id === 'conflict-existing')
+          }, null, { timeout: 10000 })
+
+          const incoming = {
+            format: 'selected-learning-archive',
+            version: 1,
+            exportedAt: Date.now(),
+            sections: {
+              vocabulary: { entries: [
+                { id: 'conflict-incoming', text: 'shared word', meaning: '现有释义', reviewCount: 99 },
+                { id: 'new-entry', text: 'brand new', meaning: '新增' },
+              ] },
+              translationMemory: { entries: {
+                'k-shared': { translatedText: '新译文', savedAt: 999 },
+                'k-new': { translatedText: '新记忆', savedAt: 999 },
+              } },
+              history: { entries: [{ id: 'new-h', text: 'brand new', status: 'done', createdAt: Date.now() }] },
+            },
+          }
+          await mainPage.locator('#btn-settings').click()
+          await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+          await mainPage.locator('#archive-file').setInputFiles({
+            name: 'conflicting.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)),
+          })
+          await mainPage.waitForFunction(() => {
+            const box = document.getElementById('archive-conflict')
+            return Boolean(box && !box.hidden)
+          }, null, { timeout: 10000 })
+          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /2 处冲突/u)
+          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /收藏 1 · 记忆 1/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /现有数据未被改动/u)
+          const beforeChoice = await mainPage.evaluate(async () => ({
+            vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],
+            memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
+          }))
+          assert.equal(beforeChoice.vocabulary.find((e) => e.text === 'shared word').reviewCount, 7,
+            'conflicting import must not touch existing data before the user chooses')
+          assert.equal(beforeChoice.memory['k-shared'].translatedText, '现有译文')
+          await mainPage.screenshot({ path: join(screenshotDir, 'main-archive-conflict.png'), animations: 'disabled' })
+
+          await mainPage.locator('#archive-conflict-keep').click()
+          await mainPage.waitForFunction(async () => {
+            const vocab = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || []
+            return vocab.some((entry) => entry.text === 'brand new')
+          }, null, { timeout: 10000 })
+          const after = await mainPage.evaluate(async () => ({
+            vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],
+            memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
+          }))
+          assert.equal(after.vocabulary.find((e) => e.text === 'shared word').reviewCount, 7,
+            'existing review progress must survive the import')
+          assert.equal(after.memory['k-shared'].translatedText, '现有译文',
+            'existing translation must survive the import')
+          assert.equal(after.memory['k-new'].translatedText, '新记忆')
+          assert.match(await mainPage.locator('#archive-status').textContent(), /保留现有冲突 2 处/u)
+          assert.equal(await mainPage.locator('#archive-conflict').evaluate((el) => el.hidden), true)
+
+          const legacy = {
+            format: 'selected-learning-archive',
+            exportedAt: Date.now(),
+            sections: {
+              vocabulary: { entries: [{ id: 'legacy-entry', text: 'legacy word', meaning: '旧词' }] },
+              translationMemory: { entries: {} },
+              history: { entries: [] },
+            },
+          }
+          await mainPage.locator('#archive-file').setInputFiles({
+            name: 'legacy.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(legacy)),
+          })
+          await mainPage.waitForFunction(async () => {
+            const vocab = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || []
+            return vocab.some((entry) => entry.text === 'legacy word')
+          }, null, { timeout: 10000 })
+          assert.match(await mainPage.locator('#archive-status').textContent(), /已导入档案/u)
+          assert.equal(await mainPage.locator('#archive-conflict').evaluate((el) => el.hidden), true,
+            'a legacy archive with no conflicts should import without a prompt')
+
+          await mainPage.locator('#btn-close-settings').click()
+          await mainPage.waitForFunction(() => document.getElementById('settings-panel').hidden)
+          await shot(mainPage, 'main-archive-imported')
+        } finally {
+          await mainPage.evaluate(async (snapshot) => {
+            await chrome.storage.local.set({
+              vocabulary_entries: snapshot.vocabulary, translation_memory: snapshot.memory,
+            })
+            window.sttDesktop.saveHistory(snapshot.history)
+          }, before)
+          const conflictHidden = await mainPage.locator('#archive-conflict').evaluate((el) => el.hidden)
+          if (!conflictHidden) await mainPage.locator('#archive-conflict-cancel').click()
+          const panelHidden = await mainPage.locator('#settings-panel').evaluate((el) => el.hidden)
+          if (!panelHidden) await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('translation memory: repeat text is served instantly without a new API call', async () => {
         await setConfig(mainPage, { model: 'qwen-mt-flash' })
         const text = 'memory-probe-alpha'

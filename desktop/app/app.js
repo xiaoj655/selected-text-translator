@@ -5,8 +5,8 @@ import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, 
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import {
   buildLearningArchive,
-  mergeHistoryEntries,
   parseLearningArchive,
+  planArchiveImport,
   serializeLearningArchive,
 } from '../vendor/src/learning-archive.js'
 
@@ -488,6 +488,8 @@ function persistHistory() {
   }, 300)
 }
 
+let pendingArchiveImport = null
+
 function archiveStamp() {
   const date = new Date()
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
@@ -527,36 +529,51 @@ async function exportLearningArchive() {
   }
 }
 
+function showArchiveConflicts(counts) {
+  const box = $('archive-conflict')
+  $('archive-conflict-text').textContent = `待导入档案与现有数据有 ${counts.totalConflicts} 处冲突`
+    + `(收藏 ${counts.vocabularyConflicts} · 记忆 ${counts.memoryConflicts})。`
+    + `将保留现有数据,仅导入 ${counts.vocabularyAdded + counts.memoryAdded} 条新增内容。`
+  box.hidden = false
+}
+
+async function applyArchiveImport(plan) {
+  const statusEl = $('archive-status')
+  const memory = plan.translationMemory
+  await chrome.storage.local.set({ vocabulary_entries: plan.vocabularyEntries, translation_memory: memory })
+  window.sttDesktop.saveHistory(plan.history)
+  state.translationMemory = memory
+  state.entries = plan.history.map((entry) => ({
+    ...entry,
+    status: entry.status === 'done' ? 'done' : 'error',
+    error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
+  }))
+  render()
+  void updateStudyProgress()
+  const { counts } = plan
+  statusEl.textContent = `已导入档案:新增收藏 ${counts.vocabularyAdded} 条,新增记忆 ${counts.memoryAdded} 条,`
+    + `记录 ${plan.history.length} 条,保留现有冲突 ${counts.totalConflicts} 处。`
+  setStatus('已导入完整学习档案')
+  pendingArchiveImport = null
+  $('archive-conflict').hidden = true
+}
+
 async function importLearningArchive(file) {
   const statusEl = $('archive-status')
   if (!file) return
   try {
+    pendingArchiveImport = null
+    $('archive-conflict').hidden = true
     const parsed = parseLearningArchive(await file.text())
     const sources = await readArchiveSources()
-    const existingKeys = new Set(sources.vocabularyEntries.map((entry) => `${entry.text}\n${entry.meaning}`))
-    let added = 0
-    const vocabulary = [...sources.vocabularyEntries]
-    for (const entry of parsed.vocabularyEntries) {
-      const key = `${entry.text}\n${entry.meaning}`
-      if (existingKeys.has(key)) continue
-      existingKeys.add(key)
-      vocabulary.push(entry)
-      added++
+    const plan = planArchiveImport(sources, parsed)
+    if (plan.counts.totalConflicts > 0) {
+      pendingArchiveImport = plan
+      showArchiveConflicts(plan.counts)
+      statusEl.textContent = `检测到 ${plan.counts.totalConflicts} 处冲突,现有数据未被改动,请选择处理方式。`
+      return
     }
-    const memory = { ...sources.translationMemory, ...parsed.translationMemory }
-    const history = mergeHistoryEntries(sources.history, parsed.historyEntries)
-    await chrome.storage.local.set({ vocabulary_entries: vocabulary, translation_memory: memory })
-    window.sttDesktop.saveHistory(history)
-    state.translationMemory = memory
-    state.entries = history.map((entry) => ({
-      ...entry,
-      status: entry.status === 'done' ? 'done' : 'error',
-      error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
-    }))
-    render()
-    void updateStudyProgress()
-    statusEl.textContent = `已导入档案:新增收藏 ${added} 条,恢复记忆 ${Object.keys(parsed.translationMemory).length} 条,记录 ${parsed.historyEntries.length} 条。`
-    setStatus('已导入完整学习档案')
+    await applyArchiveImport(plan)
   } catch (error) {
     statusEl.textContent = `导入失败:${String(error?.message || error)}`
   }
@@ -1679,6 +1696,14 @@ function bind() {
     const file = event.target.files?.[0]
     if (file) void importLearningArchive(file)
     event.target.value = ''
+  })
+  $('archive-conflict-keep').addEventListener('click', () => {
+    if (pendingArchiveImport) void applyArchiveImport(pendingArchiveImport)
+  })
+  $('archive-conflict-cancel').addEventListener('click', () => {
+    pendingArchiveImport = null
+    $('archive-conflict').hidden = true
+    $('archive-status').textContent = '已取消导入,现有数据未改动。'
   })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-study-progress').addEventListener('click', () => window.sttDesktop.openLibrary())

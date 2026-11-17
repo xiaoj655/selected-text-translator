@@ -6,7 +6,9 @@ import {
   MAX_ARCHIVE_BYTES,
   buildLearningArchive,
   mergeHistoryEntries,
+  migrateArchive,
   parseLearningArchive,
+  planArchiveImport,
   serializeLearningArchive,
 } from '../src/learning-archive.js';
 
@@ -82,4 +84,84 @@ test('mergeHistoryEntries deduplicates by id and caps history', () => {
   assert.equal(merged[1].text, 'b');
   const many = Array.from({ length: 30 }, (_, index) => ({ id: `x${index}`, text: `x${index}` }));
   assert.equal(mergeHistoryEntries(many, []).length, 20);
+});
+
+test('migrateArchive normalizes legacy unversioned archives to version 1', () => {
+  const legacy = buildLearningArchive({
+    vocabularyEntries: [{ text: 'legacy', meaning: '旧版' }],
+    now: 5,
+  });
+  delete legacy.version;
+  delete legacy.sections.translationMemory;
+  const migrated = migrateArchive(legacy);
+  assert.equal(migrated.version, ARCHIVE_VERSION);
+  assert.deepEqual(migrated.sections.translationMemory, { entries: {} });
+  assert.equal(migrated.sections.vocabulary.entries.length, 1);
+});
+
+test('migrateArchive rejects newer versions with a clear upgrade message', () => {
+  const future = buildLearningArchive({ now: 1 });
+  future.version = 2;
+  assert.throws(() => migrateArchive(future), /got version 2.*update Selected/u);
+  assert.throws(() => migrateArchive({ format: 'wrong', version: 1 }), /expected a Selected/u);
+});
+
+test('parseLearningArchive accepts a legacy unversioned archive', () => {
+  const legacy = buildLearningArchive({
+    vocabularyEntries: [{ text: 'legacy word', meaning: '旧词' }],
+    now: 7,
+  });
+  delete legacy.version;
+  const parsed = parseLearningArchive(JSON.stringify(legacy));
+  assert.equal(parsed.version, ARCHIVE_VERSION);
+  assert.equal(parsed.vocabularyEntries[0].text, 'legacy word');
+  assert.deepEqual(parsed.translationMemory, {});
+  assert.deepEqual(parsed.historyEntries, []);
+});
+
+test('planArchiveImport protects existing data on conflicts and adds only new items', () => {
+  const existing = {
+    vocabularyEntries: [{ id: 'v1', text: 'shared', meaning: '现有释义', reviewCount: 3 }],
+    translationMemory: { sharedKey: { translatedText: '现有译文', savedAt: 1 } },
+    history: [{ id: 'h1', text: 'shared' }],
+  };
+  const incoming = {
+    vocabularyEntries: [
+      { id: 'v2', text: 'shared', meaning: '现有释义', reviewCount: 99 },
+      { id: 'v3', text: 'brand new', meaning: '新增' },
+    ],
+    translationMemory: {
+      sharedKey: { translatedText: '新译文', savedAt: 999 },
+      newKey: { translatedText: '新记忆', savedAt: 999 },
+    },
+    historyEntries: [
+      { id: 'h1', text: 'shared' },
+      { id: 'h2', text: 'brand new' },
+    ],
+  };
+  const plan = planArchiveImport(existing, incoming);
+  assert.equal(plan.counts.vocabularyConflicts, 1);
+  assert.equal(plan.counts.memoryConflicts, 1);
+  assert.equal(plan.counts.vocabularyAdded, 1);
+  assert.equal(plan.counts.memoryAdded, 1);
+  assert.equal(plan.counts.historyAdded, 1);
+  assert.equal(plan.counts.totalConflicts, 2);
+  assert.equal(plan.vocabularyEntries.find((e) => e.text === 'shared').reviewCount, 3,
+    'existing review progress must win on conflict');
+  assert.ok(plan.vocabularyEntries.some((e) => e.text === 'brand new'));
+  assert.equal(plan.translationMemory.sharedKey.translatedText, '现有译文',
+    'existing translation must win on conflict');
+  assert.equal(plan.translationMemory.newKey.translatedText, '新记忆');
+  assert.deepEqual(plan.history.map((e) => e.id), ['h1', 'h2']);
+});
+
+test('planArchiveImport reports no conflicts for disjoint data', () => {
+  const plan = planArchiveImport(
+    { vocabularyEntries: [{ text: 'a', meaning: '甲' }] },
+    { vocabularyEntries: [{ text: 'b', meaning: '乙' }], translationMemory: { k: { translatedText: '译', savedAt: 1 } } },
+  );
+  assert.equal(plan.counts.totalConflicts, 0);
+  assert.equal(plan.counts.vocabularyAdded, 1);
+  assert.equal(plan.counts.memoryAdded, 1);
+  assert.equal(plan.vocabularyEntries.length, 2);
 });
