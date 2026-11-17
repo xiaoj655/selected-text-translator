@@ -9,6 +9,7 @@ import { createWindows } from './windows.js'
 import { createCapture } from './capture.js'
 import { createTts } from './tts.js'
 import { createShortcuts, HOTKEY_OPTIONS } from './shortcuts.js'
+import { shouldShowMainWindow } from './hotkey-route.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
@@ -20,6 +21,7 @@ let shortcuts
 let capture
 let dispatch
 let storageRef
+let floatingCardDisabled = false
 
 function logger(event, detail) {
   let text = ''
@@ -59,9 +61,11 @@ async function onHotkey() {
       } catch {
         payload.prefs = null
       }
-      await windows.showCardWindow(payload)
-    } else {
+    }
+    if (shouldShowMainWindow(payload, floatingCardDisabled)) {
       await windows.showMainWindow(payload)
+    } else {
+      await windows.showCardWindow(payload)
     }
   } catch (error) {
     logger('show-failed', error)
@@ -90,7 +94,13 @@ function installIpc(storage, history) {
     alwaysOnTop: windows.getAlwaysOnTop(),
     loginItem: app.getLoginItemSettings().openAtLogin,
     clipboardOnly: capture.getMode() === 'clipboard',
+    floatingCardDisabled,
   }))
+  ipcMain.handle('stt:set-floating-card-disabled', (_event, disabled) => {
+    floatingCardDisabled = Boolean(disabled)
+    void storage.sync.set({ desktop_floating_card_disabled: floatingCardDisabled })
+    return true
+  })
   ipcMain.handle('stt:set-theme', (_event, theme) => {
     windows.setTheme(theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors))
     return true
@@ -169,9 +179,10 @@ async function bootstrap() {
   const tts = createTts({ logger })
   windows = createWindows({ desktopDir, userDataDir, logger })
   try {
-    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item'])
+    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item', 'desktop_floating_card_disabled'])
     if (flags?.desktop_always_on_top) windows.setAlwaysOnTop(true)
     if (flags?.desktop_login_item) app.setLoginItemSettings({ openAtLogin: true })
+    floatingCardDisabled = Boolean(flags?.desktop_floating_card_disabled)
   } catch {
     // window flags are best effort
   }

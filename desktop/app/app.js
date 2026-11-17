@@ -596,6 +596,7 @@ async function loadFlags() {
     $('opt-always-on-top').checked = Boolean(flags?.alwaysOnTop)
     $('opt-login-item').checked = Boolean(flags?.loginItem)
     $('opt-clipboard-only').checked = Boolean(flags?.clipboardOnly)
+    $('opt-main-window-only').checked = Boolean(flags?.floatingCardDisabled)
     $('cfg-hotkey').value = state.hotkey || ''
   } catch {
     // flags are optional
@@ -1445,6 +1446,12 @@ function bind() {
     setStatus(event.target.checked
       ? '已切换为仅剪贴板取词:复制后按热键即可,不需要辅助功能权限'
       : '已恢复自动取词')
+  })
+  $('opt-main-window-only').addEventListener('change', (event) => {
+    void window.sttDesktop.setFloatingCardDisabled(event.target.checked)
+    setStatus(event.target.checked
+      ? '已停用悬浮翻译卡:快捷键取词会直接在主窗口翻译'
+      : '已恢复悬浮翻译卡')
   })
   $('btn-hotkey').addEventListener('click', async () => {
     const value = $('cfg-hotkey').value.trim()

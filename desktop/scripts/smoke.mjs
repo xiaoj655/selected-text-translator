@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createStorage } from '../src/storage.js'
 import { installMainChrome } from '../src/chrome-shim-main.js'
 import { createCapture } from '../src/capture.js'
+import { shouldShowMainWindow } from '../src/hotkey-route.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
@@ -115,6 +116,12 @@ selectionCapture.setMode('clipboard')
 const clipboardOnly = await selectionCapture.capture()
 assert.equal(clipboardOnly.text, 'STALE CLIPBOARD CONTENT')
 assert.equal(clipboardOnly.source, 'clipboard-only')
+
+assert.equal(shouldShowMainWindow({ text: 'hello' }, false), false)
+assert.equal(shouldShowMainWindow({ text: 'hello' }, true), true)
+assert.equal(shouldShowMainWindow({ text: '' }, false), true)
+assert.equal(shouldShowMainWindow({ text: '   ' }, false), true)
+assert.equal(shouldShowMainWindow({}, false), true)
 
 rmSync(userDataDir, { recursive: true, force: true })
 console.log('[smoke] ok - storage, chrome shim, background message chain, capture fallback')

@@ -231,6 +231,18 @@ export async function runE2E(mode = 'core') {
       assert.equal(await mainPage.locator('.app').count(), 1, 'main window did not render its root')
     })
 
+    await check('floating card switch: UI toggle updates the main-process flag', async () => {
+      await mainPage.locator('#btn-settings').click()
+      await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+      await mainPage.locator('#opt-main-window-only').check()
+      const enabled = await mainPage.evaluate(() => window.sttDesktop.getFlags())
+      assert.equal(enabled.floatingCardDisabled, true)
+      await mainPage.locator('#opt-main-window-only').uncheck()
+      const disabled = await mainPage.evaluate(() => window.sttDesktop.getFlags())
+      assert.equal(disabled.floatingCardDisabled, false)
+      await mainPage.locator('#btn-close-settings').click()
+    })
+
     if (mode === 'core' || mode === 'all' || mode === 'layout') {
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
