@@ -447,6 +447,26 @@ function hideNotice() {
   $('notice').hidden = true
 }
 
+async function showCaptureHint(payload) {
+  let platform = ''
+  try {
+    platform = await window.sttDesktop.platform?.() || ''
+  } catch { }
+  const source = payload?.source || ''
+  let text = '没能自动取词。把文字粘贴到下面的输入框即可,或先复制再按热键。'
+  if (source === 'error') {
+    if (platform === 'darwin') {
+      text = '自动取词需要「辅助功能」权限。请在系统设置 → 隐私与安全性 → 辅助功能中允许本应用,然后选中文字再按热键;也可直接粘贴。'
+    } else if (platform === 'win32') {
+      text = '自动取词失败。请先选中文字再按热键;若仍失败,可复制文字后直接粘贴,或在设置里切换为「仅用剪贴板取词」。'
+    }
+  }
+  showNotice(text, 'info', {
+    label: '查看设置',
+    run: openSettings,
+  })
+}
+
 function showSnackbar(text, actionLabel, onAction) {
   const node = $('snackbar')
   $('snackbar-label').textContent = text
@@ -1622,7 +1642,7 @@ function bind() {
     } else {
       setStatus('没有取到选中文字,可以直接粘贴到这里翻译')
       if (state.draft) showDraftNotice()
-      else showNotice('没能自动取词。把文字粘贴到下面的输入框即可,或先复制再按热键。', 'info')
+      else void showCaptureHint(payload)
       $('input').focus()
     }
   })

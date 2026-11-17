@@ -98,6 +98,7 @@ const baseInit = ({ history = [], theme = 'system', font = 'normal', accent = 'i
     getHotkey: async () => 'Alt+Shift+E',
     getFlags: async () => ({ alwaysOnTop: false, loginItem: false, clipboardOnly: false }),
     getPlatform: async () => 'win32',
+    platform: async () => 'win32',
     setTheme: noop,
     setCaptureMode: noop,
     setAlwaysOnTop: noop,
