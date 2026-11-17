@@ -38,9 +38,30 @@ const entries = [
     lexical: { phonetic: '/ˈevɪdəns/', definitions: ['证据'], contextual_analysis: '语境说明' },
     createdAt: '2026-11-17T10:00:00.000Z',
   },
+  {
+    id: 'e2',
+    requestId: 'r2',
+    text: "It's not rocket science.",
+    mode: 'guide',
+    status: 'done',
+    translatedText: '',
+    guide: {
+      phonetic: '',
+      hints: ['先想想 rocket science 指的是什么领域。', '这句话常用来表示某事其实并不难。'],
+      answer: {
+        meaning: '这并不难；没什么高深的。',
+        explanation: 'rocket science 指高深复杂的学问。',
+        example: "Come on, it's not rocket science.",
+        usage: '口语，轻松语气。',
+      },
+    },
+    createdAt: '2026-11-17T09:51:00.000Z',
+    hintCount: 2,
+    answerRevealed: false,
+  },
 ]
 
-const baseInit = ({ history = [], copyLog = [], messageLog = [] } = {}) => {
+const baseInit = ({ history = [], copyLog = [], messageLog = [], historyLog = [] } = {}) => {
   const noop = () => {}
   const store = {
     reading_mode: 'translate',
@@ -48,9 +69,10 @@ const baseInit = ({ history = [], copyLog = [], messageLog = [] } = {}) => {
   }
   window.__copyLog = copyLog
   window.__messageLog = messageLog
+  window.__historyLog = historyLog
   window.sttDesktop = {
     loadHistory: async () => history,
-    saveHistory: noop,
+    saveHistory: async (entries) => { historyLog.push(entries) },
     clearHistory: noop,
     getHotkey: async () => 'Alt+Shift+E',
     getFlags: async () => ({ alwaysOnTop: false, loginItem: false, clipboardOnly: false }),
@@ -123,8 +145,9 @@ async function selectResultText(page, selector) {
 {
   const copyLog = []
   const messageLog = []
+  const historyLog = []
   const ctx = await browser.newContext({ viewport: { width: 1080, height: 780 } })
-  await ctx.addInitScript(baseInit, { history: entries, copyLog, messageLog })
+  await ctx.addInitScript(baseInit, { history: entries, copyLog, messageLog, historyLog })
   const page = await ctx.newPage()
   const pageerrors = []
   page.on('pageerror', (e) => pageerrors.push(e.message))
@@ -181,6 +204,23 @@ async function selectResultText(page, selector) {
     const last = sourceCopyLog[sourceCopyLog.length - 1]
     assert.ok(entries[0].text.startsWith(last), 'copied text is a prefix of the source')
   })
+
+  console.log('main-window guide answer persistence:')
+  const revealBtn = page.getByRole('button', { name: /揭晓答案/ })
+  const hasReveal = await revealBtn.count()
+  check('guide answer reveal button present', () => assert.ok(hasReveal >= 1))
+  if (hasReveal >= 1) {
+    await revealBtn.first().click()
+    await page.waitForTimeout(120)
+    const savedHistory = await page.evaluate(() => window.__historyLog)
+    check('answer reveal persists answerRevealed', () => {
+      const last = savedHistory[savedHistory.length - 1]
+      assert.ok(last, 'history was saved')
+      const guide = last.find((item) => item.id === 'e2')
+      assert.ok(guide, 'guide entry in saved history')
+      assert.equal(guide.answerRevealed, true, 'answerRevealed persisted as true')
+    })
+  }
 
   check('no page errors (main)', () => assert.deepEqual(pageerrors, []))
   await ctx.close()
