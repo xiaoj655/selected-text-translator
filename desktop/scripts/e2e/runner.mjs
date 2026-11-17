@@ -237,6 +237,17 @@ export async function runE2E(mode = 'core') {
       assert.equal(await mainPage.locator('.app').count(), 1, 'main window did not render its root')
     })
 
+    await check('empty state: example translates in one click when configured', async () => {
+      await mainPage.getByRole('button', { name: '试一个单词' }).click()
+      await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length >= 1, null, { timeout: 15000 })
+      const source = await mainPage.locator('.entry .bubble').first().textContent()
+      assert.match(source, /record/u)
+      await mainPage.locator('#btn-more').click()
+      await mainPage.locator('#btn-clear').click()
+      await mainPage.locator('.snackbar-action').click()
+      await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length === 0, null, { timeout: 5000 })
+    })
+
     await check('floating card switch: UI toggle updates the main-process flag', async () => {
       await mainPage.locator('#btn-settings').click()
       await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)

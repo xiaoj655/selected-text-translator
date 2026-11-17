@@ -974,7 +974,8 @@ function renderEmpty() {
       $('input').value = text
       updateComposer()
       $('input').focus()
-      setStatus('已填入示例,点「翻译」或按 Ctrl+Enter')
+      if (state.configured) submit()
+      else setStatus('已填入示例,点「翻译」或按 Ctrl+Enter')
     })
     examples.append(button)
   }

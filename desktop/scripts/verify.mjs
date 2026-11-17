@@ -50,6 +50,7 @@ assert.match(appSource, /CANCEL_TRANSLATION/u, 'in-flight requests must be cance
 assert.match(appSource, /applyAppearance/u, 'appearance settings must be wired')
 assert.match(htmlSource, /id="opt-theme"/u, 'theme selector is required')
 assert.match(appSource, /empty-examples/u, 'empty state examples are required')
+assert.match(appSource, /if \(state\.configured\) submit\(\)/u, 'example must translate in one click when configured')
 assert.match(mainSource, /ensureMainWindow/u, 'main window must be preloaded for instant hotkey response')
 assert.match(mainSource, /showMainWindow/u, 'hotkey must always reveal the main window')
 const preloadSource = readFileSync(join(root, 'src', 'preload.cjs'), 'utf8')
