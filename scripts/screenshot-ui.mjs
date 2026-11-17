@@ -158,6 +158,16 @@ const browser = await chromium.launch({ headless: true })
 const indexUrl = `${baseUrl}/index.html`
 const cardUrl = `${baseUrl}/card.html`
 
+await shot(browser, '13-settings-scrolled', {
+  config: { history: entries },
+  url: indexUrl,
+  post: async (page) => {
+    await page.click('#btn-settings')
+    await page.waitForTimeout(150)
+    await page.evaluate(() => { const d = document.querySelector('.drawer-body'); d.scrollTop = d.scrollHeight })
+    await page.waitForTimeout(120)
+  },
+})
 const closeSettings = async (page) => {
   await page.evaluate(() => {
     const panel = document.getElementById('settings-panel')
