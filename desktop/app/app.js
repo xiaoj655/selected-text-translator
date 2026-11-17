@@ -984,6 +984,8 @@ async function setMode(mode) {
   } catch {
     // mode still applies for this session
   }
+  const label = mode === 'guide' ? '引导理解' : '翻译'
+  retranslateCurrent(`已切换到${label} · 已重新翻译`)
   $('input').focus()
 }
 

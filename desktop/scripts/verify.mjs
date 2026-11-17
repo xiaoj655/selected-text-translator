@@ -142,6 +142,8 @@ assert.match(appSource, /empty-modes/u, 'empty state must offer dual-mode entry'
 assert.match(appSource, /dataset\.emptyMode/u, 'empty mode cards must select translate/guide')
 assert.match(appSource, /is-active[\s\S]{0,80}dataset\.emptyMode[\s\S]{0,80}mode/u,
   'mode changes must keep empty-mode card highlight in sync')
+assert.match(appSource, /function setMode[\s\S]{0,600}retranslateCurrent/u,
+  'switching mode must re-translate the current input so the result is not stale')
 assert.match(appSource, /让每个英文词句/u, 'empty state must communicate the learning-tool positioning')
 assert.match(appCss, /\.empty-modes\s*\{/u, 'empty state mode cards need layout styles')
 assert.match(appSource, /guide-tools/u, 'guide actions need grouped controls')

@@ -565,6 +565,68 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('mode switch: changing intent re-translates the current input', async () => {
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          if (body?.model !== 'qwen3.8-flash') {
+            await defaultResponse({ body, res })
+            return
+          }
+          const content = JSON.stringify({
+            guideType: 'term',
+            phonetic: '/məd/',
+            hints: ['先看这个词的语境', '想一想它描述的对象', '再确认它的作用'],
+            answer: {
+              meaning: 'a preposition indicating accompaniment',
+              explanation: 'Used to express being together with something.',
+              example: 'I went with my friend.',
+              usage: 'with + noun',
+            },
+          })
+          if (body?.stream) {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive',
+            })
+            for (const char of content) {
+              if (res.destroyed) return
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: char } }] })}\n\n`)
+            }
+            res.write('data: [DONE]\n\n')
+            res.end()
+            return
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ choices: [{ message: { content } }] }))
+        })
+        try {
+          await mainPage.locator('.mode[data-mode=translate]').click()
+          await mainPage.locator('#input').fill('mode-switch-probe')
+          await mainPage.waitForFunction(() => {
+            const bubble = document.querySelector('.entry .bubble')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble && bubble.textContent.includes('mode-switch-probe') && /完成|翻译记忆/u.test(status))
+          }, null, { timeout: 20000 })
+          assert.equal(await mainPage.locator('.entry:last-child .translation-answer').count(), 1)
+
+          await mainPage.locator('.mode[data-mode=guide]').click()
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.hint-step'))
+          }, null, { timeout: 20000 })
+          assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /mode-switch-probe/u,
+            'switching mode must re-translate the same input, not clear it')
+          assert.equal(await mainPage.locator('#input').inputValue(), 'mode-switch-probe')
+
+          await mainPage.locator('.mode[data-mode=translate]').click()
+          await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .translation-answer')),
+            null, { timeout: 20000 })
+          assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /mode-switch-probe/u)
+          await shot(mainPage, 'main-mode-switch')
+        } finally {
+          mock.resetHandler()
+          await mainPage.locator('.mode[data-mode=translate]').click()
+        }
+      })
+
       await check('target language: explicit setting reaches the model request', async () => {
         const capturedBodies = []
         const ensureSettings = async () => {
