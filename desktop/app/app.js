@@ -1522,6 +1522,7 @@ function startCompanionEntry(entry, mode) {
     companion.fromMemory = true
   }
   stopActiveSpeech()
+  cancelStaleRequests(companion.id)
   state.entries.push(companion)
   state.activeEntryId = companion.id
   render()
@@ -1796,6 +1797,7 @@ function regenerate(entry) {
   entry.createdAt = Date.now()
   entry.hintCount = 1
   entry.answerRevealed = false
+  cancelStaleRequests(entry.id)
   renderEntry(entry)
   sendRequest(entry, true)
 }

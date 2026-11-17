@@ -520,6 +520,53 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('regenerate: a new request supersedes other in-flight entries', async () => {
+        await openSettings(mainPage)
+        await mainPage.locator('#opt-live-translate').uncheck()
+        await mainPage.locator('#btn-close-settings').click()
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          if (JSON.stringify(body?.messages || []).includes('stale-regenerate-slow')) await delay(8000)
+          await defaultResponse({ body, res })
+        })
+        try {
+          await mainPage.locator('#input').fill('stale-regenerator-fast')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const bubble = document.querySelector('.entry .bubble')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble && bubble.textContent.includes('stale-regenerator-fast') && /完成/u.test(status))
+          }, null, { timeout: 20000 })
+
+          await mainPage.locator('#input').fill('stale-regenerate-slow')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => /请求中|已自动翻译/u.test(
+            document.getElementById('statusbar')?.textContent || ''), null, { timeout: 10000 })
+
+          await mainPage.locator('#btn-history').click()
+          await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
+          await mainPage.locator('.history-item', { hasText: 'stale-regenerator-fast' }).first().click()
+          await mainPage.waitForFunction(() => document.querySelector('.entry .bubble')?.textContent.includes('stale-regenerator-fast'))
+          await mainPage.locator('.entry .action-more').click()
+          await mainPage.getByRole('button', { name: '重新生成' }).click({ force: true })
+
+          await mainPage.locator('#btn-history').click()
+          await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
+          await mainPage.locator('.history-item', { hasText: 'stale-regenerate-slow' }).first().click()
+          await mainPage.waitForFunction(() => {
+            const label = document.querySelector('.entry .result-label')
+            return Boolean(label && /出错了/u.test(label.textContent))
+          }, null, { timeout: 5000 })
+          assert.match(await mainPage.locator('.entry .result').textContent(), /已被新的翻译取代/u,
+            'the in-flight entry must be marked as superseded when regenerate starts a new request')
+          await shot(mainPage, 'main-regenerate-stale-cancel')
+        } finally {
+          mock.resetHandler()
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('main window: translate result renders a dictionary-style learning card', async () => {
         await setConfig(mainPage, { model: 'mock-generic' })
         try {

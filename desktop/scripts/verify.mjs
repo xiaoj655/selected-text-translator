@@ -52,6 +52,10 @@ assert.match(appSource, /function announceResult/u, 'translated text must be ann
 assert.match(appSource, /announceResult\(entry\.mode === 'guide'/u, 'both completion routes must announce the result')
 assert.match(appSource, /function cancelStaleRequests/u, 'superseded in-flight requests must be cancelled')
 assert.match(appSource, /cancelStaleRequests\(entry\.id\)/u, 'a new submission must cancel stale requests')
+assert.match(appSource, /function startCompanionEntry[\s\S]{0,1100}cancelStaleRequests\(companion\.id\)/u,
+  'starting a companion entry must cancel superseded in-flight requests')
+assert.match(appSource, /function regenerate[\s\S]{0,400}cancelStaleRequests\(entry\.id\)/u,
+  'regenerating must cancel superseded in-flight requests')
 assert.match(appSource, /desktop_live_translate/u, 'live translation setting must be persisted')
 assert.match(appSource, /function scheduleDraftSave/u, 'input draft must be autosaved with debounce')
 assert.match(appSource, /function clearSavedDraft/u, 'sent or cleared input must clear the saved draft')
