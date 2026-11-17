@@ -43,6 +43,29 @@ test('buildGenericRequest states the source language when provided', () => {
   assert.doesNotMatch(automatic.messages[0].content, /The source language is/u);
 });
 
+test('buildGenericRequest appends glossary rules to the system prompt', () => {
+  const request = buildGenericRequest({
+    model: 'qwen3-235b-a22b',
+    text: 'hello world',
+    glossary: [{ source: 'Apple', target: '苹果公司' }],
+  });
+  assert.match(request.messages[0].content, /"Apple" must always be translated as "苹果公司"/u);
+  const withoutGlossary = buildGenericRequest({ model: 'qwen3-235b-a22b', text: 'hello world' });
+  assert.doesNotMatch(withoutGlossary.messages[0].content, /terminology rules/u);
+});
+
+test('buildQwenMtRequest prepends glossary rules to the user content', () => {
+  const request = buildQwenMtRequest({
+    model: 'qwen-mt-flash',
+    text: 'hello world',
+    glossary: [{ source: 'May', target: '五月' }],
+  });
+  assert.match(request.messages[0].content, /"May" must always be translated as "五月"/u);
+  assert.match(request.messages[0].content, /hello world/u);
+  const withoutGlossary = buildQwenMtRequest({ model: 'qwen-mt-flash', text: 'hello world' });
+  assert.equal(withoutGlossary.messages[0].content, 'hello world');
+});
+
 test('getTargetLanguage honors an explicit target language', () => {
   assert.equal(getTargetLanguage('hello world', 'Japanese'), 'Japanese');
   assert.equal(getTargetLanguage('你好 world', 'French'), 'French');

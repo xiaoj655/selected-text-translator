@@ -831,6 +831,54 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('glossary: a saved term steers the translation request', async () => {
+        const capturedBodies = []
+        const ensureSettings = async () => {
+          const hidden = await mainPage.locator('#settings-panel').evaluate((el) => el.hidden)
+          if (hidden) await mainPage.locator('#btn-settings').click()
+          await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+        }
+        const waitForCaptured = async () => {
+          const deadline = Date.now() + 20000
+          while (!capturedBodies.length && Date.now() < deadline) await delay(50)
+          assert.ok(capturedBodies.length >= 1, 'expected a captured translation request')
+        }
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          capturedBodies.push(body)
+          await defaultResponse({ body, res })
+        })
+        try {
+          await mainPage.evaluate(() => chrome.storage.sync.set({ desktop_glossary: [] }))
+          await ensureSettings()
+          await mainPage.locator('#glossary-source').fill('Apple')
+          await mainPage.locator('#glossary-target').fill('苹果公司')
+          await mainPage.locator('#glossary-add').click()
+          await mainPage.waitForFunction(async () => {
+            const saved = await chrome.storage.sync.get('desktop_glossary')
+            return Array.isArray(saved.desktop_glossary) && saved.desktop_glossary.length === 1
+          }, null, { timeout: 5000 })
+          assert.equal(await mainPage.locator('#glossary-list .glossary-item').count(), 1)
+          await mainPage.locator('#btn-close-settings').click()
+
+          await setConfig(mainPage, { model: 'mock-generic' })
+          await mainPage.locator('#input').fill('glossary probe')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const result = document.querySelector('.entry:last-child .result')
+            return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+          }, null, { timeout: 20000 })
+          await waitForCaptured()
+          const systemPrompt = capturedBodies[0].messages?.[0]?.content || ''
+          assert.match(systemPrompt, /"Apple" must always be translated as "苹果公司"/u,
+            'the glossary rule must reach the generic-model system prompt')
+          await shot(mainPage, 'main-glossary')
+        } finally {
+          mock.resetHandler()
+          await mainPage.evaluate(() => chrome.storage.sync.set({ desktop_glossary: [] }))
+          await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        }
+      })
+
       await check('language bar: detected source language is shown as you type', async () => {
         const input = mainPage.locator('#input')
         const selectedLabel = () => mainPage.locator('#lang-source option:checked').textContent()

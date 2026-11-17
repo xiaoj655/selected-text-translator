@@ -149,6 +149,18 @@
           </label>
         </div>
         <div class="drawer-section">
+          <h3>术语表</h3>
+          <p class="drawer-tip">指定术语的固定译法,让多次翻译用词保持一致(通用模型会把规则写入提示词)。</p>
+          <div class="glossary-add-row">
+            <input id="glossary-source" type="text" maxlength="80" placeholder="原文术语,如 Apple" aria-label="原文术语">
+            <span class="glossary-arrow" aria-hidden="true">→</span>
+            <input id="glossary-target" type="text" maxlength="80" placeholder="固定译法,如 苹果公司" aria-label="固定译法">
+            <button id="glossary-add" class="secondary" type="button">添加</button>
+          </div>
+          <div id="glossary-list" class="glossary-list"></div>
+          <p id="glossary-status" class="drawer-status" role="status"></p>
+        </div>
+        <div class="drawer-section">
           <h3>学习档案</h3>
           <p class="drawer-tip">把收藏、复习进度、翻译记忆与学习记录打包成一个文件,可在设备间迁移。档案不含模型配置或密钥。</p>
           <div class="drawer-actions">

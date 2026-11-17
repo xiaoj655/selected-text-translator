@@ -101,6 +101,8 @@ const sharedMemorySource = readFileSync(
   fileURLToPath(new URL('../../src/translation-memory.js', import.meta.url)), 'utf8')
 const sharedSourceLanguage = readFileSync(
   fileURLToPath(new URL('../../src/source-language.js', import.meta.url)), 'utf8')
+const sharedGlossarySource = readFileSync(
+  fileURLToPath(new URL('../../src/glossary.js', import.meta.url)), 'utf8')
 const sharedSpeechSource = readFileSync(
   fileURLToPath(new URL('../../src/speech.js', import.meta.url)), 'utf8')
 const desktopTtsSource = readFileSync(join(root, 'src', 'tts.js'), 'utf8')
@@ -331,6 +333,19 @@ assert.match(sharedContentSource, /stt-memory-badge/u,
   'extension card must surface a translation-memory badge')
 assert.match(sharedContentSource, /state\.activeSelection\.fromMemory/u,
   'extension card must track memory hits per selection')
+
+assert.match(sharedGlossarySource, /export function buildGlossaryInstruction/u,
+  'glossary rules must be built by a reusable module')
+assert.match(sharedGlossarySource, /export function sanitizeGlossary/u,
+  'glossary entries must be sanitized before use')
+assert.match(sharedContractsSource, /buildGlossaryInstruction/u,
+  'request builders must honor the terminology glossary')
+assert.match(sharedBackgroundSource, /glossary: payload\?\.glossary/u,
+  'background must forward the glossary into request builders')
+assert.match(appSource, /glossary: \[\]/u, 'main window must hold glossary state')
+assert.match(appSource, /desktop_glossary/u, 'glossary must be persisted')
+assert.match(appSource, /function renderGlossaryList/u, 'glossary list must be rendered')
+assert.match(htmlSource, /id="glossary-add"/u, 'settings need a glossary add control')
 
 assert.match(sharedAnkiSource, /export function buildAnkiTsv/u, 'Anki TSV builder must be a reusable module')
 assert.match(sharedAnkiSource, /escapeAnkiField/u, 'Anki export must escape untrusted field content')

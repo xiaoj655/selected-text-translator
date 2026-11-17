@@ -1,3 +1,5 @@
+import { buildGlossaryInstruction } from './glossary.js'
+
 export const MEMORY_MAX_ENTRIES = 500
 export const MEMORY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -9,8 +11,11 @@ export function memoryTextKey(text) {
   return String(text || '').trim().replace(/\s+/gu, ' ')
 }
 
-export function makeMemoryKey({ text, mode = 'translate', targetLanguage = 'auto', sourceLanguage = 'auto', model = '' }) {
-  return [mode, sourceLanguage, targetLanguage, normalizeMemoryText(model), memoryTextKey(text)].join('\u0000')
+export function makeMemoryKey({ text, mode = 'translate', targetLanguage = 'auto', sourceLanguage = 'auto', model = '', glossary = [] }) {
+  const parts = [mode, sourceLanguage, targetLanguage, normalizeMemoryText(model), memoryTextKey(text)]
+  const glossaryKey = normalizeMemoryText(buildGlossaryInstruction(glossary))
+  if (glossaryKey) parts.push(glossaryKey)
+  return parts.join('\u0000')
 }
 
 export function readMemoryEntry(memory, key) {

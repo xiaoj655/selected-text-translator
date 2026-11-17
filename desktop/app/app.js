@@ -4,6 +4,7 @@ import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
+import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
   parseLearningArchive,
@@ -23,6 +24,7 @@ const state = {
   liveTimer: 0,
   liveText: '',
   model: '',
+  glossary: [],
   translationMemory: {},
   entries: [],
   activeEntryId: null,
@@ -58,6 +60,44 @@ function makeId(prefix) {
 function setStatus(text) {
   $('statusbar').textContent = text
   renderDiagnostics()
+}
+
+function renderGlossaryList() {
+  const list = $('glossary-list')
+  if (!list) return
+  list.replaceChildren()
+  if (!state.glossary.length) {
+    list.append(el('p', 'glossary-empty', '还没有术语。添加后,翻译会固定使用这里的译法。'))
+    return
+  }
+  state.glossary.forEach((pair, index) => {
+    const row = el('div', 'glossary-item')
+    row.append(el('span', 'glossary-term', pair.source))
+    row.append(el('span', 'glossary-arrow', '→'))
+    row.append(el('span', 'glossary-term', pair.target))
+    const remove = el('button', 'glossary-remove', '×')
+    remove.type = 'button'
+    remove.title = '删除术语'
+    remove.setAttribute('aria-label', `删除术语 ${pair.source}`)
+    remove.dataset.index = String(index)
+    remove.addEventListener('click', () => {
+      state.glossary.splice(index, 1)
+      persistGlossary()
+      renderGlossaryList()
+      setStatus('已删除术语')
+    })
+    row.append(remove)
+    list.append(row)
+  })
+}
+
+function persistGlossary() {
+  state.glossary = sanitizeGlossary(state.glossary)
+  const status = $('glossary-status')
+  if (status) status.textContent = `已保存 ${state.glossary.length} 条术语`
+  try {
+    void chrome.storage.sync.set({ desktop_glossary: state.glossary })
+  } catch { }
 }
 
 function announceResult(text) {
@@ -1031,6 +1071,7 @@ function sendRequest(entry, forceRefresh = false) {
         contextEnd: null,
         targetLanguage: state.targetLanguage,
         sourceLanguage: state.sourceLanguage,
+        glossary: state.glossary,
       },
     }, (response) => {
       if (!response?.accepted) failEntry(entry, '后台没有接受请求,请重试。')
@@ -1123,7 +1164,7 @@ function submit(options = {}) {
     fromMemory: false,
   }
   const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
-    sourceLanguage: state.sourceLanguage, model: state.model })
+    sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary })
   const cached = readMemoryEntry(state.translationMemory, memoryKey)
   if (cached) {
     entry.status = 'done'
@@ -1511,7 +1552,7 @@ function startCompanionEntry(entry, mode) {
     answerRevealed: false,
     fromMemory: false,
     memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage,
-      sourceLanguage: state.sourceLanguage, model: state.model }),
+      sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary }),
   }
   const cached = readMemoryEntry(state.translationMemory, companion.memoryKey)
   if (cached) {
@@ -1928,6 +1969,20 @@ function bind() {
       : '已恢复悬浮翻译卡')
   })
   $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
+  $('glossary-add').addEventListener('click', () => {
+    const source = $('glossary-source').value.trim()
+    const target = $('glossary-target').value.trim()
+    if (!source || !target) {
+      setStatus('请填写术语原文和固定译法')
+      return
+    }
+    state.glossary = sanitizeGlossary([...state.glossary, { source, target }])
+    $('glossary-source').value = ''
+    $('glossary-target').value = ''
+    persistGlossary()
+    renderGlossaryList()
+    setStatus('已添加术语')
+  })
   $('lang-target').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
   $('lang-source').addEventListener('change', (event) => setSourceLanguage(event.target.value, true))
   $('btn-swap-lang').addEventListener('click', swapLanguages)
@@ -2336,6 +2391,13 @@ async function init() {
     if (sourceSelect) sourceSelect.value = state.sourceLanguage
   } catch {
     // default source language
+  }
+  try {
+    const savedGlossary = await chrome.storage.sync.get('desktop_glossary')
+    state.glossary = sanitizeGlossary(savedGlossary?.desktop_glossary)
+    renderGlossaryList()
+  } catch {
+    // default glossary
   }
   try {
     const savedMemory = await chrome.storage.local.get('translation_memory')

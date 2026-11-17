@@ -1,4 +1,5 @@
 import { createQwenTranslationScope } from './qwen-context.js'
+import { buildGlossaryInstruction } from './glossary.js'
 
 export const STORAGE_KEYS = {
   BASE_URL: 'base_url',
@@ -105,17 +106,19 @@ export function usesStructuredOutputForModel(model) {
   return !isQwenMtModel(model);
 }
 
-export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage }) {
+export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage, glossary }) {
   const scope = createQwenTranslationScope({ text, context, contextStart, contextEnd })
   const resolvedTarget = getTargetLanguage(text, targetLanguage)
   const resolvedSource = resolveSourceLanguage(sourceLanguage)
+  const glossaryInstruction = buildGlossaryInstruction(glossary)
+  const baseContent = scope ? scope.content : text
   return {
     model,
     stream: isQwenMtStreamingModel(model),
     messages: [
       {
         role: 'user',
-        content: scope ? scope.content : text
+        content: glossaryInstruction ? `${glossaryInstruction}\n${baseContent}` : baseContent
       }
     ],
     translation_options: {
@@ -126,9 +129,11 @@ export function buildQwenMtRequest({ model, text, context, contextStart, context
   };
 }
 
-export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage }) {
+export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage, glossary }) {
   const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage })
-  const systemPrompt = buildTranslationSystemPrompt(targetLanguage, sourceLanguage)
+  const basePrompt = buildTranslationSystemPrompt(targetLanguage, sourceLanguage)
+  const glossaryInstruction = buildGlossaryInstruction(glossary)
+  const systemPrompt = glossaryInstruction ? `${basePrompt} ${glossaryInstruction}` : basePrompt
   const payload = {
     model,
     stream: false,

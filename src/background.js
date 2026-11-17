@@ -167,7 +167,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
     const useMemory = kind === 'translate' && IS_EXTENSION_SERVICE_WORKER
     const memoryKey = useMemory
-      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model })}`
+      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model, glossary: payload?.glossary })}`
         + `\u0000${String(payload?.context || '').slice(0, 2400)}`
         + `\u0000${payload?.contextStart ?? ''}\u0000${payload?.contextEnd ?? ''}`
       : null
@@ -187,10 +187,10 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       : isQwenMtRequest
         ? buildQwenMtRequest({ model, text, context: payload?.context,
             contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
-            sourceLanguage: payload?.sourceLanguage })
+            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
         : buildGenericRequest({ model, text, context: payload?.context,
             contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
-            sourceLanguage: payload?.sourceLanguage })
+            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
     const endpoint = normalizeEndpoint(settings.baseUrl)
     try {
       cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
