@@ -27,8 +27,12 @@ app.whenReady().then(async () => {
     },
   })
 
-  win.webContents.on('console-message', (_event, level, message) => {
-    if (level >= 2) consoleErrors.push(message)
+  win.webContents.on('console-message', (...args) => {
+    const details = args[1]
+    const level = typeof details === 'object' && details !== null ? details.level : args[1]
+    const message = typeof details === 'object' && details !== null ? details.message : args[2]
+    const isError = typeof level === 'number' ? level >= 2 : level === 'error' || level === 'warning'
+    if (isError) consoleErrors.push(message)
   })
   win.webContents.on('render-process-gone', (_event, details) => {
     pageErrors.push(`render-process-gone: ${details.reason}`)
