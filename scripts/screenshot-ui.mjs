@@ -296,6 +296,28 @@ await shot(browser, '14-selection-toolbar', {
   },
 })
 
+await shot(browser, '15-card-selection-toolbar', {
+  config: {},
+  url: cardUrl,
+  post: async (page) => {
+    await page.evaluate(() => {
+      const result = document.getElementById('result')
+      result.className = 'result'
+      result.textContent = '有证据表明，当团队具备清晰的沟通规范时，远程办公能够提升生产效率。'
+      document.getElementById('src').textContent = 'The evidence suggests that remote work can boost productivity…'
+      const textNode = result.firstChild
+      const range = document.createRange()
+      range.setStart(textNode, 0)
+      range.setEnd(textNode, 10)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+      result.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await page.waitForTimeout(200)
+  },
+}, { width: 460, height: 300 })
+
 await browser.close()
 server.close()
 console.log(`[screenshots] ${outDir}`)

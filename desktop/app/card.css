@@ -110,6 +110,28 @@ button { font: inherit; cursor: pointer; }
 .action-menu button { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 6px; }
 .action-menu button:hover { background: var(--surface-2); }
 
+.selection-toolbar {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-3);
+}
+.selection-toolbar[hidden] { display: none; }
+.selection-toolbar button {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.selection-toolbar button:hover { background: var(--accent-soft); color: var(--accent); }
+
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 :root[data-font='small'] .result { font-size: var(--fs-result); }

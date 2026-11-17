@@ -10,6 +10,7 @@ const state = {
   speechId: null,
   reported: false,
   pinned: false,
+  selection: null,
 }
 
 function el(tag, className, text) {
@@ -212,6 +213,61 @@ function copyText(text, button) {
   showCopyDone(button)
 }
 
+function hideSelectionToolbar() {
+  $('selection-toolbar').hidden = true
+  state.selection = null
+}
+
+function showSelectionToolbar(text, rect) {
+  state.selection = { text }
+  const bar = $('selection-toolbar')
+  bar.hidden = false
+  const barRect = bar.getBoundingClientRect()
+  const left = Math.max(8, Math.min(window.innerWidth - barRect.width - 8, rect.left + rect.width / 2 - barRect.width / 2))
+  const above = rect.top - barRect.height - 8
+  bar.style.left = `${Math.round(left)}px`
+  bar.style.top = `${Math.round(above >= 8 ? above : rect.bottom + 8)}px`
+}
+
+function selectionInResult() {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return null
+  const anchor = selection.anchorNode
+  const anchorEl = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement
+  const resultEl = $('result')
+  if (!anchorEl || !resultEl.contains(anchorEl)) return null
+  const text = String(selection.toString() || '').trim()
+  if (!text) return null
+  return { text, rect: selection.getRangeAt(0).getBoundingClientRect() }
+}
+
+async function saveSelection(text, button) {
+  const entry = state.entry
+  if (!entry) return
+  button.setAttribute('aria-busy', 'true')
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'VOCABULARY_SAVE',
+      payload: {
+        text,
+        meaning: entry.translatedText || resultPlainText(entry),
+        context: entry.text,
+        contextStart: null,
+        contextEnd: null,
+        usage: '',
+        explanation: '',
+        example: '',
+        phonetic: entry.lexical?.phonetic || '',
+        sourceUrl: '',
+      },
+    })
+    button.textContent = response?.ok ? '✓ 已收藏' : '收藏失败'
+  } catch {
+    button.textContent = '收藏失败'
+  }
+  button.removeAttribute('aria-busy')
+}
+
 function toggleSpeech(text = state.entry?.text) {
   if (state.speechId) {
     stopSpeech()
@@ -287,6 +343,7 @@ function scheduleResize() {
 }
 
 function render() {
+  hideSelectionToolbar()
   const entry = state.entry
   if (!entry) return
 
@@ -439,12 +496,43 @@ function bind() {
   $('btn-pin').addEventListener('click', () => setPinned(!state.pinned))
   document.addEventListener('click', (event) => {
     const menu = document.querySelector('.action-menu:not([hidden])')
-    if (!menu) return
-    if (menu.contains(event.target) || menu.previousElementSibling?.contains(event.target)) return
-    closeActionMenu()
+    if (menu && !menu.contains(event.target) && !menu.previousElementSibling?.contains(event.target)) closeActionMenu()
+    const toolbar = $('selection-toolbar')
+    if (!toolbar.hidden && !toolbar.contains(event.target)) hideSelectionToolbar()
+  })
+  $('result').addEventListener('mouseup', () => {
+    setTimeout(() => {
+      const found = selectionInResult()
+      if (found) showSelectionToolbar(found.text, found.rect)
+      else hideSelectionToolbar()
+    }, 0)
+  })
+  $('result').addEventListener('scroll', hideSelectionToolbar, { passive: true })
+  $('selection-toolbar').addEventListener('mousedown', (event) => event.preventDefault())
+  $('selection-toolbar').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-sel-action]')
+    if (!button || !state.selection) return
+    const { text } = state.selection
+    const action = button.dataset.selAction
+    if (action === 'copy') {
+      copyText(text, button)
+    } else if (action === 'speak') {
+      toggleSpeech(text)
+    } else if (action === 'translate') {
+      startSelection({ text })
+    } else if (action === 'save') {
+      void saveSelection(text, button)
+      return
+    }
+    hideSelectionToolbar()
+    window.getSelection()?.removeAllRanges()
   })
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return
+    if (!$('selection-toolbar').hidden) {
+      hideSelectionToolbar()
+      return
+    }
     if (document.querySelector('.action-menu:not([hidden])')) {
       closeActionMenu()
       return
