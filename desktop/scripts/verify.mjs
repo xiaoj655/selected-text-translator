@@ -46,6 +46,8 @@ assert.match(appSource, /readClipboard/u, 'paste-and-translate must read the sys
 assert.match(htmlSource, /id="opt-live-translate"/u, 'live translation toggle is required')
 assert.match(appSource, /function scheduleLiveTranslate/u, 'debounced live translation is required')
 assert.match(appSource, /submit\(\{ keepInput: true \}\)/u, 'live translation must preserve the source text')
+assert.match(appSource, /function cancelStaleRequests/u, 'superseded in-flight requests must be cancelled')
+assert.match(appSource, /cancelStaleRequests\(entry\.id\)/u, 'a new submission must cancel stale requests')
 assert.match(appSource, /desktop_live_translate/u, 'live translation setting must be persisted')
 assert.match(appSource, /function isNearBottom/u, 'scroll stickiness detection is required')
 assert.match(appSource, /function followStreamBottom/u, 'streaming must respect scroll position')

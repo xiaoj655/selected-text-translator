@@ -1072,6 +1072,7 @@ function submit(options = {}) {
   }
   hideNotice()
   render()
+  cancelStaleRequests(entry.id)
   if (cached) {
     setStatus('来自翻译记忆 · 即时')
     persistHistory()
@@ -1671,6 +1672,19 @@ function renderEntry(entry) {
   if (['pending', 'loading', 'streaming'].includes(entry.status)) followStreamBottom()
   updateScrollFab()
   renderHistory()
+}
+
+function cancelStaleRequests(exceptId) {
+  for (const stale of state.entries) {
+    if (stale.id === exceptId) continue
+    if (!['pending', 'loading', 'streaming'].includes(stale.status)) continue
+    try {
+      chrome.runtime.sendMessage({ type: 'CANCEL_TRANSLATION', payload: { requestId: stale.requestId } }, () => {})
+    } catch { }
+    stale.requestId = makeId('r')
+    stale.status = 'error'
+    stale.error = '已被新的翻译取代。'
+  }
 }
 
 function cancelRequest(entry) {

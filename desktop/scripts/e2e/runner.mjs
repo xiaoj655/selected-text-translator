@@ -391,6 +391,39 @@ export async function runE2E(mode = 'core') {
         await shot(mainPage, 'main-live-translate')
       })
 
+      await check('stale requests: a superseded translation cannot overwrite the current result', async () => {
+        let firstCall = true
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          if (firstCall) {
+            firstCall = false
+            await delay(1500)
+          }
+          await defaultResponse({ body, res })
+        })
+        try {
+          await mainPage.locator('#input').fill('stale-probe-alpha')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => /请求中|已自动翻译/u.test(
+            document.getElementById('statusbar')?.textContent || ''), null, { timeout: 10000 })
+          await mainPage.locator('#input').fill('fresh-probe-beta')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const bubble = document.querySelector('.entry .bubble')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble && bubble.textContent.includes('fresh-probe-beta') && /完成/u.test(status))
+          }, null, { timeout: 20000 })
+          await delay(1800)
+          assert.match(await mainPage.locator('.entry .bubble').textContent(), /fresh-probe-beta/u,
+            'the visible result must stay the newest translation')
+          assert.match(await mainPage.locator('#statusbar').textContent(), /完成/u,
+            'a late event from a cancelled request must not clobber the current status')
+          assert.ok((await mainPage.locator('.history-item').count()) >= 2)
+          await shot(mainPage, 'main-stale-request')
+        } finally {
+          mock.resetHandler()
+        }
+      })
+
       await check('main window: translate result renders a dictionary-style learning card', async () => {
         await setConfig(mainPage, { model: 'mock-generic' })
         try {
