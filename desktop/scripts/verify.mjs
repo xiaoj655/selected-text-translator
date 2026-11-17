@@ -261,6 +261,8 @@ assert.match(sharedLibraryCss, /\.study-progress/u, 'vocabulary book progress mu
 
 const liveLanguagesScript = readFileSync(
   fileURLToPath(new URL('./verify-live-languages.mjs', import.meta.url)), 'utf8')
+const liveLanguagesZhScript = readFileSync(
+  fileURLToPath(new URL('./verify-live-languages-zh.mjs', import.meta.url)), 'utf8')
 const languageDetectSource = readFileSync(
   fileURLToPath(new URL('./e2e/language-detect.mjs', import.meta.url)), 'utf8')
 assert.match(languageDetectSource, /export function detectLanguage/u,
@@ -269,6 +271,10 @@ assert.match(liveLanguagesScript, /requestCapPerLanguage: 1/u,
   'live language verification must cap requests per language')
 assert.match(liveLanguagesScript, /detectLanguage/u,
   'live language verification must assert the actual output language')
+assert.match(liveLanguagesScript, /STT_LIVE_SOURCE_TEXT/u,
+  'live language verification must accept a configurable source text')
+assert.match(liveLanguagesZhScript, /STT_LIVE_SOURCE_LANG\s*=\s*'zh'/u,
+  'Chinese-source live verification must be available')
 assert.match(liveLanguagesScript, /STT_LIVE_CONFIG/u,
   'live language verification must be credential-gated')
 

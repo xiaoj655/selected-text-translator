@@ -18,7 +18,9 @@ if (!config.apiKey || !config.baseUrl) {
 }
 
 const model = process.env.STT_TRANSLATION_MODEL || 'qwen-mt-flash'
-const SOURCE = 'Good morning, my friend. How are you today? I am very happy to see you.'
+const SOURCE_LANG = process.env.STT_LIVE_SOURCE_LANG || 'en'
+const SOURCE = process.env.STT_LIVE_SOURCE_TEXT
+  || 'Good morning, my friend. How are you today? I am very happy to see you.'
 const LANGUAGES = ['Japanese', 'Korean', 'French', 'German', 'Spanish']
 const MAX_TOKENS = 120
 
@@ -68,12 +70,13 @@ export async function runLiveLanguageVerification() {
   const report = {
     date: new Date().toISOString(),
     model,
+    sourceLang: SOURCE_LANG,
     source: SOURCE,
     requestCapPerLanguage: 1,
     maxTokens: MAX_TOKENS,
     results,
   }
-  writeFileSync(join(reportDir, 'live-languages.json'), JSON.stringify(report, null, 2))
+  writeFileSync(join(reportDir, `live-languages-${SOURCE_LANG}.json`), JSON.stringify(report, null, 2))
   const failed = results.filter((item) => !item.ok)
   console.log(`[verify:live-languages] ${results.length - failed.length}/${results.length} passed`)
   if (failed.length) process.exitCode = 1

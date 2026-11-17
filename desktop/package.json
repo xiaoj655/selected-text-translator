@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.31",
+  "version": "0.9.32",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
@@ -15,6 +15,7 @@
     "test:e2e:visual": "npm run sync && node scripts/e2e-visual.mjs",
     "test:e2e:live": "npm run sync && node scripts/e2e-live.mjs",
     "test:live:languages": "node scripts/verify-live-languages.mjs",
+    "test:live:languages:zh": "node scripts/verify-live-languages-zh.mjs",
     "test:e2e:resolutions": "npm run sync && node scripts/e2e-resolutions.mjs",
     "start": "npm run sync && electron .",
     "predist": "node scripts/sync-src.mjs",
