@@ -51,6 +51,21 @@ test('speech falls back to the source language when the chosen voice is incompat
   })
 })
 
+test('speech uses the language of translated text for a correct voice', async () => {
+  await withSpeech(async ({ send, spoken }) => {
+    await send('SPEAK_TEXT', { speechId: 'japanese', text: 'おはようございます、友達' })
+    assert.equal(spoken[0].lang, 'ja-JP')
+    spoken[0].onEvent({ type: 'end' })
+    await send('STOP_SPEECH', { speechId: 'japanese' })
+  })
+  await withSpeech(async ({ send, spoken }) => {
+    await send('SPEAK_TEXT', { speechId: 'french', text: 'Bonjour mon ami, comment allez-vous aujourd\'hui?' })
+    assert.equal(spoken[0].lang, 'fr-FR')
+    spoken[0].onEvent({ type: 'end' })
+    await send('STOP_SPEECH', { speechId: 'french' })
+  })
+})
+
 test('a stale stop request cannot interrupt another tab', async () => {
   await withSpeech(async ({ send, getStops }) => {
     await send('SPEAK_TEXT', { speechId: 'active', text: 'hello' }, 2)

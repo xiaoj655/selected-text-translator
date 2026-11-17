@@ -1,4 +1,5 @@
 import { readReadingSettings } from './reading-support.js'
+import { speechLanguageCode } from './source-language.js'
 
 const PREPARATION_TIMEOUT_MS = 500
 const DEFAULT_SPEECH_SETTINGS = Object.freeze({ voiceName: '', rate: 0.9 })
@@ -103,7 +104,7 @@ async function startSpeech({ message, tabId, frameId, speechId, clientId, docume
     }
     const voiceName = isPreview ? String(message.payload?.voiceName || '') : settings.voiceName
     const voice = voices.find((item) => item?.voiceName === voiceName)
-    const lang = /[\u3400-\u9fff]/u.test(text) ? 'zh-CN' : 'en-US'
+    const lang = speechLanguageCode(text)
     const canUseVoice = voice && (isPreview || voice.lang?.split('-')[0] === lang.split('-')[0])
     const rate = isPreview ? Number(message.payload?.rate) : settings.rate
     pendingSpeech = null

@@ -93,6 +93,8 @@ const sharedMemorySource = readFileSync(
   fileURLToPath(new URL('../../src/translation-memory.js', import.meta.url)), 'utf8')
 const sharedSourceLanguage = readFileSync(
   fileURLToPath(new URL('../../src/source-language.js', import.meta.url)), 'utf8')
+const sharedSpeechSource = readFileSync(
+  fileURLToPath(new URL('../../src/speech.js', import.meta.url)), 'utf8')
 const sharedProgressSource = readFileSync(
   fileURLToPath(new URL('../../src/vocabulary-progress.js', import.meta.url)), 'utf8')
 const sharedLibraryHtml = readFileSync(
@@ -237,6 +239,9 @@ assert.match(appSource, /function swapLanguages/u, 'language swap must be a dedi
 assert.match(appSource, /sourceLanguage: state\.sourceLanguage/u, 'request payload must carry the source language')
 assert.match(appSource, /desktop_source_language/u, 'source language must be persisted')
 assert.match(sharedSourceLanguage, /export function planLanguageSwap/u, 'swap planning must be a shared pure helper')
+assert.match(sharedSourceLanguage, /export function speechLanguageCode/u, 'TTS language mapping must be a shared pure helper')
+assert.match(sharedSpeechSource, /speechLanguageCode\(text\)/u, 'speech must pick the voice language from the text')
+assert.doesNotMatch(sharedSpeechSource, /\? 'zh-CN' : 'en-US'/u, 'speech must not hardcode a two-language TTS fallback')
 assert.match(sharedContractsSource, /export function resolveSourceLanguage/u, 'source language must be resolved in the contract')
 assert.match(sharedContractsSource, /source_lang: resolvedSource/u, 'Qwen-MT request must honor the source language')
 

@@ -46,6 +46,20 @@ export function sourceLanguageLabel(lang) {
   return LABELS[lang] || ''
 }
 
+const TTS_LANGUAGES = Object.freeze({
+  chinese: 'zh-CN',
+  english: 'en-US',
+  japanese: 'ja-JP',
+  korean: 'ko-KR',
+  french: 'fr-FR',
+  german: 'de-DE',
+  spanish: 'es-ES',
+})
+
+export function speechLanguageCode(text) {
+  return TTS_LANGUAGES[detectSourceLanguage(text)] || 'en-US'
+}
+
 const CANONICAL_LANGUAGES = ['Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish']
 
 function toLanguageCode(value) {
