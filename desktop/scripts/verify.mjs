@@ -253,6 +253,8 @@ assert.match(appCss, /\.entry-body \.result::selection/u, 'reading text selectio
 
 assert.match(appSource, /function restoreFailedText/u, 'failed text must be restorable')
 assert.match(appSource, /restoreFailedText\(entry\)/u, 'error path must restore the submitted text')
+assert.match(appSource, /function cancelRequest[\s\S]{0,400}restoreFailedText\(entry\)/u,
+  'cancel path must restore the submitted text so it is not stranded')
 assert.match(appSource, /error-message/u, 'errors need a structured message')
 assert.match(appSource, /setAttribute\('role', 'alert'\)/u, 'errors must be announced to screen readers')
 assert.match(appCss, /--danger-soft/u, 'errors must use the danger wash')

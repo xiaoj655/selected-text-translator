@@ -296,6 +296,28 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('main window: cancel restores the submitted text to the input', async () => {
+        mock.setHandler(async ({ res }) => {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '慢' } }] })}\n\n`)
+        })
+        const source = 'cancel me, keep my text'
+        try {
+          await mainPage.locator('#input').fill(source)
+          await mainPage.locator('#btn-send').click()
+          await mainPage.getByRole('button', { name: '取消请求' }).first().waitFor({ timeout: 15000 })
+          await mainPage.getByRole('button', { name: '取消请求' }).first().click()
+          await mainPage.waitForFunction(() => {
+            const input = document.getElementById('input')
+            return Boolean(input && input.value.trim())
+          }, null, { timeout: 10000 })
+          const restored = await mainPage.locator('#input').inputValue()
+          assert.equal(restored.trim(), source)
+        } finally {
+          mock.resetHandler()
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

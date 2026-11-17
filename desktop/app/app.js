@@ -1362,6 +1362,7 @@ function cancelRequest(entry) {
   }
   entry.status = 'error'
   entry.error = '已取消请求,可以重新生成。'
+  restoreFailedText(entry)
   renderEntry(entry)
   setStatus('已取消请求')
 }
