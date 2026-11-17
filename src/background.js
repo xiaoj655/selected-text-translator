@@ -166,7 +166,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
     const useMemory = kind === 'translate' && IS_EXTENSION_SERVICE_WORKER
     const memoryKey = useMemory
-      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', model })}`
+      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model })}`
         + `\u0000${String(payload?.context || '').slice(0, 2400)}`
         + `\u0000${payload?.contextStart ?? ''}\u0000${payload?.contextEnd ?? ''}`
       : null

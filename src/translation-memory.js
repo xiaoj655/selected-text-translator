@@ -5,8 +5,8 @@ export function normalizeMemoryText(text) {
   return String(text || '').trim().replace(/\s+/gu, ' ').toLocaleLowerCase()
 }
 
-export function makeMemoryKey({ text, mode = 'translate', targetLanguage = 'auto', model = '' }) {
-  return [mode, targetLanguage, normalizeMemoryText(model), normalizeMemoryText(text)].join('\u0000')
+export function makeMemoryKey({ text, mode = 'translate', targetLanguage = 'auto', sourceLanguage = 'auto', model = '' }) {
+  return [mode, sourceLanguage, targetLanguage, normalizeMemoryText(model), normalizeMemoryText(text)].join('\u0000')
 }
 
 export function readMemoryEntry(memory, key) {

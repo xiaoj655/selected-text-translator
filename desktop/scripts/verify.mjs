@@ -286,6 +286,12 @@ assert.match(sharedArchiveSource, /export function migrateArchive/u, 'archives m
 assert.match(sharedArchiveSource, /export function planArchiveImport/u, 'shared module must plan conflict-safe imports')
 
 assert.match(sharedMemorySource, /export function makeMemoryKey/u, 'translation memory must have a stable key helper')
+assert.match(sharedMemorySource, /sourceLanguage = 'auto'/u,
+  'translation memory key must account for pinned source language')
+assert.match(appSource, /sourceLanguage: state\.sourceLanguage/u,
+  'main window must include source language in the memory key')
+assert.match(sharedBackgroundSource, /sourceLanguage: payload\?\.sourceLanguage/u,
+  'extension must include source language in the memory key')
 assert.match(sharedMemorySource, /export function readMemoryEntry/u, 'translation memory must support cache lookups')
 assert.match(sharedMemorySource, /export function writeMemoryEntry/u, 'translation memory must support cache writes')
 assert.match(appSource, /readMemoryEntry\(state\.translationMemory/u, 'main window must consult translation memory on submit')

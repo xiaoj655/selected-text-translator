@@ -26,6 +26,16 @@ test('makeMemoryKey separates mode, target language, model and text', () => {
   assert.notEqual(key, makeMemoryKey({ ...base, text: 'recording' }));
 });
 
+test('makeMemoryKey separates pinned source language so cached results cannot collide', () => {
+  const base = { text: 'bank', mode: 'translate', targetLanguage: 'Chinese', model: 'qwen-mt-flash' };
+  const english = makeMemoryKey({ ...base, sourceLanguage: 'English' });
+  const japanese = makeMemoryKey({ ...base, sourceLanguage: 'Japanese' });
+  assert.notEqual(english, japanese);
+  assert.equal(english, makeMemoryKey({ ...base, sourceLanguage: 'English' }));
+  assert.notEqual(english, makeMemoryKey({ ...base }));
+  assert.equal(makeMemoryKey({ ...base }), makeMemoryKey({ ...base, sourceLanguage: 'auto' }));
+});
+
 test('writeMemoryEntry stores a result and readMemoryEntry retrieves it', () => {
   const key = makeMemoryKey({ text: 'record' });
   const memory = writeMemoryEntry({}, key, {

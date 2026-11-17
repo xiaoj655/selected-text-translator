@@ -1111,7 +1111,8 @@ function submit(options = {}) {
     answerRevealed: false,
     fromMemory: false,
   }
-  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage, model: state.model })
+  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
+    sourceLanguage: state.sourceLanguage, model: state.model })
   const cached = readMemoryEntry(state.translationMemory, memoryKey)
   if (cached) {
     entry.status = 'done'
@@ -1492,7 +1493,8 @@ function startCompanionEntry(entry, mode) {
     hintCount: 1,
     answerRevealed: false,
     fromMemory: false,
-    memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage, model: state.model }),
+    memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage,
+      sourceLanguage: state.sourceLanguage, model: state.model }),
   }
   const cached = readMemoryEntry(state.translationMemory, companion.memoryKey)
   if (cached) {
