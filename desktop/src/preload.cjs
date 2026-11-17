@@ -171,4 +171,15 @@ window.sttDesktop = {
   onCardEntry(callback) {
     ipcRenderer.on('stt:card-entry', (_event, entry) => callback(entry))
   },
+  onCardEscape(callback) {
+    ipcRenderer.on('stt:card-escape', () => callback())
+  },
+}
+
+if (process.env.STT_E2E === '1') {
+  window.sttDesktop.e2e = {
+    showCard: (payload) => ipcRenderer.invoke('stt:e2e:show-card', payload),
+    hideCard: () => ipcRenderer.invoke('stt:e2e:hide-card'),
+    cardMetrics: () => ipcRenderer.invoke('stt:e2e:card-metrics'),
+  }
 }

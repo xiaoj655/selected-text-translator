@@ -130,6 +130,17 @@ function installIpc(storage, history) {
     await windows.showMainWindow({ text: String(text || ''), source: 'card' })
     return true
   })
+  if (process.env.STT_E2E === '1') {
+    ipcMain.handle('stt:e2e:show-card', async (_event, payload) => {
+      await windows.showCardWindow(payload || {})
+      return true
+    })
+    ipcMain.handle('stt:e2e:hide-card', () => {
+      windows.hideCardWindow()
+      return true
+    })
+    ipcMain.handle('stt:e2e:card-metrics', () => windows.cardMetrics())
+  }
 }
 
 async function bootstrap() {

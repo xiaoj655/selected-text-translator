@@ -13,6 +13,9 @@ const state = {
   selection: null,
 }
 
+let resizeScheduled = false
+let lastRequestedHeight = 0
+
 function el(tag, className, text) {
   const node = document.createElement(tag)
   if (className) node.className = className
@@ -85,6 +88,7 @@ function startSelection(payload) {
   stopSpeech()
   setPinned(false)
   state.reported = false
+  lastRequestedHeight = 0
   state.entry = {
     id: makeId('s'),
     requestId: makeId('r'),
@@ -326,19 +330,25 @@ function openInMainWindow() {
   void window.sttDesktop.openMainWithText(entry?.text || '')
 }
 
-let resizeScheduled = false
-let lastRequestedHeight = 0
+function measureCardHeight() {
+  const cardEl = $('card')
+  const cardRect = cardEl.getBoundingClientRect()
+  const marginBottom = parseFloat(getComputedStyle(cardEl).marginBottom) || 0
+  const menu = document.querySelector('.action-menu:not([hidden])')
+  const menuBottom = menu ? menu.getBoundingClientRect().bottom : 0
+  return Math.ceil(Math.max(
+    cardRect.bottom + window.scrollY + marginBottom,
+    menuBottom + window.scrollY + marginBottom,
+    document.documentElement.scrollHeight,
+  ))
+}
 
 function scheduleResize() {
   if (resizeScheduled) return
   resizeScheduled = true
   requestAnimationFrame(() => {
     resizeScheduled = false
-    const cardRect = $('card').getBoundingClientRect()
-    let height = cardRect.height
-    const menu = document.querySelector('.action-menu:not([hidden])')
-    if (menu) height += Math.max(0, menu.getBoundingClientRect().bottom - cardRect.bottom) + 8
-    height = Math.ceil(height)
+    const height = measureCardHeight()
     if (Math.abs(height - lastRequestedHeight) < 4) return
     lastRequestedHeight = height
     window.sttDesktop.resizeCard(height)
@@ -497,6 +507,23 @@ function renderActions() {
   bar.append(menu)
 }
 
+let lastEscapeAt = 0
+
+function handleEscape() {
+  const now = performance.now()
+  if (now - lastEscapeAt < 120) return
+  lastEscapeAt = now
+  if (!$('selection-toolbar').hidden) {
+    hideSelectionToolbar()
+    return
+  }
+  if (document.querySelector('.action-menu:not([hidden])')) {
+    closeActionMenu()
+    return
+  }
+  window.sttDesktop.hideCard()
+}
+
 function bind() {
   $('btn-close').addEventListener('click', () => window.sttDesktop.hideCard())
   $('btn-popout').addEventListener('click', openInMainWindow)
@@ -563,17 +590,9 @@ function bind() {
     window.getSelection()?.removeAllRanges()
   })
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return
-    if (!$('selection-toolbar').hidden) {
-      hideSelectionToolbar()
-      return
-    }
-    if (document.querySelector('.action-menu:not([hidden])')) {
-      closeActionMenu()
-      return
-    }
-    window.sttDesktop.hideCard()
+    if (event.key === 'Escape') handleEscape()
   })
+  window.sttDesktop.onCardEscape(handleEscape)
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'TRANSLATION_EVENT') handleTranslationEvent(message.payload || {})
     else if (message?.type === 'SPEECH_EVENT') handleSpeechEvent(message.payload || {})

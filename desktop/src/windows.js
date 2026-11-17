@@ -12,8 +12,12 @@ const AUX_FILES = {
 const CARD_WIDTH = 380
 const CARD_HEIGHT = 300
 const CARD_MIN_HEIGHT = 120
-const CARD_MAX_HEIGHT = 520
+const CARD_MAX_HEIGHT = 640
 const CARD_MARGIN = 14
+
+function cardHeightLimit(workArea) {
+  return Math.max(CARD_MIN_HEIGHT, Math.min(CARD_MAX_HEIGHT, workArea.height - 2 * CARD_MARGIN))
+}
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max))
@@ -29,6 +33,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let mainReady = null
   let card = null
   let cardReady = null
+  let pendingCardHeight = 0
   let isQuitting = false
   let alwaysOnTop = false
   let windowBackground = '#f7f8f6'
@@ -153,7 +158,9 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   function registerCardEscape() {
     if (escRegistered) return
     try {
-      escRegistered = globalShortcut.register('Escape', () => hideCardWindow())
+      escRegistered = globalShortcut.register('Escape', () => {
+        if (card && !card.isDestroyed()) card.webContents.send('stt:card-escape')
+      })
     } catch {
       escRegistered = false
     }
@@ -215,9 +222,13 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     if (win.isDestroyed()) return
     cardPinned = false
     positionCardWindow(win)
-    win.webContents.send('stt:selection', payload || {})
+    if (pendingCardHeight) {
+      applyCardHeight(pendingCardHeight)
+      pendingCardHeight = 0
+    }
     win.showInactive()
     registerCardEscape()
+    win.webContents.send('stt:selection', payload || {})
   }
 
   function hideCardWindow() {
@@ -226,14 +237,34 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     if (card && !card.isDestroyed()) card.hide()
   }
 
-  function resizeCardWindow(height) {
-    if (!card || card.isDestroyed() || !card.isVisible()) return
-    const next = clamp(Math.round(Number(height) || 0), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT)
+  function applyCardHeight(next) {
     const bounds = card.getBounds()
     if (Math.abs(bounds.height - next) < 4) return
     const area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea
     const y = clamp(bounds.y, area.y, area.y + area.height - next)
     card.setBounds({ x: bounds.x, y, width: CARD_WIDTH, height: next })
+  }
+
+  function resizeCardWindow(height) {
+    if (!card || card.isDestroyed()) return
+    const bounds = card.getBounds()
+    const area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea
+    const next = clamp(Math.round(Number(height) || 0), CARD_MIN_HEIGHT, cardHeightLimit(area))
+    if (!card.isVisible()) {
+      pendingCardHeight = next
+      return
+    }
+    applyCardHeight(next)
+  }
+
+  function cardMetrics() {
+    if (!card || card.isDestroyed()) return null
+    const bounds = card.getBounds()
+    return {
+      bounds,
+      visible: card.isVisible(),
+      workArea: screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea,
+    }
   }
 
   function cancelCardSpeech() {
@@ -326,6 +357,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     showCardWindow,
     hideCardWindow,
     resizeCardWindow,
+    cardMetrics,
     setCardPinned,
     toggleMainWindow,
     setAlwaysOnTop,
