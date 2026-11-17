@@ -33,6 +33,7 @@ const state = {
   hotkey: '',
   capture: null,
   draft: null,
+  draftTimer: 0,
   snackbarTimer: null,
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
@@ -783,6 +784,20 @@ function showDraftNotice() {
   })
 }
 
+function scheduleDraftSave() {
+  clearTimeout(state.draftTimer)
+  state.draftTimer = setTimeout(() => {
+    const value = $('input').value
+    void chrome.storage.local.set({ desktop_input_draft: value })
+  }, 600)
+}
+
+function clearSavedDraft() {
+  clearTimeout(state.draftTimer)
+  state.draftTimer = 0
+  void chrome.storage.local.remove('desktop_input_draft')
+}
+
 function openSettings() {
   closeTransientPanels()
   $('settings-backdrop').hidden = false
@@ -1115,6 +1130,7 @@ function submit(options = {}) {
   if (!options.keepInput) {
     $('input').value = ''
     updateComposer()
+    clearSavedDraft()
   }
   hideNotice()
   render()
@@ -1929,6 +1945,7 @@ function bind() {
   input.addEventListener('input', () => {
     updateComposer()
     scheduleLiveTranslate()
+    scheduleDraftSave()
   })
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -1969,6 +1986,7 @@ function bind() {
   $('btn-clear-input').addEventListener('click', () => {
     input.value = ''
     updateComposer()
+    clearSavedDraft()
     input.focus()
   })
   $('btn-paste-translate').addEventListener('click', () => void pasteAndTranslate())
@@ -2334,6 +2352,17 @@ async function init() {
     state.hotkey = await window.sttDesktop.getHotkey()
   } catch {
     state.hotkey = ''
+  }
+  try {
+    const savedDraft = await chrome.storage.local.get('desktop_input_draft')
+    if (typeof savedDraft?.desktop_input_draft === 'string' && savedDraft.desktop_input_draft.trim()
+      && !$('input').value.trim()) {
+      $('input').value = savedDraft.desktop_input_draft
+      updateComposer()
+      setStatus('已恢复上次未发送的内容')
+    }
+  } catch {
+    // saved draft is optional
   }
   render()
   $('input').focus()

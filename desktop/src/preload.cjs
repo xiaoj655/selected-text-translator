@@ -31,6 +31,9 @@ function storageArea(area) {
     set(items) {
       return ipcRenderer.invoke('stt:storage', { area, op: 'set', items })
     },
+    remove(keys) {
+      return ipcRenderer.invoke('stt:storage', { area, op: 'remove', keys })
+    },
   }
 }
 

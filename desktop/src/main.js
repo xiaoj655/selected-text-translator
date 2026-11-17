@@ -79,7 +79,9 @@ function installIpc(storage, history) {
   ipcMain.handle('stt:message', (event, message) => dispatch(message, windows.senderFor(event.sender)))
   ipcMain.handle('stt:storage', (_event, request) => {
     const store = request?.area === 'local' ? storage.local : storage.sync
-    return request?.op === 'set' ? store.set(request.items) : store.get(request.keys)
+    if (request?.op === 'set') return store.set(request.items)
+    if (request?.op === 'remove') return store.remove(request.keys)
+    return store.get(request.keys)
   })
   ipcMain.handle('stt:tabs-query', () => [{ id: windows.mainId(), url: '', active: true }])
   ipcMain.handle('stt:open', (_event, name) => {

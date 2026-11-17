@@ -191,6 +191,12 @@ async function shot(cardPage, name) {
   }
 }
 
+async function openSettings(page) {
+  const hidden = await page.locator('#settings-panel').evaluate((el) => el.hidden)
+  if (hidden) await page.locator('#btn-settings').click()
+  await page.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+}
+
 export async function runE2E(mode = 'core') {
   ensureDisplay()
   for (const dir of [screenshotDir, reportDir, logDir]) mkdirSync(dir, { recursive: true })
@@ -418,6 +424,45 @@ export async function runE2E(mode = 'core') {
         await shot(mainPage, 'main-live-translate')
       })
 
+      await check('input draft: autosaved text survives reload and is cleared after submit', async () => {
+        const probe = 'draft-survives-reload-probe'
+        await mainPage.evaluate(() => chrome.storage.local.remove('desktop_input_draft'))
+        await openSettings(mainPage)
+        try {
+          await mainPage.locator('#opt-live-translate').uncheck()
+          const savedLive = await mainPage.evaluate(() => chrome.storage.sync.get('desktop_live_translate'))
+          assert.equal(savedLive.desktop_live_translate, false)
+          await mainPage.locator('#btn-close-settings').click()
+
+          await mainPage.locator('#input').fill(probe)
+          await delay(1100)
+          const savedDraft = await mainPage.evaluate(() => chrome.storage.local.get('desktop_input_draft'))
+          assert.equal(savedDraft.desktop_input_draft, probe, 'typing should autosave the draft')
+
+          await mainPage.reload()
+          await mainPage.locator('.app').waitFor({ state: 'attached', timeout: 15000 })
+          await mainPage.waitForFunction((value) => document.getElementById('input')?.value === value,
+            probe, { timeout: 10000 })
+          await shot(mainPage, 'main-draft-restored')
+
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => !document.getElementById('input')?.value, null, { timeout: 5000 })
+          await delay(300)
+          const cleared = await mainPage.evaluate(() => chrome.storage.local.get('desktop_input_draft'))
+          assert.equal(cleared.desktop_input_draft, undefined, 'submit should clear the saved draft')
+          await mainPage.reload()
+          await mainPage.locator('.app').waitFor({ state: 'attached', timeout: 15000 })
+          await delay(300)
+          assert.equal(await mainPage.locator('#input').inputValue(), '',
+            'submitted text must not be restored as a draft')
+        } finally {
+          await mainPage.evaluate(() => chrome.storage.local.remove('desktop_input_draft'))
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('stale requests: a superseded translation cannot overwrite the current result', async () => {
         let firstCall = true
         mock.setHandler(async ({ body, res, defaultResponse }) => {
@@ -427,6 +472,9 @@ export async function runE2E(mode = 'core') {
           }
           await defaultResponse({ body, res })
         })
+        await openSettings(mainPage)
+        await mainPage.locator('#opt-live-translate').uncheck()
+        await mainPage.locator('#btn-close-settings').click()
         try {
           await mainPage.locator('#input').fill('stale-probe-alpha')
           await mainPage.locator('#btn-send').click()
@@ -444,10 +492,17 @@ export async function runE2E(mode = 'core') {
             'the visible result must stay the newest translation')
           assert.match(await mainPage.locator('#statusbar').textContent(), /完成/u,
             'a late event from a cancelled request must not clobber the current status')
-          assert.ok((await mainPage.locator('.history-item').count()) >= 2)
+          await mainPage.locator('#btn-history').click()
+          await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
+          await mainPage.waitForFunction(() => document.querySelectorAll('.history-item').length >= 2,
+            null, { timeout: 5000 })
+          await mainPage.locator('#sidebar-backdrop').click({ force: true })
           await shot(mainPage, 'main-stale-request')
         } finally {
           mock.resetHandler()
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
         }
       })
 

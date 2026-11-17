@@ -76,6 +76,18 @@ export function createStorage(userDataDir) {
         flush()
         emit(changes, areaName)
       },
+      async remove(keys) {
+        const names = Array.isArray(keys) ? keys : typeof keys === 'string' ? [keys] : [keys]
+        const changes = {}
+        for (const name of names) {
+          if (!Object.hasOwn(data, name)) continue
+          changes[name] = { oldValue: decode(name, data[name]) }
+          delete data[name]
+        }
+        if (!Object.keys(changes).length) return
+        flush()
+        emit(changes, areaName)
+      },
     }
     stores.set(areaName, api)
     return api
