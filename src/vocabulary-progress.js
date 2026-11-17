@@ -18,3 +18,9 @@ export function formatStudyProgress(progress) {
   const value = progress || getStudyProgress([])
   return `今日待复习 ${value.due} · 学习中 ${value.learning} · 已掌握 ${value.mastered}`
 }
+
+export function buildReviewReminder(progress) {
+  const due = Number(progress?.due) || 0
+  if (due <= 0) return null
+  return { due, text: `今天有 ${due} 条表达等待复习 · 趁热打铁记得更牢` }
+}

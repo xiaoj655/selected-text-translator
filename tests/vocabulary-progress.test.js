@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formatStudyProgress, getStudyProgress, MASTERY_INTERVAL_DAYS } from '../src/vocabulary-progress.js'
+import { buildReviewReminder, formatStudyProgress, getStudyProgress, MASTERY_INTERVAL_DAYS } from '../src/vocabulary-progress.js'
 
 const NOW = 1700000000000
 const DAY_MS = 86400000
@@ -45,4 +45,13 @@ test('formatStudyProgress renders all three counts', () => {
   assert.equal(formatStudyProgress({ due: 2, learning: 3, mastered: 4 }),
     '今日待复习 2 · 学习中 3 · 已掌握 4')
   assert.match(formatStudyProgress(), /今日待复习 0 · 学习中 0 · 已掌握 0/u)
+})
+
+test('buildReviewReminder returns a reminder only when entries are due', () => {
+  assert.deepEqual(buildReviewReminder({ due: 3 }),
+    { due: 3, text: '今天有 3 条表达等待复习 · 趁热打铁记得更牢' })
+  assert.equal(buildReviewReminder({ due: 0 }), null)
+  assert.equal(buildReviewReminder({}), null)
+  assert.equal(buildReviewReminder(null), null)
+  assert.equal(buildReviewReminder({ due: '2' }).due, 2)
 })

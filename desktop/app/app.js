@@ -1,7 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
-import { formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
+import { buildReviewReminder, formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import {
   buildLearningArchive,
@@ -32,6 +32,7 @@ const state = {
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
   selection: null,
+  reviewReminderShown: false,
 }
 
 function el(tag, className, text) {
@@ -354,6 +355,22 @@ async function updateStudyProgress() {
   }
 }
 
+async function maybeShowReviewReminder() {
+  if (state.reviewReminderShown) return
+  const notice = $('notice')
+  if (!notice || !notice.hidden) return
+  try {
+    const saved = await chrome.storage.local.get('vocabulary_entries')
+    const reminder = buildReviewReminder(getStudyProgress(saved?.vocabulary_entries))
+    if (!reminder) return
+    state.reviewReminderShown = true
+    showNotice(reminder.text, 'review', {
+      label: '去复习',
+      run: () => window.sttDesktop.openLibrary(),
+    }, true)
+  } catch { }
+}
+
 function isExportOpen() {
   return !$('export-menu').hidden
 }
@@ -541,7 +558,7 @@ async function importLearningArchive(file) {
   }
 }
 
-function showNotice(text, kind = 'info', action) {
+function showNotice(text, kind = 'info', action, dismissible = false) {
   const node = $('notice')
   node.replaceChildren(el('span', '', text))
   if (action) {
@@ -549,6 +566,14 @@ function showNotice(text, kind = 'info', action) {
     button.type = 'button'
     button.addEventListener('click', action.run)
     node.append(button)
+  }
+  if (dismissible) {
+    const close = el('button', 'notice-close', '×')
+    close.type = 'button'
+    close.title = '关闭提醒'
+    close.setAttribute('aria-label', '关闭提醒')
+    close.addEventListener('click', hideNotice)
+    node.append(close)
   }
   node.dataset.kind = kind
   node.hidden = false
@@ -2101,6 +2126,7 @@ async function init() {
   }
   await checkConfig()
   void updateStudyProgress()
+  void maybeShowReviewReminder()
   try {
     state.hotkey = await window.sttDesktop.getHotkey()
   } catch {

@@ -150,6 +150,8 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .notice button { margin-left: auto; padding: 4px 10px; font-size: 12px; }
 .notice[data-kind="draft"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
 .notice[data-kind="info"] { border-color: var(--border-strong); }
+.notice[data-kind="review"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.notice-close { margin-left: 0 !important; padding: 2px 8px !important; font-size: 16px !important; line-height: 1; color: var(--text-3); }
 .notice[hidden] { display: none !important; }
 
 /* ---- sidebar / settings scrim ---- */

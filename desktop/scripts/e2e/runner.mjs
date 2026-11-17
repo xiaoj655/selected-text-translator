@@ -540,6 +540,39 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('proactive review reminder: appears on startup with due entries and can be dismissed', async () => {
+        const now = Date.now()
+        const due = (id, text) => ({
+          id, text, meaning: 'meaning', context: '', contextStart: null, contextEnd: null,
+          usage: '', explanation: '', example: '', phonetic: '', sourceUrl: '',
+          createdAt: now - 20 * 86400000, updatedAt: now - 86400000,
+          dueAt: now - 1000, intervalDays: 3, reviewCount: 2,
+        })
+        const samples = [due('due-1', 'reluctant'), due('due-2', 'break the ice'), due('due-3', 'record')]
+        try {
+          await mainPage.evaluate((entries) => chrome.storage.local.set({ vocabulary_entries: entries }), samples)
+          await mainPage.reload()
+          await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
+          await mainPage.locator('#notice').waitFor({ state: 'visible', timeout: 15000 })
+          assert.equal(await mainPage.locator('#notice').getAttribute('data-kind'), 'review')
+          assert.match(await mainPage.locator('#notice').textContent(), /今天有 3 条表达等待复习/u)
+          assert.equal(await mainPage.getByRole('button', { name: '去复习' }).count(), 1)
+          assert.equal(await mainPage.locator('#notice .notice-close').count(), 1)
+          assert.match(await mainPage.locator('#study-progress-text').textContent(), /今日待复习 3/u)
+          await shot(mainPage, 'main-review-reminder')
+
+          await mainPage.getByRole('button', { name: '去复习' }).click()
+          const libraryPage = await app.waitForEvent('window', { timeout: 20000 })
+          await libraryPage.locator('#study-progress').waitFor({ state: 'visible', timeout: 20000 })
+          await libraryPage.close()
+
+          await mainPage.locator('#notice .notice-close').click()
+          await mainPage.waitForFunction(() => document.getElementById('notice').hidden, null, { timeout: 5000 })
+        } finally {
+          await mainPage.evaluate(() => chrome.storage.local.set({ vocabulary_entries: [] }))
+        }
+      })
+
       await check('learning archive: export and import carry vocabulary, memory and history', async () => {
         const before = await mainPage.evaluate(async () => ({
           vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],

@@ -259,6 +259,13 @@ assert.match(sharedLibraryHtml, /id="start-review"/u, 'reminder must offer a rev
 assert.match(sharedLibrarySource, /getStudyProgress/u, 'vocabulary book must render study progress')
 assert.match(sharedLibraryCss, /\.study-progress/u, 'vocabulary book progress must be styled')
 
+assert.match(sharedProgressSource, /buildReviewReminder/u, 'shared helper must build the review reminder')
+assert.match(appSource, /maybeShowReviewReminder/u, 'main window must proactively show the review reminder')
+assert.match(appSource, /buildReviewReminder/u, 'main window must use the shared reminder builder')
+assert.match(appSource, /'review'/u, 'review reminder must use the review notice kind')
+assert.match(appCss, /\.notice\[data-kind="review"\]/u, 'review reminder must be styled distinctly')
+assert.match(appCss, /\.notice-close/u, 'review reminder must offer a dismiss control')
+
 const liveLanguagesScript = readFileSync(
   fileURLToPath(new URL('./verify-live-languages.mjs', import.meta.url)), 'utf8')
 const liveLanguagesZhScript = readFileSync(
