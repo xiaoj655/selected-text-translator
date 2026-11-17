@@ -371,7 +371,7 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 
 /* ---- snackbar & FAB ---- */
 .snackbar {
-  position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 172px; transform: translateX(-50%);
   z-index: 60;
   display: flex; align-items: center; gap: 14px;
   background: var(--text); color: var(--bg);
@@ -383,7 +383,7 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .snackbar-close { border: 0; background: transparent; color: inherit; padding: 2px; display: inline-flex; }
 .snackbar-close svg { width: 15px; height: 15px; }
 .scroll-fab {
-  position: absolute; right: 20px; bottom: 104px; z-index: 30;
+  position: absolute; right: 24px; bottom: 152px; z-index: 30;
   width: 40px; height: 40px; border-radius: 50%; padding: 0;
   display: grid; place-items: center;
   background: var(--bg); color: var(--accent); border-color: var(--border); box-shadow: var(--shadow-2);
