@@ -1,7 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
-import { buildReviewReminder, formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
+import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import {
   buildLearningArchive,
@@ -360,10 +360,14 @@ async function maybeShowReviewReminder() {
   const notice = $('notice')
   if (!notice || !notice.hidden) return
   try {
-    const saved = await chrome.storage.local.get('vocabulary_entries')
+    const saved = await chrome.storage.local.get(['vocabulary_entries', 'lastReviewReminderDate'])
     const reminder = buildReviewReminder(getStudyProgress(saved?.vocabulary_entries))
     if (!reminder) return
+    if (!shouldShowReviewReminder(saved?.lastReviewReminderDate)) return
     state.reviewReminderShown = true
+    try {
+      await chrome.storage.local.set({ lastReviewReminderDate: getDayKey() })
+    } catch { }
     showNotice(reminder.text, 'review', {
       label: '去复习',
       run: () => window.sttDesktop.openLibrary(),

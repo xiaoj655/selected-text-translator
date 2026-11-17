@@ -24,3 +24,14 @@ export function buildReviewReminder(progress) {
   if (due <= 0) return null
   return { due, text: `今天有 ${due} 条表达等待复习 · 趁热打铁记得更牢` }
 }
+
+export function getDayKey(now = Date.now()) {
+  const date = Number.isFinite(now) ? new Date(now) : new Date()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+export function shouldShowReviewReminder(lastDate, now = Date.now()) {
+  return getDayKey(now) !== lastDate
+}

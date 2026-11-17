@@ -260,8 +260,14 @@ assert.match(sharedLibrarySource, /getStudyProgress/u, 'vocabulary book must ren
 assert.match(sharedLibraryCss, /\.study-progress/u, 'vocabulary book progress must be styled')
 
 assert.match(sharedProgressSource, /buildReviewReminder/u, 'shared helper must build the review reminder')
+assert.match(sharedProgressSource, /getDayKey/u, 'shared helper must compute a stable local day key')
+assert.match(sharedProgressSource, /shouldShowReviewReminder/u, 'shared helper must dedup the reminder per day')
 assert.match(appSource, /maybeShowReviewReminder/u, 'main window must proactively show the review reminder')
 assert.match(appSource, /buildReviewReminder/u, 'main window must use the shared reminder builder')
+assert.match(appSource, /lastReviewReminderDate/u, 'reminder date must be persisted in local storage')
+assert.match(appSource, /shouldShowReviewReminder\(saved\?\.lastReviewReminderDate\)/u,
+  'reminder must respect the persisted day key')
+assert.match(appSource, /getDayKey\(\)/u, 'reminder must persist the current day key')
 assert.match(appSource, /'review'/u, 'review reminder must use the review notice kind')
 assert.match(appCss, /\.notice\[data-kind="review"\]/u, 'review reminder must be styled distinctly')
 assert.match(appCss, /\.notice-close/u, 'review reminder must offer a dismiss control')

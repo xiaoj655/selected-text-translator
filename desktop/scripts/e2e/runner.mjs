@@ -540,7 +540,7 @@ export async function runE2E(mode = 'core') {
         }
       })
 
-      await check('proactive review reminder: appears on startup with due entries and can be dismissed', async () => {
+      await check('proactive review reminder: per-day dedup and cross-day reset', async () => {
         const now = Date.now()
         const due = (id, text) => ({
           id, text, meaning: 'meaning', context: '', contextStart: null, contextEnd: null,
@@ -549,8 +549,18 @@ export async function runE2E(mode = 'core') {
           dueAt: now - 1000, intervalDays: 3, reviewCount: 2,
         })
         const samples = [due('due-1', 'reluctant'), due('due-2', 'break the ice'), due('due-3', 'record')]
+        const dayKeys = await mainPage.evaluate(() => {
+          const fmt = (ms) => {
+            const date = new Date(ms)
+            const pad = (n) => String(n).padStart(2, '0')
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+          }
+          return { today: fmt(Date.now()), yesterday: fmt(Date.now() - 86400000) }
+        })
         try {
-          await mainPage.evaluate((entries) => chrome.storage.local.set({ vocabulary_entries: entries }), samples)
+          await mainPage.evaluate((entries) => chrome.storage.local.set({
+            vocabulary_entries: entries, lastReviewReminderDate: '',
+          }), samples)
           await mainPage.reload()
           await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
           await mainPage.locator('#notice').waitFor({ state: 'visible', timeout: 15000 })
@@ -559,6 +569,8 @@ export async function runE2E(mode = 'core') {
           assert.equal(await mainPage.getByRole('button', { name: '去复习' }).count(), 1)
           assert.equal(await mainPage.locator('#notice .notice-close').count(), 1)
           assert.match(await mainPage.locator('#study-progress-text').textContent(), /今日待复习 3/u)
+          const persisted = await mainPage.evaluate(() => chrome.storage.local.get('lastReviewReminderDate'))
+          assert.equal(persisted.lastReviewReminderDate, dayKeys.today, 'reminder date must persist as today')
           await shot(mainPage, 'main-review-reminder')
 
           await mainPage.getByRole('button', { name: '去复习' }).click()
@@ -568,8 +580,23 @@ export async function runE2E(mode = 'core') {
 
           await mainPage.locator('#notice .notice-close').click()
           await mainPage.waitForFunction(() => document.getElementById('notice').hidden, null, { timeout: 5000 })
+
+          await mainPage.reload()
+          await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
+          await mainPage.waitForFunction(() => /今日待复习 3/u.test(
+            document.getElementById('study-progress-text')?.textContent || ''), null, { timeout: 10000 })
+          await delay(600)
+          assert.equal(await mainPage.locator('#notice').isVisible(), false,
+            'the reminder must not reappear on the same day')
+
+          await mainPage.evaluate((date) => chrome.storage.local.set({ lastReviewReminderDate: date }), dayKeys.yesterday)
+          await mainPage.reload()
+          await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
+          await mainPage.locator('#notice').waitFor({ state: 'visible', timeout: 15000 })
+          assert.equal(await mainPage.locator('#notice').getAttribute('data-kind'), 'review',
+            'the reminder must reappear on a new day')
         } finally {
-          await mainPage.evaluate(() => chrome.storage.local.set({ vocabulary_entries: [] }))
+          await mainPage.evaluate(() => chrome.storage.local.set({ vocabulary_entries: [], lastReviewReminderDate: '' }))
         }
       })
 
@@ -583,6 +610,7 @@ export async function runE2E(mode = 'core') {
         const seedMemory = { 'translate\0auto\0qwen\0archive probe': { translatedText: '档案探针', savedAt: Date.now() } }
         const seedHistory = [{ id: 'archive-h1', text: 'archive probe', status: 'done', createdAt: Date.now() }]
         try {
+          await delay(400)
           await mainPage.evaluate(async ({ vocabulary, memory, history }) => {
             await chrome.storage.local.set({ vocabulary_entries: vocabulary, translation_memory: memory })
             window.sttDesktop.saveHistory(history)

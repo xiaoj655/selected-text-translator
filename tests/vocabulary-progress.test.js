@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildReviewReminder, formatStudyProgress, getStudyProgress, MASTERY_INTERVAL_DAYS } from '../src/vocabulary-progress.js'
+import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, MASTERY_INTERVAL_DAYS, shouldShowReviewReminder } from '../src/vocabulary-progress.js'
 
 const NOW = 1700000000000
 const DAY_MS = 86400000
@@ -54,4 +54,24 @@ test('buildReviewReminder returns a reminder only when entries are due', () => {
   assert.equal(buildReviewReminder({}), null)
   assert.equal(buildReviewReminder(null), null)
   assert.equal(buildReviewReminder({ due: '2' }).due, 2)
+})
+
+test('getDayKey produces a stable local YYYY-MM-DD key', () => {
+  const key = getDayKey(NOW)
+  assert.match(key, /^\d{4}-\d{2}-\d{2}$/u)
+  const date = new Date(NOW)
+  const expected = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  assert.equal(key, expected)
+  assert.equal(getDayKey(Number.NaN), getDayKey(Date.now()))
+})
+
+test('shouldShowReviewReminder dedups the same day and resets across days', () => {
+  const today = getDayKey(NOW)
+  const yesterday = getDayKey(NOW - DAY_MS)
+  assert.equal(shouldShowReviewReminder(today, NOW), false)
+  assert.equal(shouldShowReviewReminder(yesterday, NOW), true)
+  assert.equal(shouldShowReviewReminder(undefined, NOW), true)
+  assert.equal(shouldShowReviewReminder(null, NOW), true)
+  assert.equal(shouldShowReviewReminder('', NOW), true)
+  assert.equal(shouldShowReviewReminder('garbage', NOW), true)
 })
