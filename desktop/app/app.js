@@ -17,6 +17,9 @@ const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
 const state = {
   mode: 'translate',
   targetLanguage: 'auto',
+  liveTranslate: true,
+  liveTimer: 0,
+  liveText: '',
   model: '',
   translationMemory: {},
   entries: [],
@@ -753,12 +756,16 @@ async function loadFlags() {
 
 async function loadSettings() {
   try {
-    const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model', 'speech_rate'])
+    const values = await chrome.storage.sync.get([
+      'base_url', 'api_key', 'model', 'learning_model', 'speech_rate', 'desktop_live_translate',
+    ])
     const rate = Number(values?.speech_rate)
     const safeRate = Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9
     $('cfg-speech-rate').value = String(safeRate)
     $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
     $('cfg-base-url').value = String(values?.base_url || '')
+    $('opt-live-translate').checked = values?.desktop_live_translate !== false
+    state.liveTranslate = $('opt-live-translate').checked
     $('cfg-api-key').value = String(values?.api_key || '')
     $('cfg-model').value = String(values?.model || '')
     $('cfg-learning').value = String(values?.learning_model || '')
@@ -977,7 +984,24 @@ async function pasteAndTranslate() {
   }
 }
 
-function submit() {
+function scheduleLiveTranslate() {
+  clearTimeout(state.liveTimer)
+  if (!state.liveTranslate) return
+  const text = $('input').value.trim()
+  if (text.length < 2 || text === state.liveText) return
+  state.liveTimer = setTimeout(() => {
+    const current = $('input').value.trim()
+    if (!current || current !== text || current === state.liveText) return
+    state.liveText = current
+    submit({ keepInput: true })
+    setStatus('已自动翻译')
+  }, 850)
+}
+
+function submit(options = {}) {
+  clearTimeout(state.liveTimer)
+  state.liveTimer = 0
+  if (!options.keepInput) state.liveText = ''
   const text = $('input').value.trim()
   if (!text) {
     $('input').focus()
@@ -1026,8 +1050,10 @@ function submit() {
   stopActiveSpeech()
   state.entries.push(entry)
   state.activeEntryId = entry.id
-  $('input').value = ''
-  updateComposer()
+  if (!options.keepInput) {
+    $('input').value = ''
+    updateComposer()
+  }
   hideNotice()
   render()
   if (cached) {
@@ -1721,6 +1747,13 @@ function bind() {
       ? '已切换为仅剪贴板取词:复制后按热键即可,不需要辅助功能权限'
       : '已恢复自动取词')
   })
+  $('opt-live-translate').addEventListener('change', (event) => {
+    state.liveTranslate = event.target.checked
+    clearTimeout(state.liveTimer)
+    state.liveTimer = 0
+    void chrome.storage.sync.set({ desktop_live_translate: state.liveTranslate })
+    setStatus(state.liveTranslate ? '已开启输入后自动翻译' : '已关闭输入后自动翻译')
+  })
   $('opt-main-window-only').addEventListener('change', (event) => {
     void window.sttDesktop.setFloatingCardDisabled(event.target.checked)
     setStatus(event.target.checked
@@ -1766,7 +1799,10 @@ function bind() {
   })
   $('snackbar-close').addEventListener('click', hideSnackbar)
   const input = $('input')
-  input.addEventListener('input', updateComposer)
+  input.addEventListener('input', () => {
+    updateComposer()
+    scheduleLiveTranslate()
+  })
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (!$('help-overlay').hidden) {

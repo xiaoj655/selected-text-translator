@@ -376,6 +376,21 @@ export async function runE2E(mode = 'core') {
         await mainPage.locator('#sidebar-backdrop').click({ force: true })
       })
 
+      await check('live translation: typing alone translates and keeps the source text', async () => {
+        const typed = 'live-translate-probe'
+        await mainPage.locator('#input').fill('')
+        await mainPage.locator('#input').pressSequentially(typed, { delay: 12 })
+        await mainPage.waitForFunction((value) => {
+          const bubble = document.querySelector('.entry .bubble')
+          return Boolean(bubble && bubble.textContent.includes(value))
+        }, typed, { timeout: 20000 })
+        assert.equal(await mainPage.locator('#input').inputValue(), typed,
+          'live translation must not clear the source text from the input')
+        assert.equal(await mainPage.locator('.entry').count(), 1)
+        assert.match(await mainPage.locator('.entry .bubble').first().textContent(), new RegExp(typed, 'u'))
+        await shot(mainPage, 'main-live-translate')
+      })
+
       await check('main window: translate result renders a dictionary-style learning card', async () => {
         await setConfig(mainPage, { model: 'mock-generic' })
         try {
