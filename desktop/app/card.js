@@ -508,6 +508,20 @@ function bind() {
     }, 0)
   })
   $('result').addEventListener('scroll', hideSelectionToolbar, { passive: true })
+  let isPointerDown = false
+  let selectionFeedback = false
+  let selectionTimer = 0
+  document.addEventListener('mousedown', () => { isPointerDown = true })
+  document.addEventListener('mouseup', () => { isPointerDown = false })
+  document.addEventListener('selectionchange', () => {
+    if (isPointerDown || selectionFeedback) return
+    clearTimeout(selectionTimer)
+    selectionTimer = setTimeout(() => {
+      const found = selectionInResult()
+      if (found) showSelectionToolbar(found.text, found.rect)
+      else hideSelectionToolbar()
+    }, 0)
+  })
   $('selection-toolbar').addEventListener('mousedown', (event) => event.preventDefault())
   $('selection-toolbar').addEventListener('click', (event) => {
     const button = event.target.closest('[data-sel-action]')
@@ -516,12 +530,26 @@ function bind() {
     const action = button.dataset.selAction
     if (action === 'copy') {
       copyText(text, button)
-    } else if (action === 'speak') {
+      selectionFeedback = true
+      setTimeout(() => {
+        selectionFeedback = false
+        hideSelectionToolbar()
+        window.getSelection()?.removeAllRanges()
+      }, 1400)
+      return
+    }
+    if (action === 'speak') {
       toggleSpeech(text)
     } else if (action === 'translate') {
       startSelection({ text })
     } else if (action === 'save') {
       void saveSelection(text, button)
+      selectionFeedback = true
+      setTimeout(() => {
+        selectionFeedback = false
+        hideSelectionToolbar()
+        window.getSelection()?.removeAllRanges()
+      }, 1400)
       return
     }
     hideSelectionToolbar()

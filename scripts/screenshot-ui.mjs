@@ -318,6 +318,28 @@ await shot(browser, '15-card-selection-toolbar', {
   },
 }, { width: 460, height: 300 })
 
+await shot(browser, '16-copy-feedback', {
+  config: { history: entries },
+  url: indexUrl,
+  post: async (page) => {
+    await scrollTop(page)
+    await page.evaluate(() => {
+      const result = document.querySelector('.entry .entry-body .result')
+      const textNode = [...result.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim().length > 8)
+      const range = document.createRange()
+      range.setStart(textNode, 0)
+      range.setEnd(textNode, Math.min(10, textNode.textContent.length))
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+      document.getElementById('stream').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await page.waitForTimeout(150)
+    await page.click('#selection-toolbar [data-sel-action="copy"]')
+    await page.waitForTimeout(120)
+  },
+})
+
 await browser.close()
 server.close()
 console.log(`[screenshots] ${outDir}`)

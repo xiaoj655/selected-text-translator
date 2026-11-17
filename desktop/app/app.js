@@ -1624,6 +1624,20 @@ function bind() {
     if ($('selection-toolbar').contains(event.target)) return
     hideSelectionToolbar()
   })
+  let isPointerDown = false
+  let selectionFeedback = false
+  let selectionTimer = 0
+  document.addEventListener('mousedown', () => { isPointerDown = true })
+  document.addEventListener('mouseup', () => { isPointerDown = false })
+  document.addEventListener('selectionchange', () => {
+    if (isPointerDown || selectionFeedback) return
+    clearTimeout(selectionTimer)
+    selectionTimer = setTimeout(() => {
+      const found = selectionInResult()
+      if (found) showSelectionToolbar(found.entry, found.text, found.rect)
+      else hideSelectionToolbar()
+    }, 0)
+  })
   $('selection-toolbar').addEventListener('click', (event) => {
     const button = event.target.closest('[data-sel-action]')
     if (!button || !state.selection) return
@@ -1634,7 +1648,15 @@ function bind() {
       void window.sttDesktop.copyText(text)
       showCopyDone(button)
       setStatus('已复制选中文字')
-    } else if (entry && action === 'speak') {
+      selectionFeedback = true
+      setTimeout(() => {
+        selectionFeedback = false
+        hideSelectionToolbar()
+        window.getSelection()?.removeAllRanges()
+      }, 1400)
+      return
+    }
+    if (entry && action === 'speak') {
       toggleSpeech(entry, text)
     } else if (action === 'translate') {
       $('input').value = text
@@ -1642,6 +1664,12 @@ function bind() {
       submit()
     } else if (entry && action === 'save') {
       void saveSelection(entry, text, button)
+      selectionFeedback = true
+      setTimeout(() => {
+        selectionFeedback = false
+        hideSelectionToolbar()
+        window.getSelection()?.removeAllRanges()
+      }, 1400)
       return
     }
     hideSelectionToolbar()
