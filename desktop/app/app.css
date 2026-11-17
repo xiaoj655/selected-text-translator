@@ -360,8 +360,14 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .guide-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; font-family: var(--font-ui); }
 .guide-tools::before { content: ''; width: 100%; border-top: 1px solid var(--border); }
 .guide-tools button { font-size: 12px; padding: 5px 12px; border-radius: var(--r-pill); color: var(--accent); }
+.entry-card--guide { border-left: 3px solid var(--accent); }
+.guide-intro { font-family: var(--font-ui); font-size: 12px; color: var(--accent-text); background: var(--accent-soft);
+  border-radius: var(--r-sm); padding: 7px 11px; margin: 0 0 6px; line-height: 1.6; }
 .hints { margin: 10px 0; }
-.hint { font-family: var(--font-ui); font-size: 13px; line-height: 1.7; padding: 3px 0; }
+.hint { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-ui); font-size: 13px; line-height: 1.7; padding: 5px 0; }
+.hint-step { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-top: 1px;
+  border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+.hint-text { flex: 1; }
 @keyframes hint-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .hint.is-new { animation: hint-in 260ms var(--ease); }
 [data-hint-more] { border: 0; background: transparent; color: var(--accent); padding: 2px 6px; font-size: 12px; }

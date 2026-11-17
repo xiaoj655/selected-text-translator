@@ -1061,7 +1061,10 @@ function revealedHints(entry, hints) {
 }
 
 function hintNode(hint, index, isNew) {
-  return el('div', isNew ? 'hint is-new' : 'hint', `${index + 1}. ${hint}`)
+  const node = el('div', isNew ? 'hint is-new' : 'hint')
+  node.append(el('span', 'hint-step', String(index + 1)))
+  node.append(el('span', 'hint-text', hint))
+  return node
 }
 
 function revealNextHint(entry) {
@@ -1090,6 +1093,7 @@ function renderGuide(entry) {
   const guide = entry.guide
   if (!guide) return null
   const box = document.createDocumentFragment()
+  box.append(el('div', 'guide-intro', '先想一想,再看提示,最后揭晓答案 · 主动思考记得更牢'))
   const tools = el('div', 'guide-tools')
   if (guide.phonetic) box.append(lexicalRow('音标', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
@@ -1326,6 +1330,7 @@ function renderEntryEl(entry) {
   wrapper.append(source)
 
   const card = el('div', 'entry-card')
+  if (entry.mode === 'guide') card.classList.add('entry-card--guide')
   const head = el('div', 'entry-head')
   head.title = '点击折叠 / 展开'
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))

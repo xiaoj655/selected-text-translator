@@ -370,6 +370,57 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('main window: guide card renders learning-focused styling', async () => {
+        mock.setHandler(async ({ body, res }) => {
+          const content = JSON.stringify({
+            guideType: 'term',
+            phonetic: '/rɪˈlʌk.tənt/',
+            hints: ['想一想:不愿去做某事', '提示:近义词 hesitant', '提示:be reluctant to do'],
+            answer: {
+              meaning: 'not wanting to do something',
+              explanation: 'reluctant means unwilling or hesitant to act.',
+              example: 'She was reluctant to accept the offer.',
+              usage: 'reluctant to do something',
+            },
+          })
+          if (body?.stream) {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive',
+            })
+            for (const char of content) {
+              if (res.destroyed) return
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: char } }] })}\n\n`)
+            }
+            res.write('data: [DONE]\n\n')
+            res.end()
+            return
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ choices: [{ message: { content } }] }))
+        })
+        await mainPage.locator('.mode[data-mode=guide]').click()
+        try {
+          await mainPage.locator('#input').fill('reluctant')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.guide-intro')
+              && node.querySelector('.hint-step'))
+          }, null, { timeout: 20000 })
+          assert.ok((await mainPage.locator('.entry:last-child .hint-step').count()) >= 1)
+          assert.match(await mainPage.locator('.entry:last-child .guide-intro').textContent(), /主动思考/u)
+          await mainPage.locator('.entry:last-child').getByRole('button', { name: '揭晓答案' }).click()
+          await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .answer')),
+            null, { timeout: 5000 })
+          await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
+          await delay(300)
+          await shot(mainPage, 'main-guide-card')
+        } finally {
+          mock.resetHandler()
+          await mainPage.locator('.mode[data-mode=translate]').click()
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

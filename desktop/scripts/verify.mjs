@@ -173,6 +173,11 @@ assert.match(appSource, /pos-chip/u, 'dictionary senses need part-of-speech chip
 assert.match(appSource, /sense-example/u, 'dictionary senses need example lines')
 assert.match(appCss, /\.translation-answer/u, 'answer treatment must be styled')
 assert.match(appCss, /\.pos-chip/u, 'part-of-speech chips must be styled')
+assert.match(appSource, /entry-card--guide/u, 'guide cards need a distinct learning style')
+assert.match(appSource, /guide-intro/u, 'guide cards need a learning-intent intro')
+assert.match(appSource, /hint-step/u, 'guide hints need numbered step markers')
+assert.match(appCss, /\.entry-card--guide/u, 'guide card style must be defined')
+assert.match(appCss, /\.hint-step/u, 'hint step markers must be styled')
 
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
