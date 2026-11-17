@@ -193,11 +193,9 @@
       <div class="drawer-diag" id="diagnostics"></div>
     </section>
 
-    <main class="stream" id="stream" aria-label="学习记录"></main>
-
-    <footer class="composer">
+    <footer class="composer" aria-label="翻译输入">
       <div class="composer-box">
-        <textarea id="input" rows="1" placeholder="粘贴或输入要翻译的内容…  选中文字后按热键可自动带入"></textarea>
+        <textarea id="input" rows="2" placeholder="粘贴或输入要翻译的内容…  选中文字后按热键可自动带入" aria-label="输入要翻译的内容"></textarea>
         <div class="composer-actions">
           <div class="composer-left">
             <button id="btn-clear-input" type="button" title="清空输入框">清空输入</button>
@@ -217,6 +215,8 @@
         </button>
       </div>
     </footer>
+
+    <main class="stream" id="stream" aria-label="学习记录"></main>
 
     <div class="snackbar" id="snackbar" role="status" aria-live="polite" hidden>
       <span class="snackbar-label" id="snackbar-label"></span>

@@ -394,6 +394,9 @@ export async function runE2E(mode = 'core') {
           const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
           assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
           assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), '原文')
+          const answerBorder = await mainPage.locator('.entry:last-child .translation-answer')
+            .evaluate((node) => getComputedStyle(node).borderLeftWidth)
+          assert.notEqual(answerBorder, '0px', 'the primary translation must render as an emphasized answer block')
           await delay(300)
           await shot(mainPage, 'main-dictionary-card')
         } finally {

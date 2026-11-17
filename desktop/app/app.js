@@ -1558,7 +1558,11 @@ function patchStreamResult(entry) {
   const label = node.querySelector('.entry-body > .result-label')
   if (label) label.textContent = '正在处理'
   result.classList.remove('is-error', 'is-loading')
-  result.replaceChildren(document.createTextNode(entry.translatedText || ''), el('span', 'caret'))
+  const answer = el('div', 'translation-answer')
+  const text = el('span', 'translation-text')
+  text.append(document.createTextNode(entry.translatedText || ''))
+  answer.append(text, el('span', 'caret'))
+  result.replaceChildren(answer)
   const lexical = renderLexical(entry)
   if (lexical) result.append(lexical)
   followStreamBottom()

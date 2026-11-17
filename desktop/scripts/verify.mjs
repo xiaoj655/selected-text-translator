@@ -30,6 +30,8 @@ const htmlSource = readFileSync(join(root, 'app', 'index.html'), 'utf8')
 const mainSource = readFileSync(join(root, 'src', 'main.js'), 'utf8')
 assert.match(htmlSource, /id="input"/u, 'composer input is required')
 assert.match(htmlSource, /id="settings-panel"/u, 'in-app settings panel is required')
+assert.ok(htmlSource.indexOf('class="composer"') < htmlSource.indexOf('class="stream"'),
+  'input composer must precede the result stream in the DOM so visual, reading and tab order align')
 assert.match(appSource, /START_TRANSLATION/u, 'app must drive the translation protocol')
 assert.match(appSource, /onSelection/u, 'app must accept hotkey payloads')
 assert.match(appSource, /openSettings/u, 'settings must be reachable in-app')
@@ -303,6 +305,10 @@ assert.match(liveLanguagesScript, /STT_LIVE_CONFIG/u,
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
 assert.match(appSource, /createTextNode\(entry\.translatedText/u, 'stream text must be written as a text node')
+assert.match(appSource, /function patchStreamResult[\s\S]{0,600}translation-answer/u,
+  'streaming must render into the same answer block as completed results so styling does not jump')
+assert.match(appCss, /\.translation-answer\s*\{[^}]*border-left:[^}]*var\(--accent\)/u,
+  'the primary translation must read as a visually emphasized answer block')
 
 assert.match(tokensCss, /--accent:/u, 'shared tokens must define the accent color')
 assert.match(tokensCss, /--surface:/u, 'shared tokens must define the surface ramp')
