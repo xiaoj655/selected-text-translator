@@ -148,6 +148,16 @@
           </label>
         </div>
         <div class="drawer-section">
+          <h3>学习档案</h3>
+          <p class="drawer-tip">把收藏、复习进度、翻译记忆与学习记录打包成一个文件,可在设备间迁移。档案不含模型配置或密钥。</p>
+          <div class="drawer-actions">
+            <button id="btn-archive-export" type="button">导出完整档案</button>
+            <button id="btn-archive-import" type="button">导入完整档案</button>
+          </div>
+          <input id="archive-file" type="file" accept="application/json,.json" hidden>
+          <p class="drawer-status" id="archive-status" role="status"></p>
+        </div>
+        <div class="drawer-section">
           <h3>外观</h3>
           <div class="drawer-appearance">
             <label>主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>

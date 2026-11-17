@@ -3,6 +3,12 @@ import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
+import {
+  buildLearningArchive,
+  mergeHistoryEntries,
+  parseLearningArchive,
+  serializeLearningArchive,
+} from '../vendor/src/learning-archive.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -459,6 +465,80 @@ function persistHistory() {
   persistTimer = setTimeout(() => {
     void window.sttDesktop.saveHistory(state.entries)
   }, 300)
+}
+
+function archiveStamp() {
+  const date = new Date()
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')].join('-')
+}
+
+async function readArchiveSources() {
+  const saved = await chrome.storage.local.get(['vocabulary_entries', 'translation_memory'])
+  const history = await window.sttDesktop.loadHistory()
+  return {
+    vocabularyEntries: Array.isArray(saved?.vocabulary_entries) ? saved.vocabulary_entries : [],
+    translationMemory: saved?.translation_memory && typeof saved.translation_memory === 'object'
+      ? saved.translation_memory : {},
+    history: Array.isArray(history) ? history : [],
+  }
+}
+
+async function exportLearningArchive() {
+  const statusEl = $('archive-status')
+  try {
+    const sources = await readArchiveSources()
+    const archive = buildLearningArchive(sources)
+    const text = serializeLearningArchive(archive)
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+    const linkEl = document.createElement('a')
+    linkEl.href = url
+    linkEl.download = `selected-learning-archive-${archiveStamp()}.json`
+    document.body.appendChild(linkEl)
+    linkEl.click()
+    linkEl.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    const counts = `收藏 ${sources.vocabularyEntries.length} · 记忆 ${Object.keys(sources.translationMemory).length} · 记录 ${sources.history.length}`
+    statusEl.textContent = `已导出完整学习档案(${counts}),不含密钥。`
+    setStatus('已导出完整学习档案')
+  } catch {
+    statusEl.textContent = '导出档案失败,请重试。'
+  }
+}
+
+async function importLearningArchive(file) {
+  const statusEl = $('archive-status')
+  if (!file) return
+  try {
+    const parsed = parseLearningArchive(await file.text())
+    const sources = await readArchiveSources()
+    const existingKeys = new Set(sources.vocabularyEntries.map((entry) => `${entry.text}\n${entry.meaning}`))
+    let added = 0
+    const vocabulary = [...sources.vocabularyEntries]
+    for (const entry of parsed.vocabularyEntries) {
+      const key = `${entry.text}\n${entry.meaning}`
+      if (existingKeys.has(key)) continue
+      existingKeys.add(key)
+      vocabulary.push(entry)
+      added++
+    }
+    const memory = { ...sources.translationMemory, ...parsed.translationMemory }
+    const history = mergeHistoryEntries(sources.history, parsed.historyEntries)
+    await chrome.storage.local.set({ vocabulary_entries: vocabulary, translation_memory: memory })
+    window.sttDesktop.saveHistory(history)
+    state.translationMemory = memory
+    state.entries = history.map((entry) => ({
+      ...entry,
+      status: entry.status === 'done' ? 'done' : 'error',
+      error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
+    }))
+    render()
+    void updateStudyProgress()
+    statusEl.textContent = `已导入档案:新增收藏 ${added} 条,恢复记忆 ${Object.keys(parsed.translationMemory).length} 条,记录 ${parsed.historyEntries.length} 条。`
+    setStatus('已导入完整学习档案')
+  } catch (error) {
+    statusEl.textContent = `导入失败:${String(error?.message || error)}`
+  }
 }
 
 function showNotice(text, kind = 'info', action) {
@@ -1564,6 +1644,13 @@ function bind() {
     trapFocus(event, $('settings-panel'))
   })
   $('settings-backdrop').addEventListener('click', closeSettings)
+  $('btn-archive-export').addEventListener('click', () => void exportLearningArchive())
+  $('btn-archive-import').addEventListener('click', () => $('archive-file').click())
+  $('archive-file').addEventListener('change', (event) => {
+    const file = event.target.files?.[0]
+    if (file) void importLearningArchive(file)
+    event.target.value = ''
+  })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-study-progress').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())

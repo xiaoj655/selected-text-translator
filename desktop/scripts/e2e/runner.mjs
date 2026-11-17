@@ -540,6 +540,86 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('learning archive: export and import carry vocabulary, memory and history', async () => {
+        const before = await mainPage.evaluate(async () => ({
+          vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],
+          memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
+          history: await window.sttDesktop.loadHistory(),
+        }))
+        const seedVocab = [{ id: 'archive-v1', text: 'portable archive', meaning: '可携带的学习档案' }]
+        const seedMemory = { 'translate\0auto\0qwen\0archive probe': { translatedText: '档案探针', savedAt: Date.now() } }
+        const seedHistory = [{ id: 'archive-h1', text: 'archive probe', status: 'done', createdAt: Date.now() }]
+        try {
+          await mainPage.evaluate(async ({ vocabulary, memory, history }) => {
+            await chrome.storage.local.set({ vocabulary_entries: vocabulary, translation_memory: memory })
+            window.sttDesktop.saveHistory(history)
+          }, { vocabulary: seedVocab, memory: seedMemory, history: seedHistory })
+          await mainPage.waitForFunction(async () => {
+            const loaded = await window.sttDesktop.loadHistory()
+            return loaded.some((entry) => entry.id === 'archive-h1')
+          }, null, { timeout: 10000 })
+
+          await mainPage.locator('#btn-settings').click()
+          await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+          await mainPage.evaluate(() => {
+            window.__archiveCaptured = ''
+            const original = URL.createObjectURL.bind(URL)
+            URL.createObjectURL = (blob) => {
+              if (blob instanceof Blob) void blob.text().then((text) => { window.__archiveCaptured = text })
+              return original(blob)
+            }
+            window.__archiveAnchorClick = HTMLAnchorElement.prototype.click
+            HTMLAnchorElement.prototype.click = function () {
+              if (this.download) return
+              return window.__archiveAnchorClick.call(this)
+            }
+          })
+          await mainPage.locator('#btn-archive-export').click()
+          await mainPage.waitForFunction(() => window.__archiveCaptured.length > 0, null, { timeout: 10000 })
+          const archiveText = await mainPage.evaluate(() => window.__archiveCaptured)
+          const archive = JSON.parse(archiveText)
+          assert.equal(archive.format, 'selected-learning-archive')
+          assert.equal(archive.version, 1)
+          assert.equal(archive.sections.vocabulary.entries.length, 1)
+          assert.equal(archive.sections.vocabulary.entries[0].text, 'portable archive')
+          assert.equal(Object.keys(archive.sections.translationMemory.entries).length, 1)
+          assert.ok(archive.sections.history.entries.some((entry) => entry.id === 'archive-h1'))
+          assert.match(await mainPage.locator('#archive-status').textContent(), /已导出完整学习档案/u)
+
+          await mainPage.evaluate(async () => {
+            await chrome.storage.local.set({ vocabulary_entries: [], translation_memory: {} })
+            window.sttDesktop.saveHistory([{ id: 'placeholder', text: 'placeholder', status: 'done', createdAt: Date.now() }])
+          })
+          await mainPage.locator('#archive-file').setInputFiles({
+            name: 'archive.json', mimeType: 'application/json', buffer: Buffer.from(archiveText),
+          })
+          await mainPage.waitForFunction(async () => {
+            const vocab = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || []
+            return vocab.some((entry) => entry.id === 'archive-v1')
+          }, null, { timeout: 10000 })
+          const restored = await mainPage.evaluate(async () => ({
+            memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
+            history: await window.sttDesktop.loadHistory(),
+          }))
+          assert.equal(Object.keys(restored.memory).length, 1)
+          assert.ok(restored.history.some((entry) => entry.id === 'archive-h1'))
+          assert.match(await mainPage.locator('#archive-status').textContent(), /已导入档案/u)
+          await mainPage.locator('#btn-close-settings').click()
+          await mainPage.waitForFunction(() => document.getElementById('settings-panel').hidden)
+          await shot(mainPage, 'main-learning-archive')
+        } finally {
+          await mainPage.evaluate(async (snapshot) => {
+            if (window.__archiveAnchorClick) HTMLAnchorElement.prototype.click = window.__archiveAnchorClick
+            await chrome.storage.local.set({
+              vocabulary_entries: snapshot.vocabulary, translation_memory: snapshot.memory,
+            })
+            window.sttDesktop.saveHistory(snapshot.history)
+          }, before)
+          const panelHidden = await mainPage.locator('#settings-panel').evaluate((el) => el.hidden)
+          if (!panelHidden) await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('translation memory: repeat text is served instantly without a new API call', async () => {
         await setConfig(mainPage, { model: 'qwen-mt-flash' })
         const text = 'memory-probe-alpha'

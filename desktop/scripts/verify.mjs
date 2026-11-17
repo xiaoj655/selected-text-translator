@@ -73,6 +73,8 @@ const sharedContractsSource = readFileSync(
   fileURLToPath(new URL('../../src/translation-contracts.js', import.meta.url)), 'utf8')
 const sharedBackgroundSource = readFileSync(
   fileURLToPath(new URL('../../src/background.js', import.meta.url)), 'utf8')
+const sharedArchiveSource = readFileSync(
+  fileURLToPath(new URL('../../src/learning-archive.js', import.meta.url)), 'utf8')
 const sharedMemorySource = readFileSync(
   fileURLToPath(new URL('../../src/translation-memory.js', import.meta.url)), 'utf8')
 const sharedProgressSource = readFileSync(
@@ -205,6 +207,16 @@ assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u
   'request builders must accept a target language override')
 assert.match(sharedContractsSource, /buildTranslationSystemPrompt/u,
   'generic system prompt must honor an explicit target language')
+
+assert.match(htmlSource, /id="btn-archive-export"/u, 'full archive export button is required')
+assert.match(htmlSource, /id="btn-archive-import"/u, 'full archive import button is required')
+assert.match(htmlSource, /id="archive-file"/u, 'archive file picker is required')
+assert.match(appSource, /buildLearningArchive/u, 'app must build portable archives')
+assert.match(appSource, /parseLearningArchive/u, 'app must parse imported archives')
+assert.match(appSource, /mergeHistoryEntries/u, 'import must merge learning history')
+assert.match(appSource, /translation_memory: memory/u, 'import must restore translation memory')
+assert.match(sharedArchiveSource, /export function buildLearningArchive/u, 'shared module must build archives')
+assert.match(sharedArchiveSource, /export function parseLearningArchive/u, 'shared module must validate archives')
 
 assert.match(sharedMemorySource, /export function makeMemoryKey/u, 'translation memory must have a stable key helper')
 assert.match(sharedMemorySource, /export function readMemoryEntry/u, 'translation memory must support cache lookups')
