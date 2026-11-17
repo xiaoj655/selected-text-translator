@@ -1405,8 +1405,50 @@ function renderResult(entry) {
   if (entry.status === 'streaming') answer.append(el('span', 'caret'))
   result.append(answer)
   const lexical = renderLexical(entry)
-  if (lexical) result.append(lexical)
+  if (lexical) {
+    const details = el('details', 'lexical-details')
+    details.append(el('summary', '', '词典详情 · 音标 / 释义 / 例句 / 语境'), lexical)
+    result.append(details)
+  }
   return result
+}
+
+function startCompanionEntry(entry, mode) {
+  if (!entry?.text || !['translate', 'guide'].includes(mode)) return
+  const companion = {
+    id: makeId('s'),
+    requestId: makeId('r'),
+    text: entry.text,
+    mode,
+    status: 'pending',
+    translatedText: '',
+    lexical: null,
+    guide: null,
+    error: '',
+    createdAt: Date.now(),
+    hintCount: 1,
+    answerRevealed: false,
+    fromMemory: false,
+    memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage, model: state.model }),
+  }
+  const cached = readMemoryEntry(state.translationMemory, companion.memoryKey)
+  if (cached) {
+    companion.status = 'done'
+    companion.translatedText = cached.translatedText || ''
+    companion.lexical = cached.lexical || null
+    companion.guide = cached.guide || null
+    companion.fromMemory = true
+  }
+  stopActiveSpeech()
+  state.entries.push(companion)
+  state.activeEntryId = companion.id
+  render()
+  if (cached) {
+    setStatus('来自翻译记忆 · 即时')
+    persistHistory()
+  } else {
+    sendRequest(companion)
+  }
 }
 
 function deleteEntry(entry) {
@@ -1456,6 +1498,14 @@ function renderActions(entry) {
     regenerate.type = 'button'
     regenerate.addEventListener('click', () => regenerate(entry))
     bar.append(regenerate)
+    if (entry.text) {
+      const companion = el('button', 'action-companion',
+        entry.mode === 'guide' ? '快速翻译' : '深入引导理解')
+      companion.type = 'button'
+      companion.dataset.companionMode = entry.mode === 'guide' ? 'translate' : 'guide'
+      companion.addEventListener('click', () => startCompanionEntry(entry, companion.dataset.companionMode))
+      bar.append(companion)
+    }
   }
 
   const more = el('button', 'action-more', '⋯')

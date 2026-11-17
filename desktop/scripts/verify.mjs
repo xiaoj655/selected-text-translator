@@ -211,6 +211,11 @@ assert.match(appSource, /hint-step/u, 'guide hints need numbered step markers')
 assert.match(appCss, /\.entry-card--guide/u, 'guide card style must be defined')
 assert.match(appCss, /\.hint-step/u, 'hint step markers must be styled')
 
+assert.match(appSource, /function startCompanionEntry/u, 'translate and guide modes must connect via a one-click companion entry')
+assert.match(appSource, /dataset\.companionMode/u, 'companion action must target the opposite mode')
+assert.match(appSource, /lexical-details/u, 'dictionary details must be progressively disclosed')
+assert.match(appCss, /\.lexical-details\s*>\s*summary/u, 'dictionary disclosure summary must be styled')
+
 assert.match(htmlSource, /id="opt-target-language"/u, 'target language selector is required')
 assert.match(appSource, /desktop_target_language/u, 'target language must be persisted')
 assert.match(appSource, /targetLanguage: state\.targetLanguage/u, 'target language must be sent with translation requests')

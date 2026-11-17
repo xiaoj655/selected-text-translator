@@ -469,6 +469,69 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('companion drill-down: one click goes translate to guided learning and back', async () => {
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          if (body?.model !== 'qwen3.8-flash') {
+            await defaultResponse({ body, res })
+            return
+          }
+          const content = JSON.stringify({
+            guideType: 'term',
+            phonetic: '/ˈrɛkərd/',
+            hints: ['先看 will 后面的词', '再对比第二个 record', '想一想录音这个动作'],
+            answer: {
+              meaning: 'to capture sound or music',
+              explanation: 'The first record follows will, so it is a verb.',
+              example: 'I need to record this podcast.',
+              usage: 'record + object',
+            },
+          })
+          if (body?.stream) {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive',
+            })
+            for (const char of content) {
+              if (res.destroyed) return
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: char } }] })}\n\n`)
+            }
+            res.write('data: [DONE]\n\n')
+            res.end()
+            return
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ choices: [{ message: { content } }] }))
+        })
+        await setConfig(mainPage, { model: 'mock-generic' })
+        try {
+          await mainPage.locator('.mode[data-mode=translate]').click()
+          await mainPage.locator('#input').fill('companion-probe')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const status = document.getElementById('statusbar')?.textContent || ''
+            const result = document.querySelector('.entry:last-child .result')
+            return Boolean(result && !result.classList.contains('is-loading') && /完成|翻译记忆/u.test(status))
+          }, null, { timeout: 20000 })
+          assert.equal(await mainPage.locator('.entry:last-child .lexical-details').count(), 1)
+          assert.equal(await mainPage.locator('.entry:last-child .lexical-details').evaluate((el) => el.open), false)
+
+          await mainPage.locator('.entry:last-child .action-companion').click()
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.hint-step'))
+          }, null, { timeout: 20000 })
+          assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /companion-probe/u)
+
+          await mainPage.locator('.entry:last-child .action-companion').click()
+          await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .translation-answer')),
+            null, { timeout: 20000 })
+          assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /companion-probe/u)
+          await shot(mainPage, 'main-companion-drilldown')
+        } finally {
+          mock.resetHandler()
+          await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        }
+      })
+
       await check('target language: explicit setting reaches the model request', async () => {
         const capturedBodies = []
         const ensureSettings = async () => {
