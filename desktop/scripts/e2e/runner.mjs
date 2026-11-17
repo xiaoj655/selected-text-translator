@@ -513,6 +513,24 @@ export async function runE2E(mode = 'core') {
           assert.equal(await libraryPage.locator('#today-review-reminder').isVisible(), true)
           assert.equal(await libraryPage.locator('#today-review-count').textContent(), '3')
           await shot(libraryPage, 'library-study-progress')
+
+          await libraryPage.evaluate(() => {
+            window.__ankiCaptured = ''
+            const original = URL.createObjectURL.bind(URL)
+            URL.createObjectURL = (blob) => {
+              if (blob instanceof Blob) void blob.text().then((text) => { window.__ankiCaptured = text })
+              return original(blob)
+            }
+          })
+          await libraryPage.locator('#export-anki').click()
+          await libraryPage.waitForFunction(() => window.__ankiCaptured.length > 0, null, { timeout: 10000 })
+          const ankiTsv = await libraryPage.evaluate(() => window.__ankiCaptured)
+          const ankiRows = ankiTsv.split('\n')
+          assert.equal(ankiRows.length, 6)
+          assert.match(ankiRows[0], /^reluctant\t/u)
+          assert.match(ankiRows[0], /selected-english$/u)
+          assert.match(await libraryPage.locator('#library-status').textContent(), /已导出 6 条到 Anki/u)
+
           await libraryPage.locator('#start-review').click()
           await libraryPage.waitForFunction(() => document.getElementById('review-tab')?.getAttribute('aria-pressed') === 'true',
             null, { timeout: 5000 })

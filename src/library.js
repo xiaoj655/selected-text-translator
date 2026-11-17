@@ -1,5 +1,6 @@
 import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
 import { getStudyProgress } from './vocabulary-progress.js'
+import { buildAnkiTsv, countAnkiRows } from './anki-export.js'
 import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
 import { getContextView } from './context-view.js'
 import { createVocabularyDraft, getVocabularyDraftUpdate, serializeVocabularyDraft,
@@ -14,6 +15,7 @@ const reviewCardEl = document.getElementById('review-card')
 const searchEl = document.getElementById('vocabulary-search')
 const loadMoreEl = document.getElementById('load-more')
 const exportEl = document.getElementById('export-vocabulary')
+const exportAnkiEl = document.getElementById('export-anki')
 const importEl = document.getElementById('import-vocabulary')
 const importFileEl = document.getElementById('import-vocabulary-file')
 const statusEl = document.getElementById('library-status')
@@ -67,6 +69,7 @@ async function init() {
     searchEl.addEventListener('input', () => { state.visibleCount = 30; renderList() })
     loadMoreEl.addEventListener('click', () => { state.visibleCount += 30; renderList() })
     exportEl.addEventListener('click', () => void downloadBackup())
+    exportAnkiEl.addEventListener('click', () => void downloadAnki())
     importEl.addEventListener('click', () => importFileEl.click())
     importFileEl.addEventListener('change', () => void restoreBackup())
     undoEl.addEventListener('click', () => void undoRemoval())
@@ -124,6 +127,7 @@ function updateCounts() {
   document.getElementById('today-review-count').textContent = progress.due
   document.getElementById('today-review-reminder').hidden = progress.due === 0
   exportEl.disabled = state.entries.length === 0
+  exportAnkiEl.disabled = state.entries.length === 0
   scheduleDueRefresh()
 }
 
@@ -772,6 +776,33 @@ async function downloadBackup() {
     setStatus('导出失败，请重试。', true)
   } finally {
     exportEl.disabled = state.entries.length === 0
+  }
+}
+
+async function downloadAnki() {
+  exportAnkiEl.disabled = true
+  try {
+    const response = await send('VOCABULARY_EXPORT')
+    if (!response.ok) { setStatus(response.message || '导出失败，请重试。', true); return }
+    const tsv = buildAnkiTsv(response.data?.entries)
+    const count = countAnkiRows(tsv)
+    if (!count) { setStatus('表达本还没有可导出的内容。', true); return }
+    const url = URL.createObjectURL(new Blob([tsv], { type: 'text/plain;charset=utf-8' }))
+    const linkEl = createEl('a')
+    linkEl.href = url
+    const date = new Date()
+    const stamp = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')].join('-')
+    linkEl.download = `selected-anki-${stamp}.txt`
+    document.body.appendChild(linkEl)
+    linkEl.click()
+    linkEl.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setStatus(`已导出 ${count} 条到 Anki（Front=原文, Back=释义与语境）。`)
+  } catch {
+    setStatus('导出 Anki 失败，请重试。', true)
+  } finally {
+    exportAnkiEl.disabled = state.entries.length === 0
   }
 }
 

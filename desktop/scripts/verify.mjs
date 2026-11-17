@@ -66,6 +66,9 @@ assert.ok(existsSync(join(root, 'app', 'card.html')), 'floating card window is r
 assert.ok(existsSync(join(root, 'app', 'card.js')), 'floating card renderer is required')
 assert.ok(existsSync(join(root, 'app', 'card.css')), 'floating card stylesheet is required')
 const cardSource = readFileSync(join(root, 'app', 'card.js'), 'utf8')
+const sharedAnkiSource = readFileSync(fileURLToPath(new URL('../../src/anki-export.js', import.meta.url)), 'utf8')
+const sharedLibrarySourceForAnki = readFileSync(fileURLToPath(new URL('../../src/library.js', import.meta.url)), 'utf8')
+const sharedLibraryHtmlForAnki = readFileSync(fileURLToPath(new URL('../../src/library.html', import.meta.url)), 'utf8')
 const sharedContractsSource = readFileSync(
   fileURLToPath(new URL('../../src/translation-contracts.js', import.meta.url)), 'utf8')
 const sharedBackgroundSource = readFileSync(
@@ -200,6 +203,12 @@ assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u
   'request builders must accept a target language override')
 assert.match(sharedContractsSource, /buildTranslationSystemPrompt/u,
   'generic system prompt must honor an explicit target language')
+
+assert.match(sharedAnkiSource, /export function buildAnkiTsv/u, 'Anki TSV builder must be a reusable module')
+assert.match(sharedAnkiSource, /escapeAnkiField/u, 'Anki export must escape untrusted field content')
+assert.match(sharedLibraryHtmlForAnki, /id="export-anki"/u, 'vocabulary book needs an Anki export button')
+assert.match(sharedLibrarySourceForAnki, /downloadAnki/u, 'vocabulary book must wire the Anki export action')
+assert.match(sharedLibrarySourceForAnki, /buildAnkiTsv/u, 'Anki export must use the shared TSV builder')
 
 assert.match(sharedProgressSource, /getStudyProgress/u, 'shared learning progress must be computed')
 assert.match(sharedProgressSource, /MASTERY_INTERVAL_DAYS/u, 'mastery threshold must be explicit')
