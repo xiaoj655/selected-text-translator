@@ -1039,6 +1039,7 @@ function renderGuide(entry) {
     reveal.type = 'button'
     reveal.addEventListener('click', () => {
       entry.answerRevealed = !entry.answerRevealed
+      persistHistory()
       renderEntry(entry)
     })
     tools.append(reveal)
