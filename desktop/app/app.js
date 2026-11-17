@@ -35,6 +35,7 @@ const state = {
   draft: null,
   draftTimer: 0,
   snackbarTimer: null,
+  announceTimer: 0,
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
@@ -57,6 +58,16 @@ function makeId(prefix) {
 function setStatus(text) {
   $('statusbar').textContent = text
   renderDiagnostics()
+}
+
+function announceResult(text) {
+  const value = String(text || '').trim()
+  if (!value) return
+  clearTimeout(state.announceTimer)
+  state.announceTimer = setTimeout(() => {
+    const node = $('result-announcer')
+    if (node) node.textContent = value
+  }, 250)
 }
 
 function setTargetLanguage(value, retranslate) {
@@ -1138,6 +1149,9 @@ function submit(options = {}) {
   cancelStaleRequests(entry.id)
   if (cached) {
     setStatus('来自翻译记忆 · 即时')
+    announceResult(entry.mode === 'guide'
+      ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
+      : entry.translatedText)
     persistHistory()
   } else {
     sendRequest(entry)
@@ -1165,6 +1179,9 @@ function handleTranslationEvent(payload) {
       }
       state.lastElapsed = Date.now() - entry.createdAt
       setStatus(`完成 · ${state.lastElapsed} ms`)
+      announceResult(entry.mode === 'guide'
+        ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
+        : entry.translatedText)
       if (entry.memoryKey) {
         state.translationMemory = writeMemoryEntry(state.translationMemory, entry.memoryKey, {
           translatedText: entry.translatedText,

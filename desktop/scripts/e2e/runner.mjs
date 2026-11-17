@@ -424,6 +424,20 @@ export async function runE2E(mode = 'core') {
         await shot(mainPage, 'main-live-translate')
       })
 
+      await check('accessibility: completed translation is announced to screen readers', async () => {
+        await mainPage.locator('#input').fill('')
+        await mainPage.locator('#input').fill('record')
+        await mainPage.locator('#btn-send').click()
+        await mainPage.waitForFunction(() => {
+          const announcer = document.getElementById('result-announcer')
+          return Boolean(announcer && /唱片/u.test(announcer.textContent || ''))
+        }, null, { timeout: 15000 })
+        const live = await mainPage.locator('#result-announcer').getAttribute('aria-live')
+        assert.equal(live, 'polite')
+        const visible = await mainPage.locator('.entry:last-child .result').textContent()
+        assert.match(visible, /唱片/u)
+      })
+
       await check('input draft: autosaved text survives reload and is cleared after submit', async () => {
         const probe = 'draft-survives-reload-probe'
         await mainPage.evaluate(() => chrome.storage.local.remove('desktop_input_draft'))
