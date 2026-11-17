@@ -214,6 +214,19 @@ assert.match(sharedLibraryHtml, /id="start-review"/u, 'reminder must offer a rev
 assert.match(sharedLibrarySource, /getStudyProgress/u, 'vocabulary book must render study progress')
 assert.match(sharedLibraryCss, /\.study-progress/u, 'vocabulary book progress must be styled')
 
+const liveLanguagesScript = readFileSync(
+  fileURLToPath(new URL('./verify-live-languages.mjs', import.meta.url)), 'utf8')
+const languageDetectSource = readFileSync(
+  fileURLToPath(new URL('./e2e/language-detect.mjs', import.meta.url)), 'utf8')
+assert.match(languageDetectSource, /export function detectLanguage/u,
+  'language detector must be a reusable pure helper')
+assert.match(liveLanguagesScript, /requestCapPerLanguage: 1/u,
+  'live language verification must cap requests per language')
+assert.match(liveLanguagesScript, /detectLanguage/u,
+  'live language verification must assert the actual output language')
+assert.match(liveLanguagesScript, /STT_LIVE_CONFIG/u,
+  'live language verification must be credential-gated')
+
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
 assert.match(appSource, /createTextNode\(entry\.translatedText/u, 'stream text must be written as a text node')
