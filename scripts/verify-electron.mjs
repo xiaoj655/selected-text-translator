@@ -15,10 +15,23 @@ const consoleErrors = []
 app.disableHardwareAcceleration()
 app.commandLine.appendSwitch('no-sandbox')
 
-app.whenReady().then(async () => {
-  const win = new BrowserWindow({
-    width: 1080,
-    height: 780,
+function attachErrorCollectors(win) {
+  win.webContents.on('console-message', (...args) => {
+    const details = args[1]
+    const level = typeof details === 'object' && details !== null ? details.level : args[1]
+    const message = typeof details === 'object' && details !== null ? details.message : args[2]
+    const isError = typeof level === 'number' ? level >= 2 : level === 'error' || level === 'warning'
+    if (isError) consoleErrors.push(String(message))
+  })
+  win.webContents.on('render-process-gone', (_event, details) => {
+    pageErrors.push(`render-process-gone: ${details.reason}`)
+  })
+}
+
+function createWindow(width, height) {
+  return new BrowserWindow({
+    width,
+    height,
     show: false,
     webPreferences: {
       preload: join(root, 'scripts', 'electron-preload-stub.cjs'),
@@ -26,17 +39,11 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   })
+}
 
-  win.webContents.on('console-message', (...args) => {
-    const details = args[1]
-    const level = typeof details === 'object' && details !== null ? details.level : args[1]
-    const message = typeof details === 'object' && details !== null ? details.message : args[2]
-    const isError = typeof level === 'number' ? level >= 2 : level === 'error' || level === 'warning'
-    if (isError) consoleErrors.push(message)
-  })
-  win.webContents.on('render-process-gone', (_event, details) => {
-    pageErrors.push(`render-process-gone: ${details.reason}`)
-  })
+app.whenReady().then(async () => {
+  const win = createWindow(1080, 780)
+  attachErrorCollectors(win)
 
   await win.loadFile(join(appDir, 'index.html'))
   await new Promise((resolve) => setTimeout(resolve, 1200))
@@ -67,7 +74,39 @@ app.whenReady().then(async () => {
     assert.deepEqual(pageErrors, [], 'no renderer crashes')
     assert.deepEqual(consoleErrors, [], 'no console errors')
 
-    console.log('[electron] ok - real Electron launched the v0.9.x UI from file:// with no errors')
+    const cardWin = createWindow(460, 360)
+    attachErrorCollectors(cardWin)
+    await cardWin.loadFile(join(appDir, 'card.html'))
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await cardWin.webContents.executeJavaScript(
+      'window.__fireSelection({ text: "The quick brown fox jumps over the lazy dog.", source: "simulated-copy", selectionId: "verify-s1", requestId: "verify-r1" })',
+      true,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 600))
+
+    const cardProbe = await cardWin.webContents.executeJavaScript(`(() => {
+      const result = document.getElementById('result')
+      return {
+        hasResult: Boolean(result),
+        resultText: result ? (result.innerText || '') : '',
+        hasPrimaryAction: Boolean(document.querySelector('.actions button.is-primary')),
+        hasMoreAction: Boolean(document.querySelector('.actions .action-more')),
+        bodyText: (document.body.innerText || '').slice(0, 300),
+      }
+    })()`, true)
+
+    console.log('[electron] cardProbe:', JSON.stringify(cardProbe, null, 2))
+
+    assert.equal(cardProbe.hasResult, true, 'card result element must render')
+    assert.ok(cardProbe.resultText.includes('敏捷的棕色狐狸'), 'real card.js must render translated text via the translation event flow')
+    assert.equal(cardProbe.hasPrimaryAction, true, 'card primary copy action must render')
+    assert.equal(cardProbe.hasMoreAction, true, 'card overflow action must render')
+
+    assert.deepEqual(pageErrors, [], 'no renderer crashes (main + card)')
+    assert.deepEqual(consoleErrors, [], 'no console errors (main + card)')
+
+    console.log('[electron] ok - real Electron launched main + card (real card.js translation flow) from file:// with no errors')
+    cardWin.close()
   } catch (error) {
     console.error('[electron] FAILED:', error.message)
     process.exitCode = 1

@@ -39,13 +39,19 @@ window.sttDesktop = {
   hideCard: noop,
   resizeCard: noop,
   setCardPinned: noop,
-  onSelection: noop,
+  onSelection: (fn) => { selectionCb = fn },
   onCardEntry: noop,
   onStatus: noop,
   openMainWithText: noop,
 }
 
 const listeners = []
+let selectionCb = null
+
+window.__fireSelection = (payload) => {
+  if (selectionCb) selectionCb(payload || {})
+}
+
 Object.defineProperty(window, 'chrome', {
   configurable: true,
   value: {
@@ -61,7 +67,27 @@ Object.defineProperty(window, 'chrome', {
       onChanged: { addListener: noop },
     },
     runtime: {
-      sendMessage: async () => ({ accepted: true }),
+      sendMessage: async (message) => {
+        if (message && message.type === 'START_TRANSLATION') {
+          const payload = message.payload || {}
+          const requestId = payload.requestId
+          setTimeout(() => {
+            for (const fn of listeners) {
+              try {
+                fn({ type: 'TRANSLATION_EVENT', payload: { requestId, selectionId: payload.selectionId, status: 'stream', translatedText: '敏捷的' } })
+              } catch { }
+            }
+          }, 40)
+          setTimeout(() => {
+            for (const fn of listeners) {
+              try {
+                fn({ type: 'TRANSLATION_EVENT', payload: { requestId, selectionId: payload.selectionId, status: 'success', translatedText: '敏捷的棕色狐狸跳过了懒狗。', lexicalDetails: null } })
+              } catch { }
+            }
+          }, 120)
+        }
+        return { accepted: true }
+      },
       onMessage: { addListener: (fn) => listeners.push(fn) },
       getURL: (p) => `app://local/${p}`,
       lastError: undefined,
