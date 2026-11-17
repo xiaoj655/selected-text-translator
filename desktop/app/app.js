@@ -372,6 +372,18 @@ function runExport(kind) {
   } else if (kind === 'json') {
     downloadText(`划词翻译-${formatStamp()}.json`, buildJson(), 'application/json')
     setStatus(`已导出 ${state.entries.length} 条记录为 JSON`)
+  } else if (kind === 'anki') {
+    const cell = (value) => String(value || '').replace(/\s+/gu, ' ').trim()
+    const rows = state.entries
+      .filter((entry) => entry.status === 'done' && entry.text && resultPlainText(entry))
+      .map((entry) => `${cell(entry.text)}\t${cell(resultPlainText(entry))}`)
+    if (!rows.length) {
+      setStatus('没有可导入 Anki 的双语记录')
+      closeExportMenu()
+      return
+    }
+    downloadText(`划词翻译-Anki-${formatStamp()}.txt`, rows.join('\n'), 'text/plain')
+    setStatus(`已导出 ${rows.length} 条记录为 Anki 词卡`)
   } else if (kind === 'copy') {
     window.sttDesktop.copyText(buildMarkdown())
     setStatus('已复制全部记录为 Markdown')
