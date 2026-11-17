@@ -167,6 +167,7 @@ assert.match(appCss, /--shadow-1/u, 'containers must use the shared elevation sc
 assert.match(appCss, /--shadow-2/u, 'cards must use the shared elevation scale')
 assert.match(tokensCss, /--shadow-card:/u, 'floating card shadow token must be defined')
 assert.match(cardCss, /--shadow-card/u, 'floating card must use the clipped-safe shadow token')
+assert.match(windowsSource, /hasShadow:\s*false/u, 'transparent card window must disable the native shadow on macOS')
 
 assert.match(tokensCss, /--on-accent:/u, 'button ink token must be defined')
 assert.match(appCss, /button\.primary/u, 'primary buttons must use the accent')

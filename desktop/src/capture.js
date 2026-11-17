@@ -1,6 +1,21 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function createProbe() {
+  return `stt-clipboard-probe-${randomUUID()}`
+}
+
+function payload(text, source) {
+  return {
+    text: String(text || '').trim().slice(0, 12000),
+    context: '',
+    contextStart: null,
+    contextEnd: null,
+    source,
+  }
+}
 
 function runCommand(command, args, timeout = 1500) {
   return new Promise((resolve) => {
@@ -56,32 +71,30 @@ export function createCapture({ clipboard, platform = process.platform, delay = 
   }
 
   async function capture() {
-    const before = await readClipboardText()
+    const previous = await readClipboardText()
+    if (mode === 'clipboard') return payload(previous, 'clipboard-only')
 
-    const didCopy = mode === 'clipboard' ? false : await simulateCopy()
-    let after = before
+    const probe = createProbe()
+    await writeClipboardText(probe)
+    const didCopy = await simulateCopy()
+
+    let selected = ''
     if (didCopy) {
       for (let attempt = 0; attempt < 15; attempt += 1) {
         await delay(50)
         const current = await readClipboardText()
-        if (current && current !== before) {
-          after = current
+        if (current && current !== probe) {
+          selected = current
           break
         }
       }
-      if (after !== before) {
-        await writeClipboardText(before)
-      }
     }
 
-    return {
-      text: after.trim().slice(0, 12000),
-      context: '',
-      contextStart: null,
-      contextEnd: null,
-      source: didCopy && after !== before ? 'simulated-copy'
-        : mode === 'clipboard' ? 'clipboard-only' : 'clipboard',
-    }
+    await writeClipboardText(previous)
+    if (selected) return payload(selected, 'simulated-copy')
+
+    logger('capture: no selection obtained', { didCopy })
+    return payload('', 'error')
   }
 
   return { capture, setMode, getMode: () => mode }

@@ -183,6 +183,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       height: CARD_HEIGHT,
       frame: false,
       transparent: true,
+      hasShadow: false,
       resizable: false,
       maximizable: false,
       minimizable: false,

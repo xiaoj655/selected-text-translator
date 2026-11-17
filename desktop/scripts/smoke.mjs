@@ -72,8 +72,8 @@ const capture = createCapture({
   delay: async () => {},
 })
 const result = await capture.capture()
-assert.equal(result.text, 'clipboard word')
-assert.equal(result.source, 'clipboard')
+assert.equal(result.text, '')
+assert.equal(result.source, 'error')
 assert.equal(clipboardText, '  clipboard word  ')
 
 // Electron 45 returns a Promise from clipboard.readText(); capture must await it.
@@ -91,6 +91,30 @@ const asyncResult = await asyncClipboard.capture()
 assert.equal(asyncResult.text, 'async clipboard sentence')
 assert.equal(typeof asyncResult.text, 'string')
 assert.ok(!(asyncResult.text instanceof Promise), 'capture text must never be a Promise')
+
+let selectionClipboard = 'STALE CLIPBOARD CONTENT'
+const selectionCapture = createCapture({
+  clipboard: {
+    readText: () => selectionClipboard,
+    writeText: (value) => {
+      selectionClipboard = value
+    },
+  },
+  run: async () => {
+    selectionClipboard = 'SELECTED TEXT FROM APP'
+    return true
+  },
+  delay: async () => {},
+})
+const selectionResult = await selectionCapture.capture()
+assert.equal(selectionResult.text, 'SELECTED TEXT FROM APP')
+assert.equal(selectionResult.source, 'simulated-copy')
+assert.equal(selectionClipboard, 'STALE CLIPBOARD CONTENT')
+
+selectionCapture.setMode('clipboard')
+const clipboardOnly = await selectionCapture.capture()
+assert.equal(clipboardOnly.text, 'STALE CLIPBOARD CONTENT')
+assert.equal(clipboardOnly.source, 'clipboard-only')
 
 rmSync(userDataDir, { recursive: true, force: true })
 console.log('[smoke] ok - storage, chrome shim, background message chain, capture fallback')
