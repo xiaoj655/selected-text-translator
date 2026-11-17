@@ -281,23 +281,38 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 @media (max-width: 560px) { .empty-modes { grid-template-columns: 1fr; } }
 
 .entry { width: 100%; max-width: 820px; margin-bottom: 18px; }
-.entry-source { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.bubble {
-  max-width: 82%;
-  padding: 9px 13px;
-  background: var(--surface);
-  color: var(--text-2);
+.entry-source {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 0;
+  padding: 11px 14px 10px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--r-sm);
+  border-bottom: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--surface);
+}
+.source-label {
+  flex: none;
+  font-size: 11px;
+  line-height: 1.9;
+  letter-spacing: .04em;
+  color: var(--text-3);
+}
+.bubble {
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  color: var(--text-2);
+  border: 0;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: pointer;
 }
-.bubble:hover { background: var(--surface-2); color: var(--text); }
-.entry-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-1); }
+.bubble:hover { color: var(--text); }
+.entry-card { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r-lg) var(--r-lg); background: var(--surface); box-shadow: var(--shadow-1); }
 .entry-card:hover { box-shadow: var(--shadow-2); }
 .entry-head { display: flex; align-items: center; gap: 9px; padding: 10px 14px; cursor: pointer; user-select: none; }
 .tag { font-size: 11px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-text); }

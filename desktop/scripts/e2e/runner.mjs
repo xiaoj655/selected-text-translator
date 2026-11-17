@@ -361,6 +361,7 @@ export async function runE2E(mode = 'core') {
           }, null, { timeout: 20000 })
           const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
           assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
+          assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), '原文')
           await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
           await delay(300)
           await shot(mainPage, 'main-dictionary-card')

@@ -163,6 +163,8 @@ assert.match(appSource, /downloadText/u, 'exports must be downloaded via a blob'
 assert.match(appSource, /updateStats/u, 'conversation stats must be refreshed')
 assert.match(appSource, /toggleExportMenu/u, 'export menu needs an open/close handler')
 assert.match(appSource, /result-label/u, 'results need a labeled typography block')
+assert.match(appSource, /source-label/u, 'study cards need a labeled source row')
+assert.match(appCss, /\.entry-source\s*\{[^}]*border-radius/u, 'source row must join the card as a study header')
 assert.match(appCss, /\.export-menu/u, 'export menu must be styled')
 assert.match(appCss, /\.result-label/u, 'result label must be styled')
 assert.match(appCss, /\.status-stats/u, 'stats element must be styled')

@@ -1313,6 +1313,7 @@ function renderEntryEl(entry) {
   if (collapsed) wrapper.classList.add('is-collapsed')
 
   const source = el('div', 'entry-source')
+  source.append(el('span', 'source-label', '原文'))
   const bubble = el('div', 'bubble', entry.text)
   bubble.title = '点击回填到输入框'
   bubble.addEventListener('click', () => {
