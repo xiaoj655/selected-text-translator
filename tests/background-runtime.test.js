@@ -337,3 +337,33 @@ test('cancelled requests cannot populate a reusable successful result', async ()
     assert.equal(events.filter((event) => event.payload.requestId === 'cancel-me' && event.payload.status === 'success').length, 0)
   })
 })
+
+test('a 429 response is retried using Retry-After before succeeding', async () => {
+  let count = 0
+  await withBackground({ fetchImpl: () => {
+    count += 1
+    if (count === 1) {
+      return new Response('rate limited', { status: 429, headers: { 'Retry-After': '0' } })
+    }
+    return Response.json({ choices: [{ message: { content: JSON.stringify(guide) } }] })
+  } }, async ({ send, waitFor, events, requests }) => {
+    send(payload)
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    assert.equal(requests.length, 2, 'a single 429 must be retried once')
+    assert.equal(events.at(-1).payload.status, 'success')
+    assert.equal(events.filter((event) => event.payload.status === 'error').length, 0)
+  })
+})
+
+test('repeated 429 responses stop after the retry cap and surface an error', async () => {
+  let count = 0
+  await withBackground({ fetchImpl: () => {
+    count += 1
+    return new Response('rate limited', { status: 429, headers: { 'Retry-After': '0' } })
+  } }, async ({ send, waitFor, events, requests }) => {
+    send(payload)
+    await waitFor(() => events.some((event) => event.payload.status === 'error'))
+    assert.equal(requests.length, 3, 'initial request plus two retries')
+    assert.match(events.at(-1).payload.message, /429/u)
+  })
+})

@@ -317,6 +317,12 @@ assert.match(sharedBackgroundSource, /fromMemory: true/u,
   'extension background must label memory hits for the content script')
 assert.match(sharedBackgroundSource, /IS_EXTENSION_SERVICE_WORKER/u,
   'translation memory must stay scoped to the real extension service worker')
+assert.match(sharedBackgroundSource, /isRateLimited/u,
+  'background must detect rate-limit responses')
+assert.match(sharedBackgroundSource, /planRetry/u,
+  'background must compute bounded retry delays for 429 responses')
+assert.match(sharedBackgroundSource, /sleepAbortable/u,
+  'background retries must be abortable so cancellation stays responsive')
 assert.match(sharedContentSource, /stt-memory-badge/u,
   'extension card must surface a translation-memory badge')
 assert.match(sharedContentSource, /state\.activeSelection\.fromMemory/u,

@@ -19,6 +19,7 @@ import { readProviderSettings } from './provider-settings.js'
 import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings } from './reading-support.js'
 import { handleSpeechMessage } from './speech.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from './translation-memory.js'
+import { isRateLimited, planRetry, sleepAbortable } from './retry-policy.js'
 
 const LOG_PREFIX = '[selected-text-translation]'
 const activeRequests = new Map()
@@ -210,12 +211,27 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       selectedText: createSelectedTextDiagnostics(text) })
     debugLog('request_payload', { selectionId, requestId,
       request: { host: new URL(endpoint).host, body: sanitizeRequestBodyForLog(requestBody) } })
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    })
+    let response
+    let retryAttempt = 0
+    while (true) {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      })
+      if (!response.ok && isRateLimited(response.status)) {
+        const decision = planRetry({ status: response.status, attempt: retryAttempt,
+          retryAfter: response.headers?.get?.('retry-after') })
+        if (decision.retry && !controller.signal.aborted && activeRequests.get(key) === active) {
+          debugLog('rate_limit_retry', { selectionId, requestId, attempt: retryAttempt, delayMs: decision.delayMs })
+          await sleepAbortable(decision.delayMs, controller.signal)
+          retryAttempt += 1
+          continue
+        }
+      }
+      break
+    }
     if (!response.ok) {
       const help = { 400: 'Check that the model supports this request format.', 401: 'Check your API key.', 403: 'Check model access.',
         404: 'Check the Base URL and model name.', 429: 'Rate limit reached. Please try again shortly.' }
