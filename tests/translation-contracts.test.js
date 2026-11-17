@@ -21,6 +21,25 @@ test('getTargetLanguage detects Chinese-containing text', () => {
   assert.equal(getTargetLanguage('hello world'), 'Chinese');
 });
 
+test('getTargetLanguage honors an explicit target language', () => {
+  assert.equal(getTargetLanguage('hello world', 'Japanese'), 'Japanese');
+  assert.equal(getTargetLanguage('你好 world', 'French'), 'French');
+  assert.equal(getTargetLanguage('hello world', 'auto'), 'Chinese');
+  assert.equal(getTargetLanguage('hello world', '  '), 'Chinese');
+  assert.equal(getTargetLanguage('hello world', undefined), 'Chinese');
+});
+
+test('buildQwenMtRequest uses an explicit target language', () => {
+  const request = buildQwenMtRequest({ model: 'qwen-mt-flash', text: 'hello world', targetLanguage: 'Japanese' });
+  assert.equal(request.translation_options.target_lang, 'Japanese');
+});
+
+test('buildGenericRequest injects an explicit target language into the system prompt', () => {
+  const request = buildGenericRequest({ model: 'qwen3-235b-a22b', text: 'hello world', targetLanguage: 'Japanese' });
+  assert.match(request.messages[0].content, /Translate only selectedText into Japanese\./u);
+  assert.doesNotMatch(request.messages[0].content, /If selectedText contains Chinese/u);
+});
+
 test('isQwenMtModel detects qwen-mt family case-insensitively', () => {
   assert.equal(isQwenMtModel('qwen-mt-turbo'), true);
   assert.equal(isQwenMtModel('QWEN-MT-PLUS'), true);
@@ -161,7 +180,7 @@ for (const { name, build } of contextualRequestBuilders) {
       { text: 'record', context: '这里的 record 指一张唱片。', target: 'Chinese' },
       { text: '记录', context: 'The word 记录 is used as a verb here.', target: 'English' },
     ]) {
-      const request = build({ ...input, targetLanguage: input.target === 'Chinese' ? 'English' : 'Chinese' })
+      const request = build({ text: input.text, context: input.context })
       const source = readSourceData(request)
       assert.equal(source.selectedText, input.text)
       assert.equal(source.targetLanguage, input.target)

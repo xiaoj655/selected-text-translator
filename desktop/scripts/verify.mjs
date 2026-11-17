@@ -66,6 +66,10 @@ assert.ok(existsSync(join(root, 'app', 'card.html')), 'floating card window is r
 assert.ok(existsSync(join(root, 'app', 'card.js')), 'floating card renderer is required')
 assert.ok(existsSync(join(root, 'app', 'card.css')), 'floating card stylesheet is required')
 const cardSource = readFileSync(join(root, 'app', 'card.js'), 'utf8')
+const sharedContractsSource = readFileSync(
+  fileURLToPath(new URL('../../src/translation-contracts.js', import.meta.url)), 'utf8')
+const sharedBackgroundSource = readFileSync(
+  fileURLToPath(new URL('../../src/background.js', import.meta.url)), 'utf8')
 assert.match(cardSource, /START_TRANSLATION/u, 'card must drive the translation protocol')
 assert.match(cardSource, /onSelection/u, 'card must accept hotkey payloads')
 assert.match(cardSource, /reportEntry/u, 'card must sync finished entries to the main window')
@@ -178,6 +182,16 @@ assert.match(appSource, /guide-intro/u, 'guide cards need a learning-intent intr
 assert.match(appSource, /hint-step/u, 'guide hints need numbered step markers')
 assert.match(appCss, /\.entry-card--guide/u, 'guide card style must be defined')
 assert.match(appCss, /\.hint-step/u, 'hint step markers must be styled')
+
+assert.match(htmlSource, /id="opt-target-language"/u, 'target language selector is required')
+assert.match(appSource, /desktop_target_language/u, 'target language must be persisted')
+assert.match(appSource, /targetLanguage: state\.targetLanguage/u, 'target language must be sent with translation requests')
+assert.match(sharedBackgroundSource, /targetLanguage: payload\?\.targetLanguage/u,
+  'background must forward target language into request builders')
+assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u,
+  'request builders must accept a target language override')
+assert.match(sharedContractsSource, /buildTranslationSystemPrompt/u,
+  'generic system prompt must honor an explicit target language')
 
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')

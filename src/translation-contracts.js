@@ -63,8 +63,23 @@ export function containsChineseCharacters(text) {
   return /[\u3400-\u9fff]/u.test(text);
 }
 
-export function getTargetLanguage(text) {
+export function getTargetLanguage(text, targetLanguage) {
+  if (typeof targetLanguage === 'string' && targetLanguage.trim() && targetLanguage !== 'auto') {
+    return targetLanguage.trim();
+  }
   return containsChineseCharacters(text) ? 'English' : 'Chinese';
+}
+
+const AUTO_DIRECTION_SENTENCE = 'Translate only selectedText. If selectedText contains Chinese, translate into English. Otherwise translate into Simplified Chinese.';
+
+function buildTranslationSystemPrompt(targetLanguage) {
+  if (typeof targetLanguage === 'string' && targetLanguage.trim() && targetLanguage !== 'auto') {
+    return TRANSLATION_SYSTEM_PROMPT.replace(
+      AUTO_DIRECTION_SENTENCE,
+      `Translate only selectedText into ${targetLanguage.trim()}.`
+    );
+  }
+  return TRANSLATION_SYSTEM_PROMPT;
 }
 
 export function isQwenMtModel(model) {
@@ -79,9 +94,9 @@ export function usesStructuredOutputForModel(model) {
   return !isQwenMtModel(model);
 }
 
-export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd }) {
+export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd, targetLanguage }) {
   const scope = createQwenTranslationScope({ text, context, contextStart, contextEnd })
-  const targetLanguage = getTargetLanguage(text)
+  const resolvedTarget = getTargetLanguage(text, targetLanguage)
   return {
     model,
     stream: isQwenMtStreamingModel(model),
@@ -93,14 +108,15 @@ export function buildQwenMtRequest({ model, text, context, contextStart, context
     ],
     translation_options: {
       source_lang: 'auto',
-      target_lang: targetLanguage,
+      target_lang: resolvedTarget,
       ...(scope ? { domains: scope.domains } : {}),
     }
   };
 }
 
-export function buildGenericRequest({ model, text, context, contextStart, contextEnd }) {
-  const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd })
+export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage }) {
+  const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage })
+  const systemPrompt = buildTranslationSystemPrompt(targetLanguage)
   const payload = {
     model,
     stream: false,
@@ -108,8 +124,8 @@ export function buildGenericRequest({ model, text, context, contextStart, contex
       {
         role: 'system',
         content: sourceData
-          ? `${TRANSLATION_SYSTEM_PROMPT} ${CONTEXTUAL_SOURCE_INSTRUCTIONS}`
-          : TRANSLATION_SYSTEM_PROMPT
+          ? `${systemPrompt} ${CONTEXTUAL_SOURCE_INSTRUCTIONS}`
+          : systemPrompt
       },
       {
         role: 'user',
@@ -131,13 +147,13 @@ export function buildGenericRequest({ model, text, context, contextStart, contex
   return payload;
 }
 
-function createContextualSourceData({ text, context, contextStart, contextEnd }) {
+function createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage }) {
   const selectedText = String(text || '')
   const surroundingContext = String(context || '').slice(0, MAX_TRANSLATION_CONTEXT_LENGTH)
   if (!selectedText.trim() || !surroundingContext.trim() || surroundingContext.trim() === selectedText.trim()
     || !surroundingContext.includes(selectedText)) return null
 
-  const sourceData = { selectedText, surroundingContext, targetLanguage: getTargetLanguage(selectedText) }
+  const sourceData = { selectedText, surroundingContext, targetLanguage: getTargetLanguage(selectedText, targetLanguage) }
   const hasExactSpan = Number.isInteger(contextStart) && Number.isInteger(contextEnd)
     && contextStart >= 0 && contextEnd > contextStart && contextEnd <= surroundingContext.length
     && surroundingContext.slice(contextStart, contextEnd) === selectedText

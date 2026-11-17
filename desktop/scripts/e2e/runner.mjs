@@ -421,6 +421,63 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('target language: explicit setting reaches the model request', async () => {
+        const capturedBodies = []
+        const ensureSettings = async () => {
+          const hidden = await mainPage.locator('#settings-panel').evaluate((el) => el.hidden)
+          if (hidden) await mainPage.locator('#btn-settings').click()
+          await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+        }
+        const waitForCaptured = async (count) => {
+          const deadline = Date.now() + 20000
+          while (capturedBodies.length < count && Date.now() < deadline) await delay(50)
+          assert.ok(capturedBodies.length >= count, `expected ${count} captured requests, got ${capturedBodies.length}`)
+        }
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          capturedBodies.push(body)
+          await defaultResponse({ body, res })
+        })
+        try {
+          await ensureSettings()
+          await mainPage.locator('#opt-target-language').selectOption('Japanese')
+          const saved = await mainPage.evaluate(() => chrome.storage.sync.get('desktop_target_language'))
+          assert.equal(saved.desktop_target_language, 'Japanese')
+          await mainPage.locator('#btn-close-settings').click()
+
+          await mainPage.locator('#input').fill('record')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const result = document.querySelector('.entry:last-child .result')
+            return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+          }, null, { timeout: 20000 })
+          await waitForCaptured(1)
+          assert.equal(capturedBodies[0].translation_options?.target_lang, 'Japanese',
+            'Qwen-MT request should carry the explicit target language')
+
+          await setConfig(mainPage, { model: 'mock-generic' })
+          await mainPage.locator('#input').fill('simple')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const results = document.querySelectorAll('.entry:last-child .result')
+            const result = results[results.length - 1]
+            return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+          }, null, { timeout: 20000 })
+          await waitForCaptured(2)
+          const systemPrompt = capturedBodies[1].messages?.[0]?.content || ''
+          assert.match(systemPrompt, /Translate only selectedText into Japanese\./u,
+            'generic request system prompt should carry the explicit target language')
+          assert.doesNotMatch(systemPrompt, /If selectedText contains Chinese/u,
+            'generic system prompt should not keep the auto-direction sentence')
+          await shot(mainPage, 'main-target-language')
+        } finally {
+          mock.resetHandler()
+          await ensureSettings()
+          await mainPage.locator('#opt-target-language').selectOption('auto')
+          await mainPage.locator('#btn-close-settings').click()
+          await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

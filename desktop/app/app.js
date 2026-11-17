@@ -8,6 +8,7 @@ const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
 
 const state = {
   mode: 'translate',
+  targetLanguage: 'auto',
   entries: [],
   counter: 0,
   configured: false,
@@ -798,6 +799,7 @@ function sendRequest(entry, forceRefresh = false) {
         context: '',
         contextStart: null,
         contextEnd: null,
+        targetLanguage: state.targetLanguage,
       },
     }, (response) => {
       if (!response?.accepted) failEntry(entry, '后台没有接受请求,请重试。')
@@ -1535,6 +1537,13 @@ function bind() {
       ? '已停用悬浮翻译卡:快捷键取词会直接在主窗口翻译'
       : '已恢复悬浮翻译卡')
   })
+  $('opt-target-language').addEventListener('change', (event) => {
+    state.targetLanguage = event.target.value
+    void chrome.storage.sync.set({ desktop_target_language: state.targetLanguage })
+    setStatus(state.targetLanguage === 'auto'
+      ? '目标语言已设为自动(按原文语言判断)'
+      : `目标语言已设为 ${event.target.options[event.target.selectedIndex]?.text || state.targetLanguage}`)
+  })
   $('btn-hotkey').addEventListener('click', async () => {
     const value = $('cfg-hotkey').value.trim()
     if (!value) return
@@ -1912,6 +1921,14 @@ async function init() {
     // default mode
   }
   renderModes()
+  try {
+    const savedTarget = await chrome.storage.sync.get(['desktop_target_language'])
+    state.targetLanguage = savedTarget?.desktop_target_language || 'auto'
+    const targetSelect = $('opt-target-language')
+    if (targetSelect) targetSelect.value = state.targetLanguage
+  } catch {
+    // default target language
+  }
   try {
     const savedPrefs = await chrome.storage.sync.get(['desktop_prefs'])
     if (savedPrefs?.desktop_prefs && typeof savedPrefs.desktop_prefs === 'object') {

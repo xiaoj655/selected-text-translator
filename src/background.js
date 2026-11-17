@@ -141,9 +141,9 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
           contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind })
       : isQwenMtRequest
         ? buildQwenMtRequest({ model, text, context: payload?.context,
-            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage })
         : buildGenericRequest({ model, text, context: payload?.context,
-            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage })
     const endpoint = normalizeEndpoint(settings.baseUrl)
     try {
       cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
