@@ -248,6 +248,21 @@ export async function runE2E(mode = 'core') {
       await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length === 0, null, { timeout: 5000 })
     })
 
+    await check('differentiation empty state: dual-mode cards switch translate/guide intent', async () => {
+      assert.equal(await mainPage.locator('.empty').count(), 1, 'empty state should be visible')
+      assert.equal(await mainPage.locator('.empty-mode').count(), 2, 'two mode cards should be shown')
+      await shot(mainPage, 'empty-state-modes')
+      await mainPage.locator('.empty-mode[data-empty-mode="guide"]').click()
+      await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="guide"]')?.classList.contains('is-active'))
+      const savedMode = await mainPage.evaluate(() => chrome.storage.sync.get('reading_mode'))
+      assert.equal(savedMode.reading_mode, 'guide')
+      assert.equal(await mainPage.locator('.empty-mode[data-empty-mode="guide"].is-active').count(), 1)
+      await shot(mainPage, 'empty-state-guide-active')
+      await mainPage.locator('.empty-mode[data-empty-mode="translate"]').click()
+      await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="translate"]')?.classList.contains('is-active'))
+      await shot(mainPage, 'empty-state-translate-active')
+    })
+
     await check('floating card switch: UI toggle updates the main-process flag', async () => {
       await mainPage.locator('#btn-settings').click()
       await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)

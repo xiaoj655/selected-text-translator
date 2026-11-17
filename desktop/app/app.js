@@ -342,7 +342,7 @@ function openExportMenu() {
   menu.hidden = false
   $('btn-export').setAttribute('aria-expanded', 'true')
   $('export-note').textContent = state.entries.length
-    ? `共 ${state.entries.length} 条记录 · 将导出全部对话`
+    ? `共 ${state.entries.length} 条记录 · 将导出全部学习记录`
     : '还没有可导出的记录'
 }
 
@@ -773,6 +773,9 @@ async function setMode(mode) {
   if (!['translate', 'guide'].includes(mode) || mode === state.mode) return
   state.mode = mode
   renderModes()
+  for (const card of document.querySelectorAll('.empty-mode')) {
+    card.classList.toggle('is-active', card.dataset.emptyMode === mode)
+  }
   try {
     await chrome.storage.sync.set({ reading_mode: mode })
   } catch {
@@ -954,14 +957,33 @@ function renderEmpty() {
   const hero = el('div', 'empty-hero')
   hero.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
   box.append(hero)
-  box.append(el('h2', '', '随时查词、翻译,或理解一句话'))
-  const line1 = el('p', '', '复制内容后点「粘贴并翻译」即可,按热键或粘贴到输入框也可以。')
+  box.append(el('h2', '', '让每个英文词句,都真正读懂'))
+  box.append(el('p', 'empty-lead', '不只给译文。按需选择「直接翻译」快速理解,或用「引导理解」自己想出含义。'))
+
+  const modes = el('div', 'empty-modes')
+  for (const [mode, icon, title, desc] of [
+    ['translate', '译', '直接翻译', '立刻得到译文、音标与用法,适合快速读懂一句话。'],
+    ['guide', '思', '引导理解', '先给线索、再揭晓答案,把查词变成一次主动思考。'],
+  ]) {
+    const card = el('button', 'empty-mode')
+    card.type = 'button'
+    card.dataset.emptyMode = mode
+    if (state.mode === mode) card.classList.add('is-active')
+    card.append(el('span', 'empty-mode-icon', icon))
+    const text = el('span', 'empty-mode-text')
+    text.append(el('strong', '', title))
+    text.append(el('small', '', desc))
+    card.append(text)
+    card.addEventListener('click', () => {
+      void setMode(mode)
+      $('input').focus()
+    })
+    modes.append(card)
+  }
+  box.append(modes)
+
+  const line1 = el('p', 'empty-tip', '复制内容后点「粘贴并翻译」,或直接试试:')
   box.append(line1)
-  const line2 = el('p')
-  line2.append('全局热键 ')
-  line2.append(el('kbd', '', state.hotkey || 'Alt+Shift+E'))
-  line2.append(' 可在任何应用中取词并翻译。')
-  box.append(line2)
   const examples = el('div', 'empty-examples')
   for (const [label, text] of [
     ['试一个单词', 'record'],
@@ -980,6 +1002,11 @@ function renderEmpty() {
     examples.append(button)
   }
   box.append(examples)
+  const hotkey = el('p', 'empty-hotkey')
+  hotkey.append('在任意应用中选中英文,按 ')
+  hotkey.append(el('kbd', '', state.hotkey || 'Alt+Shift+E'))
+  hotkey.append(' 即可取词。')
+  box.append(hotkey)
   return box
 }
 
@@ -1497,16 +1524,16 @@ function bind() {
   })
   $('btn-clear').addEventListener('click', () => {
     if (!state.entries.length) {
-      setStatus('没有可清空的对话')
+      setStatus('没有可清空的学习记录')
       return
     }
     const count = state.entries.length
-    showSnackbar('确定清空全部 ' + count + ' 条对话？', '清空', () => {
+    showSnackbar('确定清空全部 ' + count + ' 条学习记录？', '清空', () => {
       const removed = state.entries.slice()
       state.entries = []
       void window.sttDesktop.clearHistory()
       render()
-      showSnackbar('已清空 ' + count + ' 条对话', '撤销', () => {
+      showSnackbar('已清空 ' + count + ' 条学习记录', '撤销', () => {
         state.entries = removed
         render()
         setStatus('已撤销清空')
@@ -1841,7 +1868,7 @@ function bind() {
     })
     persistHistory()
     render()
-    setStatus('悬浮卡片的翻译已同步到对话')
+    setStatus('悬浮卡片的翻译已同步到学习记录')
   })
   window.sttDesktop.onStatus((info) => {
     if (info?.hotkey) state.hotkey = info.hotkey

@@ -109,6 +109,12 @@ assert.match(cardCss, /@import '\.\/tokens\.css'/u, 'card must use shared tokens
 assert.match(appCss, /\.notice\[hidden\]/u, 'hidden notice must stay hidden')
 assert.match(htmlSource, /brand-mark/u, 'topbar needs the gradient brand mark')
 assert.match(appSource, /empty-hero/u, 'empty state needs a hero mark')
+assert.match(appSource, /empty-modes/u, 'empty state must offer dual-mode entry')
+assert.match(appSource, /dataset\.emptyMode/u, 'empty mode cards must select translate/guide')
+assert.match(appSource, /is-active[\s\S]{0,80}dataset\.emptyMode[\s\S]{0,80}mode/u,
+  'mode changes must keep empty-mode card highlight in sync')
+assert.match(appSource, /让每个英文词句/u, 'empty state must communicate the learning-tool positioning')
+assert.match(appCss, /\.empty-modes\s*\{/u, 'empty state mode cards need layout styles')
 assert.match(appSource, /guide-tools/u, 'guide actions need grouped controls')
 
 assert.match(htmlSource, /id="btn-help"/u, 'help button must exist')
