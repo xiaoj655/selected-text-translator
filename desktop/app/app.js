@@ -20,6 +20,7 @@ const state = {
   model: '',
   translationMemory: {},
   entries: [],
+  activeEntryId: null,
   counter: 0,
   configured: false,
   speechId: null,
@@ -228,11 +229,11 @@ function jumpToEntry(id) {
   const entry = state.entries.find((item) => item.id === id)
   if (!entry) return
   state.collapsed.delete(id)
-  renderEntry(entry)
+  state.activeEntryId = id
+  render()
   closeSidebar()
   const node = $('stream').querySelector(`[data-entry-id="${id}"]`)
   if (!node) return
-  node.scrollIntoView({ behavior: state.prefs.reducedMotion ? 'auto' : 'smooth', block: 'center' })
   node.classList.add('is-highlight')
   setTimeout(() => node.classList.remove('is-highlight'), 1600)
 }
@@ -331,15 +332,6 @@ function downloadText(filename, content, mime) {
   link.click()
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 2000)
-}
-
-function updateStats() {
-  const entries = state.entries
-  const guides = entries.filter((entry) => entry.mode === 'guide').length
-  const chars = entries.reduce((sum, entry) => sum + String(entry.text || '').length, 0)
-  const node = $('status-stats')
-  node.textContent = `共 ${entries.length} 条 · 翻译 ${entries.length - guides} · 引导 ${guides} · 原文 ${chars.toLocaleString('zh-CN')} 字`
-  node.title = `本次会话共 ${entries.length} 条记录,原文累计 ${chars} 字`
 }
 
 async function updateStudyProgress() {
@@ -1033,6 +1025,7 @@ function submit() {
   }
   stopActiveSpeech()
   state.entries.push(entry)
+  state.activeEntryId = entry.id
   $('input').value = ''
   updateComposer()
   hideNotice()
@@ -1388,6 +1381,8 @@ function deleteEntry(entry) {
 
 function renderActions(entry) {
   const bar = el('div', 'actions')
+  bar.setAttribute('role', 'toolbar')
+  bar.setAttribute('aria-label', '结果操作')
 
   const text = resultPlainText(entry)
   if (text && entry.status === 'done') {
@@ -1486,7 +1481,7 @@ function renderActions(entry) {
 }
 
 function renderEntryEl(entry) {
-  const wrapper = el('div', 'entry')
+  const wrapper = el('article', 'entry')
   wrapper.dataset.entryId = entry.id
   const collapsed = state.collapsed.has(entry.id)
   if (collapsed) wrapper.classList.add('is-collapsed')
@@ -1540,14 +1535,16 @@ function render(forceBottom = true) {
   hideSelectionToolbar()
   persistHistory()
   const stream = $('stream')
+  const active = state.entries.find((item) => item.id === state.activeEntryId)
+    || state.entries[state.entries.length - 1]
+  if (active) state.activeEntryId = active.id
   const stick = forceBottom || isNearBottom()
   stream.replaceChildren()
-  if (!state.entries.length) stream.append(renderEmpty())
-  else for (const entry of state.entries) stream.append(renderEntryEl(entry))
+  if (!active) stream.append(renderEmpty())
+  else stream.append(renderEntryEl(active))
   if (stick) stream.scrollTop = stream.scrollHeight
   updateScrollFab()
   renderHistory()
-  updateStats()
 }
 
 function patchStreamResult(entry) {
@@ -1565,7 +1562,6 @@ function patchStreamResult(entry) {
   const lexical = renderLexical(entry)
   if (lexical) result.append(lexical)
   followStreamBottom()
-  updateStats()
 }
 
 function renderEntry(entry) {
@@ -1579,7 +1575,6 @@ function renderEntry(entry) {
   if (['pending', 'loading', 'streaming'].includes(entry.status)) followStreamBottom()
   updateScrollFab()
   renderHistory()
-  updateStats()
 }
 
 function cancelRequest(entry) {
@@ -2081,8 +2076,9 @@ function bind() {
   window.sttDesktop.onCardEntry((entry) => {
     if (!entry || typeof entry.text !== 'string' || !entry.text.trim()) return
     if (state.entries.some((item) => item.requestId === entry.requestId)) return
+    const activeId = String(entry.id || makeId('s'))
     state.entries.push({
-      id: String(entry.id || makeId('s')),
+      id: activeId,
       requestId: String(entry.requestId || makeId('r')),
       text: entry.text.slice(0, 12000),
       mode: 'translate',
@@ -2095,6 +2091,7 @@ function bind() {
       hintCount: 1,
       answerRevealed: false,
     })
+    state.activeEntryId = activeId
     persistHistory()
     render()
     setStatus('悬浮卡片的翻译已同步到学习记录')

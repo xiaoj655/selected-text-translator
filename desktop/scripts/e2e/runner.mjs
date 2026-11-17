@@ -183,7 +183,12 @@ async function measure(cardPage, mainPage, label) {
 }
 
 async function shot(cardPage, name) {
-  await cardPage.screenshot({ path: join(screenshotDir, `${name}.png`) })
+  try {
+    await delay(250)
+    await cardPage.screenshot({ path: join(screenshotDir, `${name}.png`), animations: 'disabled', timeout: 12000 })
+  } catch (error) {
+    console.warn(`[e2e] screenshot ${name} skipped: ${String(error?.message || error).split('\n')[0]}`)
+  }
 }
 
 export async function runE2E(mode = 'core') {
@@ -290,7 +295,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('main window: scrolling up during streaming is not yanked back', async () => {
-        const translation = '这是一段很长的流式译文,足够让内容超出可视区域。'.repeat(12)
+        const translation = '这是一段很长的流式译文,足够让内容超出可视区域。'.repeat(40)
         mock.setHandler(async ({ body, res }) => {
           if (!body?.stream) {
             res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -344,6 +349,33 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('focused view: a new lookup replaces the previous result and history stays in sidebar', async () => {
+        await mainPage.locator('#input').fill('record')
+        await mainPage.locator('#btn-send').click()
+        await mainPage.waitForFunction(() => {
+          const result = document.querySelector('.entry .result')
+          return Boolean(result && result.textContent.match(/唱片/u) && !result.classList.contains('is-loading'))
+        }, null, { timeout: 20000 })
+        assert.equal(await mainPage.locator('.entry').count(), 1, 'only the current result should be rendered')
+        assert.match(await mainPage.locator('.entry .bubble').first().textContent(), /record/u)
+
+        await mainPage.locator('#input').fill('simple')
+        await mainPage.locator('#btn-send').click()
+        await mainPage.waitForFunction(() => {
+          const result = document.querySelector('.entry .result')
+          return Boolean(result && result.textContent.match(/简单/u) && !result.classList.contains('is-loading'))
+        }, null, { timeout: 20000 })
+        assert.equal(await mainPage.locator('.entry').count(), 1, 'the second lookup must replace the first on screen')
+        assert.match(await mainPage.locator('.entry .bubble').first().textContent(), /simple/u)
+        assert.doesNotMatch(await mainPage.locator('.entry .bubble').first().textContent(), /record/u)
+
+        await mainPage.locator('#btn-history').click()
+        const historyCount = await mainPage.locator('.history-item').count()
+        assert.ok(historyCount >= 2, `past lookups should remain in the sidebar, got ${historyCount}`)
+        await shot(mainPage, 'main-focused-view')
+        await mainPage.locator('#sidebar-backdrop').click({ force: true })
+      })
+
       await check('main window: translate result renders a dictionary-style learning card', async () => {
         await setConfig(mainPage, { model: 'mock-generic' })
         try {
@@ -362,7 +394,6 @@ export async function runE2E(mode = 'core') {
           const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
           assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
           assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), '原文')
-          await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
           await delay(300)
           await shot(mainPage, 'main-dictionary-card')
         } finally {
@@ -412,7 +443,6 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('.entry:last-child').getByRole('button', { name: '揭晓答案' }).click()
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .answer')),
             null, { timeout: 5000 })
-          await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
           await delay(300)
           await shot(mainPage, 'main-guide-card')
         } finally {
@@ -800,7 +830,9 @@ export async function runE2E(mode = 'core') {
         await mainPage.locator('#btn-send').click()
         await mainPage.waitForFunction(() => {
           const result = document.querySelector('.entry:last-child .result')
-          return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading'))
+          const status = document.getElementById('statusbar')?.textContent || ''
+          return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading')
+            && /完成/u.test(status))
         }, null, { timeout: 20000 })
         const afterFirst = mock.requests.length
         assert.ok(afterFirst > before, 'first submission should reach the model API')

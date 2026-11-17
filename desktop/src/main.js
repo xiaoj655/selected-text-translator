@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, clipboard, globalShortcut, ipcMain, nativeTheme, Notification, safeStorage, shell } from 'electron'
+import { app, clipboard, globalShortcut, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
@@ -161,6 +161,7 @@ function installIpc(storage, history) {
 }
 
 async function bootstrap() {
+  Menu.setApplicationMenu(null)
   const userDataDir = app.getPath('userData')
   mkdirSync(userDataDir, { recursive: true })
   logFile = join(userDataDir, 'desktop.log')

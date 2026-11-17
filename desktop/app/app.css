@@ -430,10 +430,9 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 #btn-send svg { width: 15px; height: 15px; }
 .status-line { display: flex; align-items: center; gap: 12px; padding: 8px 2px 0; }
 .statusbar { color: var(--text-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.study-progress-chip { flex: none; font-size: 11px; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 3px 10px; white-space: nowrap; }
+.study-progress-chip { flex: none; margin-left: auto; font-size: 11px; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 3px 10px; white-space: nowrap; }
 .study-progress-chip:hover { color: var(--text); border-color: var(--border-strong); }
 .study-progress-chip.has-due { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.status-stats { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; }
 
 /* ---- snackbar & FAB ---- */
 .snackbar {
