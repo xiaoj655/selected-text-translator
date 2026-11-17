@@ -1406,6 +1406,7 @@ function cancelRequest(entry) {
   } catch {
     // the request may already have finished
   }
+  entry.requestId = makeId('r')
   entry.status = 'error'
   entry.error = '已取消请求,可以重新生成。'
   restoreFailedText(entry)
