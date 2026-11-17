@@ -382,6 +382,30 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .snackbar-action { border: 0; background: transparent; color: var(--accent-text); font-weight: 600; padding: 2px 6px; }
 .snackbar-close { border: 0; background: transparent; color: inherit; padding: 2px; display: inline-flex; }
 .snackbar-close svg { width: 15px; height: 15px; }
+
+.selection-toolbar {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-3);
+}
+.selection-toolbar[hidden] { display: none; }
+.selection-toolbar button {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.selection-toolbar button:hover { background: var(--accent-soft); color: var(--accent); }
+
 .scroll-fab {
   position: absolute; right: 24px; bottom: 152px; z-index: 30;
   width: 40px; height: 40px; border-radius: 50%; padding: 0;

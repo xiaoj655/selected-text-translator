@@ -20,6 +20,7 @@ const state = {
   lastElapsed: 0,
   prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
   collapsed: new Set(),
+  selection: null,
 }
 
 function el(tag, className, text) {
@@ -465,6 +466,68 @@ async function showCaptureHint(payload) {
     label: '查看设置',
     run: openSettings,
   })
+}
+
+function hideSelectionToolbar() {
+  $('selection-toolbar').hidden = true
+  state.selection = null
+}
+
+function showSelectionToolbar(entry, text, rect) {
+  state.selection = { entryId: entry.id, text }
+  const bar = $('selection-toolbar')
+  bar.hidden = false
+  const width = bar.offsetWidth
+  const height = bar.offsetHeight
+  let left = rect.left + rect.width / 2 - width / 2
+  left = Math.max(8, Math.min(window.innerWidth - width - 8, left))
+  const above = rect.top - height - 8
+  const top = above >= 8 ? above : rect.bottom + 8
+  bar.style.left = `${Math.round(left)}px`
+  bar.style.top = `${Math.round(top)}px`
+}
+
+function selectionInResult() {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return null
+  const text = String(selection.toString() || '').trim()
+  if (!text) return null
+  const node = selection.anchorNode
+  const anchorEl = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
+  const resultEl = anchorEl?.closest?.('.result')
+  if (!resultEl || !$('stream').contains(resultEl)) return null
+  const entryId = resultEl.closest('.entry')?.dataset.entryId
+  const entry = state.entries.find((item) => item.id === entryId)
+  if (!entry) return null
+  return { entry, text, rect: selection.getRangeAt(0).getBoundingClientRect() }
+}
+
+async function saveSelection(entry, text, button) {
+  button.setAttribute('aria-busy', 'true')
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'VOCABULARY_SAVE',
+      payload: {
+        text,
+        meaning: resultText(entry),
+        context: '',
+        contextStart: null,
+        contextEnd: null,
+        usage: '',
+        explanation: '',
+        example: '',
+        phonetic: entry.lexical?.phonetic || entry.guide?.phonetic || '',
+        sourceUrl: '',
+      },
+    })
+    const ok = Boolean(response?.ok)
+    button.textContent = ok ? '✓ 已收藏' : '收藏失败'
+    setStatus(ok ? '已加入表达本' : '收藏失败')
+  } catch {
+    button.textContent = '收藏失败'
+  } finally {
+    button.removeAttribute('aria-busy')
+  }
 }
 
 function showSnackbar(text, actionLabel, onAction) {
@@ -1214,6 +1277,7 @@ function renderEntryEl(entry) {
 }
 
 function render() {
+  hideSelectionToolbar()
   persistHistory()
   const stream = $('stream')
   stream.replaceChildren()
@@ -1544,7 +1608,45 @@ function bind() {
     const stream = $('stream')
     stream.scrollTo({ top: stream.scrollHeight, behavior: state.prefs.reducedMotion ? 'auto' : 'smooth' })
   })
-  $('stream').addEventListener('scroll', updateScrollFab, { passive: true })
+  $('stream').addEventListener('scroll', () => {
+    updateScrollFab()
+    hideSelectionToolbar()
+  }, { passive: true })
+  $('stream').addEventListener('mouseup', () => {
+    setTimeout(() => {
+      const found = selectionInResult()
+      if (found) showSelectionToolbar(found.entry, found.text, found.rect)
+      else hideSelectionToolbar()
+    }, 0)
+  })
+  document.addEventListener('mousedown', (event) => {
+    if ($('selection-toolbar').hidden) return
+    if ($('selection-toolbar').contains(event.target)) return
+    hideSelectionToolbar()
+  })
+  $('selection-toolbar').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-sel-action]')
+    if (!button || !state.selection) return
+    const { entryId, text } = state.selection
+    const entry = state.entries.find((item) => item.id === entryId)
+    const action = button.dataset.selAction
+    if (action === 'copy') {
+      void window.sttDesktop.copyText(text)
+      showCopyDone(button)
+      setStatus('已复制选中文字')
+    } else if (entry && action === 'speak') {
+      toggleSpeech(entry, text)
+    } else if (action === 'translate') {
+      $('input').value = text
+      updateComposer()
+      submit()
+    } else if (entry && action === 'save') {
+      void saveSelection(entry, text, button)
+      return
+    }
+    hideSelectionToolbar()
+    window.getSelection()?.removeAllRanges()
+  })
 
   $('btn-history').addEventListener('click', toggleSidebar)
   $('btn-close-sidebar').addEventListener('click', closeSidebar)
@@ -1587,6 +1689,11 @@ function bind() {
       return
     }
     if (event.key === 'Escape') {
+      if (!$('selection-toolbar').hidden) {
+        hideSelectionToolbar()
+        window.getSelection()?.removeAllRanges()
+        return
+      }
       const openActionMenu = document.querySelector('.action-menu:not([hidden])')
       if (openActionMenu) {
         openActionMenu.hidden = true
