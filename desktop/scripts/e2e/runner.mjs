@@ -622,6 +622,33 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('language bar: detected source language is shown as you type', async () => {
+        const input = mainPage.locator('#input')
+        try {
+          await input.fill('')
+          await input.dispatchEvent('input')
+          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '自动检测原文')
+
+          await input.fill('你好,我的朋友')
+          await input.dispatchEvent('input')
+          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:中文')
+
+          await input.fill('Good morning, my friend.')
+          await input.dispatchEvent('input')
+          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:英语')
+
+          await input.fill('おはようございます')
+          await input.dispatchEvent('input')
+          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:日语')
+
+          await input.fill('')
+          await input.dispatchEvent('input')
+        } finally {
+          await input.fill('')
+          await input.dispatchEvent('input')
+        }
+      })
+
       await check('language bar: workspace target select syncs, persists and retranslates', async () => {
         const capturedBodies = []
         const waitForCaptured = async (count) => {

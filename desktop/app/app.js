@@ -3,6 +3,7 @@ import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
+import { detectSourceLanguage, sourceLanguageLabel } from '../vendor/src/source-language.js'
 import {
   buildLearningArchive,
   parseLearningArchive,
@@ -94,6 +95,8 @@ function updateComposer() {
   countEl.textContent = `${count} 字`
   countEl.classList.toggle('is-warn', count > 6000)
   countEl.title = count > 6000 ? '内容较长,可能造成响应变慢或超出模型上下文' : ''
+  const detected = sourceLanguageLabel(detectSourceLanguage(input.value))
+  $('lang-source').textContent = detected ? `检测:${detected}` : '自动检测原文'
   $('composer-hint').textContent = state.prefs.enterToSend
     ? 'Enter 发送 · Shift+Enter 换行' : 'Ctrl+Enter 发送 · Enter 换行'
 }

@@ -85,6 +85,8 @@ const sharedArchiveSource = readFileSync(
   fileURLToPath(new URL('../../src/learning-archive.js', import.meta.url)), 'utf8')
 const sharedMemorySource = readFileSync(
   fileURLToPath(new URL('../../src/translation-memory.js', import.meta.url)), 'utf8')
+const sharedSourceLanguage = readFileSync(
+  fileURLToPath(new URL('../../src/source-language.js', import.meta.url)), 'utf8')
 const sharedProgressSource = readFileSync(
   fileURLToPath(new URL('../../src/vocabulary-progress.js', import.meta.url)), 'utf8')
 const sharedLibraryHtml = readFileSync(
@@ -212,6 +214,11 @@ assert.match(appSource, /guide-intro/u, 'guide cards need a learning-intent intr
 assert.match(appSource, /hint-step/u, 'guide hints need numbered step markers')
 assert.match(appCss, /\.entry-card--guide/u, 'guide card style must be defined')
 assert.match(appCss, /\.hint-step/u, 'hint step markers must be styled')
+
+assert.match(htmlSource, /id="lang-source"/u, 'source language indicator needs a target element')
+assert.match(appSource, /detectSourceLanguage/u, 'composer must detect the source language')
+assert.match(appSource, /sourceLanguageLabel/u, 'detected language must be shown as a readable label')
+assert.match(sharedSourceLanguage, /export function detectSourceLanguage/u, 'source detection must be a shared pure helper')
 
 assert.match(appSource, /function startCompanionEntry/u, 'translate and guide modes must connect via a one-click companion entry')
 assert.match(appSource, /dataset\.companionMode/u, 'companion action must target the opposite mode')
