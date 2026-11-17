@@ -573,7 +573,10 @@ export async function runE2E(mode = 'core') {
           }, null, { timeout: 20000 })
           assert.equal(await mainPage.locator('.entry:last-child .lexical-details').count(), 1)
           assert.equal(await mainPage.locator('.entry:last-child .lexical-details').evaluate((el) => el.open), false)
+          assert.equal(await mainPage.locator('.entry:last-child .actions > .action-companion').count(), 0,
+            'companion action should live inside the more menu, not the visible toolbar')
 
+          await mainPage.locator('.entry:last-child .action-more').click()
           await mainPage.locator('.entry:last-child .action-companion').click()
           await mainPage.waitForFunction(() => {
             const node = document.querySelector('.entry:last-child')
@@ -581,6 +584,7 @@ export async function runE2E(mode = 'core') {
           }, null, { timeout: 20000 })
           assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /companion-probe/u)
 
+          await mainPage.locator('.entry:last-child .action-more').click()
           await mainPage.locator('.entry:last-child .action-companion').click()
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .translation-answer')),
             null, { timeout: 20000 })

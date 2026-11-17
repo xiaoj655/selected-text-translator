@@ -1540,19 +1540,6 @@ function renderActions(entry) {
     cancel.type = 'button'
     cancel.addEventListener('click', () => cancelRequest(entry))
     bar.append(cancel)
-  } else {
-    const regenerate = el('button', '', ACTION_LABELS.regenerate)
-    regenerate.type = 'button'
-    regenerate.addEventListener('click', () => regenerate(entry))
-    bar.append(regenerate)
-    if (entry.text) {
-      const companion = el('button', 'action-companion',
-        entry.mode === 'guide' ? '快速翻译' : '深入引导理解')
-      companion.type = 'button'
-      companion.dataset.companionMode = entry.mode === 'guide' ? 'translate' : 'guide'
-      companion.addEventListener('click', () => startCompanionEntry(entry, companion.dataset.companionMode))
-      bar.append(companion)
-    }
   }
 
   if (entry.status === 'done' && entry.text) {
@@ -1570,8 +1557,8 @@ function renderActions(entry) {
   more.setAttribute('aria-expanded', 'false')
   const menu = el('div', 'action-menu')
   menu.hidden = true
-  const menuAdd = (label, handler, danger = false) => {
-    const button = el('button', danger ? 'is-danger' : '', label)
+  const menuAdd = (label, handler, danger = false, className = '') => {
+    const button = el('button', [danger ? 'is-danger' : '', className].filter(Boolean).join(' '), label)
     button.type = 'button'
     button.addEventListener('click', (event) => {
       menu.hidden = true
@@ -1579,6 +1566,16 @@ function renderActions(entry) {
       handler(event)
     })
     menu.append(button)
+    return button
+  }
+  if (!['pending', 'loading', 'streaming'].includes(entry.status)) {
+    menuAdd(ACTION_LABELS.regenerate, () => regenerate(entry))
+    if (entry.text) {
+      const companionMode = entry.mode === 'guide' ? 'translate' : 'guide'
+      const companion = menuAdd(companionMode === 'guide' ? '深入引导理解' : '快速翻译',
+        () => startCompanionEntry(entry, companionMode), false, 'action-companion')
+      companion.dataset.companionMode = companionMode
+    }
   }
   menuAdd(ACTION_LABELS.copySource, (event) => {
     window.sttDesktop.copyText(entry.text)

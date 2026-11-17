@@ -236,6 +236,8 @@ assert.match(sharedContractsSource, /source_lang: resolvedSource/u, 'Qwen-MT req
 
 assert.match(appSource, /function startCompanionEntry/u, 'translate and guide modes must connect via a one-click companion entry')
 assert.match(appSource, /dataset\.companionMode/u, 'companion action must target the opposite mode')
+assert.match(appSource, /menuAdd\([\s\S]{0,240}'action-companion'/u,
+  'companion action must be tucked into the more menu to keep the result toolbar compact')
 assert.match(appSource, /lexical-details/u, 'dictionary details must be progressively disclosed')
 assert.match(appCss, /\.lexical-details\s*>\s*summary/u, 'dictionary disclosure summary must be styled')
 
