@@ -508,7 +508,11 @@ async function loadFlags() {
 
 async function loadSettings() {
   try {
-    const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model'])
+    const values = await chrome.storage.sync.get(['base_url', 'api_key', 'model', 'learning_model', 'speech_rate'])
+    const rate = Number(values?.speech_rate)
+    const safeRate = Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9
+    $('cfg-speech-rate').value = String(safeRate)
+    $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
     $('cfg-base-url').value = String(values?.base_url || '')
     $('cfg-api-key').value = String(values?.api_key || '')
     $('cfg-model').value = String(values?.model || '')
@@ -1426,6 +1430,11 @@ function bind() {
     state.prefs.enterToSend = event.target.checked
     void savePrefs()
     updateComposer()
+  })
+  $('cfg-speech-rate').addEventListener('input', (event) => {
+    const rate = Number(event.target.value)
+    $('speech-rate-value').textContent = `${rate.toFixed(1)}×`
+    void chrome.storage.sync.set({ speech_rate: rate })
   })
   $('opt-theme').addEventListener('change', (event) => {
     state.prefs.theme = event.target.value
