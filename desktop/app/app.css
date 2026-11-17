@@ -405,6 +405,8 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .actions button.is-done { color: var(--success); border-color: var(--success); background: var(--success-soft); }
 .actions button.action-companion { color: var(--accent-text); border-color: var(--accent); background: var(--accent-soft); }
 .actions button.action-companion:hover { background: var(--accent); color: var(--on-accent); }
+.actions button.action-save { color: var(--success); border-color: var(--success); }
+.actions button.action-save:hover { background: var(--success-soft); }
 .action-more { margin-left: auto; padding: 4px 10px !important; color: var(--text-3) !important; }
 .action-menu {
   position: absolute;

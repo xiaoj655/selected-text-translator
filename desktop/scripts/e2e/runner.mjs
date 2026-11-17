@@ -376,6 +376,33 @@ export async function runE2E(mode = 'core') {
         await mainPage.locator('#sidebar-backdrop').click({ force: true })
       })
 
+      await check('save to expression book: first-class action saves the current result', async () => {
+        const probe = 'save-action-probe'
+        try {
+          await mainPage.locator('#input').fill('')
+          await mainPage.locator('#input').fill(probe)
+          await mainPage.waitForFunction((text) => {
+            const bubble = document.querySelector('.entry:last-child .bubble')
+            const result = document.querySelector('.entry:last-child .result')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(bubble && bubble.textContent.includes(text) && result
+              && !result.classList.contains('is-loading') && /完成|翻译记忆/u.test(status))
+          }, probe, { timeout: 20000 })
+          const saveButton = mainPage.locator('.entry:last-child [data-save-button]')
+          assert.equal(await saveButton.count(), 1, 'save must be a first-class result action')
+          assert.equal((await saveButton.textContent()).trim(), '收藏')
+          await saveButton.click()
+          await mainPage.waitForFunction(() => /✓ 已收藏/u.test(
+            document.querySelector('.entry:last-child [data-save-button]')?.textContent || ''), null, { timeout: 5000 })
+          const saved = await mainPage.evaluate(() => chrome.storage.local.get('vocabulary_entries'))
+          assert.ok(saved.vocabulary_entries?.some((item) => item.text === probe),
+            'the saved expression should be in the vocabulary book')
+          await shot(mainPage, 'main-save-action')
+        } finally {
+          await mainPage.evaluate(() => chrome.storage.local.set({ vocabulary_entries: [] }))
+        }
+      })
+
       await check('live translation: typing alone translates and keeps the source text', async () => {
         const typed = 'live-translate-probe'
         await mainPage.locator('#input').fill('')

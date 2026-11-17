@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.44",
+  "version": "0.9.45",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",

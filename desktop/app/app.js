@@ -1555,6 +1555,14 @@ function renderActions(entry) {
     }
   }
 
+  if (entry.status === 'done' && entry.text) {
+    const save = el('button', 'action-save', '收藏')
+    save.type = 'button'
+    save.dataset.saveButton = 'true'
+    save.addEventListener('click', (event) => void saveVocabulary(entry, event.currentTarget))
+    bar.append(save)
+  }
+
   const more = el('button', 'action-more', '⋯')
   more.type = 'button'
   more.title = '更多操作'
@@ -1592,7 +1600,6 @@ function renderActions(entry) {
     $('input').focus()
     setStatus('已回填到输入框')
   })
-  menuAdd('收藏', (event) => void saveVocabulary(entry, event.currentTarget))
   menuAdd('导出此条为 Markdown', () => {
     const index = state.entries.indexOf(entry)
     const filename = `译文-${entry.id || index + 1}.md`
