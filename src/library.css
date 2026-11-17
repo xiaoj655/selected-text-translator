@@ -8,7 +8,16 @@ body.library { max-width: 940px; padding: 38px 26px; margin: 0 auto; }
 .intro-row h1 { margin: 10px 0; font-size: 31px; font-weight: 550; }
 .library-intro { color: #75826f; font-size: 13px; }
 .library-count { color: #7b8c73; font-size: 12px; white-space: nowrap; padding-bottom: 4px; }
-.library-tabs { display: flex; align-items: center; gap: 7px; padding: 4px; border-radius: 11px; background: #e9eee4; margin-top: 30px; width: max-content; }
+.study-progress { margin-top: 28px; border: 1px solid #dce5d3; border-radius: 13px; background: #f6f8f0; padding: 14px 18px; }
+.study-progress-stats { display: flex; flex-wrap: wrap; gap: 34px; }
+.study-progress-item { display: flex; flex-direction: column; gap: 2px; }
+.study-progress-num { font: 26px/1.2 Georgia, 'Times New Roman', serif; color: var(--accent); }
+.study-progress-label { font-size: 11px; color: #75826f; }
+.today-review-reminder { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding-top: 11px; border-top: 1px solid #e0e7da; color: #4d6642; font-size: 12px; }
+.today-review-reminder[hidden] { display: none; }
+.today-review-reminder strong { color: var(--accent); }
+.today-review-reminder button { margin-left: auto; font-size: 11px; padding: 6px 10px; }
+.library-tabs { display: flex; align-items: center; gap: 7px; padding: 4px; border-radius: 11px; background: #e9eee4; margin-top: 18px; width: max-content; }
 .library-tabs button { color: #7a8673; background: transparent; border-radius: 8px; padding: 8px 15px; font-size: 12px; }
 .library-tabs button[aria-pressed=true] { color: var(--accent); background: #fffefa; box-shadow: 0 1px 4px #263b3010; }
 .library-tabs span { margin-left: 6px; font-size: 10px; opacity: .8; }

@@ -25,6 +25,17 @@
           <p class="library-intro">收藏阅读中遇到的词与表达，带着原来的语境，再认识一次。</p></div>
         <p id="library-count" class="library-count" aria-live="polite"></p>
       </div>
+      <section id="study-progress" class="study-progress" aria-label="学习进度">
+        <div class="study-progress-stats">
+          <div class="study-progress-item"><span class="study-progress-num" id="progress-due">0</span><span class="study-progress-label">今日待复习</span></div>
+          <div class="study-progress-item"><span class="study-progress-num" id="progress-learning">0</span><span class="study-progress-label">学习中</span></div>
+          <div class="study-progress-item"><span class="study-progress-num" id="progress-mastered">0</span><span class="study-progress-label">已掌握</span></div>
+        </div>
+        <p id="today-review-reminder" class="today-review-reminder" hidden>
+          今天有 <strong id="today-review-count">0</strong> 条表达等待复习
+          <button id="start-review" class="secondary" type="button">开始复习 →</button>
+        </p>
+      </section>
       <nav class="library-tabs" aria-label="表达本视图">
         <button id="all-tab" type="button" aria-pressed="true">全部收藏 <span id="all-count">0</span></button>
         <button id="review-tab" type="button" aria-pressed="false">到期复习 <span id="due-count">0</span></button>

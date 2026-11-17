@@ -1,6 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
+import { formatStudyProgress, getStudyProgress } from '../vendor/src/vocabulary-progress.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -329,6 +330,19 @@ function updateStats() {
   const node = $('status-stats')
   node.textContent = `共 ${entries.length} 条 · 翻译 ${entries.length - guides} · 引导 ${guides} · 原文 ${chars.toLocaleString('zh-CN')} 字`
   node.title = `本次会话共 ${entries.length} 条记录,原文累计 ${chars} 字`
+}
+
+async function updateStudyProgress() {
+  const node = $('study-progress-text')
+  if (!node) return
+  try {
+    const saved = await chrome.storage.local.get('vocabulary_entries')
+    const progress = getStudyProgress(saved?.vocabulary_entries)
+    node.textContent = formatStudyProgress(progress)
+    node.parentElement.classList.toggle('has-due', progress.due > 0)
+  } catch {
+    node.textContent = '学习进度暂不可用'
+  }
 }
 
 function isExportOpen() {
@@ -1486,6 +1500,7 @@ async function saveVocabulary(entry, button) {
     })
     button.textContent = response?.ok ? '✓ 已收藏' : '收藏失败'
     setStatus(response?.ok ? '已加入表达本' : '收藏失败')
+    if (response?.ok) void updateStudyProgress()
   } catch {
     button.textContent = '收藏失败'
   }
@@ -1516,6 +1531,7 @@ function bind() {
   })
   $('settings-backdrop').addEventListener('click', closeSettings)
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
+  $('btn-study-progress').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())
   $('opt-always-on-top').addEventListener('change', (event) => {
     void window.sttDesktop.setAlwaysOnTop(event.target.checked)
@@ -1860,6 +1876,10 @@ function bind() {
     else if (message?.type === 'SPEECH_EVENT') handleSpeechEvent(message.payload || {})
   })
   chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes.vocabulary_entries) {
+      void updateStudyProgress()
+      return
+    }
     if (areaName !== 'sync') return
     if (['base_url', 'api_key', 'model', 'learning_model'].some((key) => key in changes)) void checkConfig()
   })
@@ -1951,6 +1971,7 @@ async function init() {
     // history is optional
   }
   await checkConfig()
+  void updateStudyProgress()
   try {
     state.hotkey = await window.sttDesktop.getHotkey()
   } catch {

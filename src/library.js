@@ -1,4 +1,5 @@
 import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
+import { getStudyProgress } from './vocabulary-progress.js'
 import { createLibraryAudio, getEntrySpeechTargets } from './library-audio.js'
 import { getContextView } from './context-view.js'
 import { createVocabularyDraft, getVocabularyDraftUpdate, serializeVocabularyDraft,
@@ -62,6 +63,7 @@ async function init() {
     undoNoticeEl.after(state.draftNoticeEl)
     allTabEl.addEventListener('click', () => selectView('all'))
     reviewTabEl.addEventListener('click', () => selectView('review'))
+    document.getElementById('start-review').addEventListener('click', () => selectView('review'))
     searchEl.addEventListener('input', () => { state.visibleCount = 30; renderList() })
     loadMoreEl.addEventListener('click', () => { state.visibleCount += 30; renderList() })
     exportEl.addEventListener('click', () => void downloadBackup())
@@ -115,6 +117,12 @@ function updateCounts() {
   document.getElementById('all-count').textContent = state.entries.length
   document.getElementById('due-count').textContent = due
   document.getElementById('library-count').textContent = `${state.entries.length} 个词与表达 · ${due} 个待复习`
+  const progress = getStudyProgress(state.entries)
+  document.getElementById('progress-due').textContent = progress.due
+  document.getElementById('progress-learning').textContent = progress.learning
+  document.getElementById('progress-mastered').textContent = progress.mastered
+  document.getElementById('today-review-count').textContent = progress.due
+  document.getElementById('today-review-reminder').hidden = progress.due === 0
   exportEl.disabled = state.entries.length === 0
   scheduleDueRefresh()
 }

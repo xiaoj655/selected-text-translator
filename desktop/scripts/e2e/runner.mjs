@@ -478,6 +478,50 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('learning loop: study progress reminder and vocabulary book visualization', async () => {
+        const now = Date.now()
+        const DAY = 86400000
+        const entry = (id, text, meaning, dueAt, intervalDays, reviewCount) => ({
+          id, text, meaning, context: '', contextStart: null, contextEnd: null,
+          usage: '', explanation: '', example: '', phonetic: '', sourceUrl: '',
+          createdAt: now - 20 * DAY, updatedAt: now - DAY, dueAt, intervalDays, reviewCount,
+        })
+        const samples = [
+          entry('due-1', 'reluctant', 'hesitant', now - DAY, 3, 2),
+          entry('due-2', 'break the ice', 'ease tension', now - 1000, 1, 1),
+          entry('due-3', 'record', 'a music album', now - 5 * DAY, 14, 4),
+          entry('learning-1', 'simple', 'easy', now + DAY, 0, 0),
+          entry('learning-2', 'phrase', 'a short expression', now + 2 * DAY, 3, 2),
+          entry('mastered-1', 'take in', 'absorb', now + 7 * DAY, 7, 3),
+        ]
+        try {
+          await mainPage.evaluate((entries) => chrome.storage.local.set({ vocabulary_entries: entries }), samples)
+          await mainPage.waitForFunction(() => document.getElementById('study-progress-text')
+            ?.textContent.includes('今日待复习 3'), null, { timeout: 10000 })
+          assert.match(await mainPage.locator('#study-progress-text').textContent(),
+            /今日待复习 3 · 学习中 2 · 已掌握 1/u)
+          assert.equal(await mainPage.locator('#btn-study-progress.has-due').count(), 1)
+          await shot(mainPage, 'main-study-progress')
+
+          await mainPage.locator('#btn-study-progress').click()
+          const libraryPage = await app.waitForEvent('window', { timeout: 20000 })
+          await libraryPage.locator('#study-progress').waitFor({ state: 'visible', timeout: 20000 })
+          await libraryPage.waitForFunction(() => document.getElementById('progress-due')?.textContent === '3',
+            null, { timeout: 10000 })
+          assert.equal(await libraryPage.locator('#progress-learning').textContent(), '2')
+          assert.equal(await libraryPage.locator('#progress-mastered').textContent(), '1')
+          assert.equal(await libraryPage.locator('#today-review-reminder').isVisible(), true)
+          assert.equal(await libraryPage.locator('#today-review-count').textContent(), '3')
+          await shot(libraryPage, 'library-study-progress')
+          await libraryPage.locator('#start-review').click()
+          await libraryPage.waitForFunction(() => document.getElementById('review-tab')?.getAttribute('aria-pressed') === 'true',
+            null, { timeout: 5000 })
+          await libraryPage.close()
+        } finally {
+          await mainPage.evaluate(() => chrome.storage.local.set({ vocabulary_entries: [] }))
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

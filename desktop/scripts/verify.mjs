@@ -70,6 +70,14 @@ const sharedContractsSource = readFileSync(
   fileURLToPath(new URL('../../src/translation-contracts.js', import.meta.url)), 'utf8')
 const sharedBackgroundSource = readFileSync(
   fileURLToPath(new URL('../../src/background.js', import.meta.url)), 'utf8')
+const sharedProgressSource = readFileSync(
+  fileURLToPath(new URL('../../src/vocabulary-progress.js', import.meta.url)), 'utf8')
+const sharedLibraryHtml = readFileSync(
+  fileURLToPath(new URL('../../src/library.html', import.meta.url)), 'utf8')
+const sharedLibrarySource = readFileSync(
+  fileURLToPath(new URL('../../src/library.js', import.meta.url)), 'utf8')
+const sharedLibraryCss = readFileSync(
+  fileURLToPath(new URL('../../src/library.css', import.meta.url)), 'utf8')
 assert.match(cardSource, /START_TRANSLATION/u, 'card must drive the translation protocol')
 assert.match(cardSource, /onSelection/u, 'card must accept hotkey payloads')
 assert.match(cardSource, /reportEntry/u, 'card must sync finished entries to the main window')
@@ -192,6 +200,19 @@ assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u
   'request builders must accept a target language override')
 assert.match(sharedContractsSource, /buildTranslationSystemPrompt/u,
   'generic system prompt must honor an explicit target language')
+
+assert.match(sharedProgressSource, /getStudyProgress/u, 'shared learning progress must be computed')
+assert.match(sharedProgressSource, /MASTERY_INTERVAL_DAYS/u, 'mastery threshold must be explicit')
+assert.match(htmlSource, /id="btn-study-progress"/u, 'main window needs a study progress reminder')
+assert.match(htmlSource, /id="study-progress-text"/u, 'study progress reminder needs a live label')
+assert.match(appSource, /updateStudyProgress/u, 'main window must refresh study progress')
+assert.match(appSource, /getStudyProgress/u, 'main window must use the shared progress helper')
+assert.match(appCss, /\.study-progress-chip/u, 'study progress reminder must be styled')
+assert.match(sharedLibraryHtml, /id="study-progress"/u, 'vocabulary book needs a progress panel')
+assert.match(sharedLibraryHtml, /id="today-review-reminder"/u, 'vocabulary book needs a today-review reminder')
+assert.match(sharedLibraryHtml, /id="start-review"/u, 'reminder must offer a review shortcut')
+assert.match(sharedLibrarySource, /getStudyProgress/u, 'vocabulary book must render study progress')
+assert.match(sharedLibraryCss, /\.study-progress/u, 'vocabulary book progress must be styled')
 
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')
