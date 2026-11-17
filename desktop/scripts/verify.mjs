@@ -95,6 +95,7 @@ const sharedSourceLanguage = readFileSync(
   fileURLToPath(new URL('../../src/source-language.js', import.meta.url)), 'utf8')
 const sharedSpeechSource = readFileSync(
   fileURLToPath(new URL('../../src/speech.js', import.meta.url)), 'utf8')
+const desktopTtsSource = readFileSync(join(root, 'src', 'tts.js'), 'utf8')
 const sharedProgressSource = readFileSync(
   fileURLToPath(new URL('../../src/vocabulary-progress.js', import.meta.url)), 'utf8')
 const sharedLibraryHtml = readFileSync(
@@ -242,6 +243,11 @@ assert.match(sharedSourceLanguage, /export function planLanguageSwap/u, 'swap pl
 assert.match(sharedSourceLanguage, /export function speechLanguageCode/u, 'TTS language mapping must be a shared pure helper')
 assert.match(sharedSpeechSource, /speechLanguageCode\(text\)/u, 'speech must pick the voice language from the text')
 assert.doesNotMatch(sharedSpeechSource, /\? 'zh-CN' : 'en-US'/u, 'speech must not hardcode a two-language TTS fallback')
+assert.match(desktopTtsSource, /export function buildSpeechCommand/u,
+  'desktop TTS command building must be a testable pure helper')
+assert.match(desktopTtsSource, /VOICE_BY_LANG/u, 'desktop TTS must map languages to voices')
+assert.match(desktopTtsSource, /lang: options\.lang/u, 'desktop TTS must forward the computed language')
+assert.match(desktopTtsSource, /'ja-JP'/u, 'desktop TTS must cover non-Chinese/English languages')
 assert.match(sharedContractsSource, /export function resolveSourceLanguage/u, 'source language must be resolved in the contract')
 assert.match(sharedContractsSource, /source_lang: resolvedSource/u, 'Qwen-MT request must honor the source language')
 
