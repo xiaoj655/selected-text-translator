@@ -494,9 +494,9 @@ function selectionInResult() {
   if (!text) return null
   const node = selection.anchorNode
   const anchorEl = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
-  const resultEl = anchorEl?.closest?.('.result')
-  if (!resultEl || !$('stream').contains(resultEl)) return null
-  const entryId = resultEl.closest('.entry')?.dataset.entryId
+  const hostEl = anchorEl?.closest?.('.result, .entry-source .bubble')
+  if (!hostEl || !$('stream').contains(hostEl)) return null
+  const entryId = hostEl.closest('.entry')?.dataset.entryId
   const entry = state.entries.find((item) => item.id === entryId)
   if (!entry) return null
   return { entry, text, rect: selection.getRangeAt(0).getBoundingClientRect() }
@@ -1239,6 +1239,7 @@ function renderEntryEl(entry) {
   const bubble = el('div', 'bubble', entry.text)
   bubble.title = '点击回填到输入框'
   bubble.addEventListener('click', () => {
+    if (String(window.getSelection()?.toString() || '').trim()) return
     $('input').value = entry.text
     updateComposer()
     $('input').focus()

@@ -234,8 +234,9 @@ function selectionInResult() {
   if (!selection || selection.isCollapsed || !selection.rangeCount) return null
   const anchor = selection.anchorNode
   const anchorEl = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement
-  const resultEl = $('result')
-  if (!anchorEl || !resultEl.contains(anchorEl)) return null
+  if (!anchorEl) return null
+  const host = $('result').contains(anchorEl) ? $('result') : $('src').contains(anchorEl) ? $('src') : null
+  if (!host) return null
   const text = String(selection.toString() || '').trim()
   if (!text) return null
   return { text, rect: selection.getRangeAt(0).getBoundingClientRect() }

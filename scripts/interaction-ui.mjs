@@ -169,6 +169,19 @@ async function selectResultText(page, selector) {
     assert.ok(saveLog.some((m) => m.type === 'VOCABULARY_SAVE'), 'VOCABULARY_SAVE present')
   })
 
+  console.log('main-window SOURCE text toolbar:')
+  await selectResultText(page, '.entry .entry-source .bubble')
+  const sourceToolbarVisible = await page.locator('#selection-toolbar').isVisible()
+  check('toolbar shown on source text', () => assert.equal(sourceToolbarVisible, true))
+  await page.click('#selection-toolbar [data-sel-action="copy"]')
+  await page.waitForTimeout(120)
+  const sourceCopyLog = await page.evaluate(() => window.__copyLog)
+  check('source selection copy works', () => {
+    assert.ok(sourceCopyLog.length >= 2, 'second copy captured')
+    const last = sourceCopyLog[sourceCopyLog.length - 1]
+    assert.ok(entries[0].text.startsWith(last), 'copied text is a prefix of the source')
+  })
+
   check('no page errors (main)', () => assert.deepEqual(pageerrors, []))
   await ctx.close()
 }
