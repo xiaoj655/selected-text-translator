@@ -45,3 +45,26 @@ export function detectSourceLanguage(text) {
 export function sourceLanguageLabel(lang) {
   return LABELS[lang] || ''
 }
+
+const CANONICAL_LANGUAGES = ['Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish']
+
+function toLanguageCode(value) {
+  const lower = String(value || '').trim().toLowerCase()
+  return CANONICAL_LANGUAGES.find((code) => code.toLowerCase() === lower) || ''
+}
+
+export function planLanguageSwap({ source, target, detected }) {
+  const currentSource = String(source || 'auto')
+  const currentTarget = String(target || 'auto')
+  if (currentSource === 'auto' && currentTarget === 'auto') return null
+
+  const effectiveSource = currentSource === 'auto' ? toLanguageCode(detected) : toLanguageCode(currentSource)
+  if (!effectiveSource) return null
+  const effectiveTarget = currentTarget === 'auto'
+    ? (effectiveSource === 'Chinese' ? 'English' : 'Chinese')
+    : currentTarget
+  const nextSource = effectiveTarget
+  const nextTarget = nextSource.toLowerCase() === effectiveSource.toLowerCase() ? 'auto' : effectiveSource
+  if (nextSource === currentSource && nextTarget === currentTarget) return null
+  return { source: nextSource, target: nextTarget }
+}

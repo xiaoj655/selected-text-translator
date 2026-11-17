@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { detectSourceLanguage, sourceLanguageLabel } from '../src/source-language.js'
+import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../src/source-language.js'
 
 test('detectSourceLanguage recognizes scripts', () => {
   assert.equal(detectSourceLanguage('おはようございます、友達'), 'japanese')
@@ -30,4 +30,23 @@ test('sourceLanguageLabel maps codes to Chinese labels', () => {
   assert.equal(sourceLanguageLabel('chinese'), '中文')
   assert.equal(sourceLanguageLabel('japanese'), '日语')
   assert.equal(sourceLanguageLabel('unknown'), '')
+})
+
+test('planLanguageSwap swaps two pinned languages', () => {
+  assert.deepEqual(planLanguageSwap({ source: 'English', target: 'Japanese', detected: 'english' }),
+    { source: 'Japanese', target: 'English' })
+  assert.deepEqual(planLanguageSwap({ source: 'Chinese', target: 'auto', detected: 'chinese' }),
+    { source: 'English', target: 'Chinese' })
+})
+
+test('planLanguageSwap uses detected language when source is auto', () => {
+  assert.deepEqual(planLanguageSwap({ source: 'auto', target: 'Chinese', detected: 'japanese' }),
+    { source: 'Chinese', target: 'Japanese' })
+  assert.deepEqual(planLanguageSwap({ source: 'auto', target: 'Japanese', detected: 'japanese' }),
+    { source: 'Japanese', target: 'auto' })
+})
+
+test('planLanguageSwap refuses meaningless swaps', () => {
+  assert.equal(planLanguageSwap({ source: 'auto', target: 'auto', detected: 'english' }), null)
+  assert.equal(planLanguageSwap({ source: 'auto', target: 'French', detected: '' }), null)
 })

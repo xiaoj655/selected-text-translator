@@ -72,14 +72,25 @@ export function getTargetLanguage(text, targetLanguage) {
 
 const AUTO_DIRECTION_SENTENCE = 'Translate only selectedText. If selectedText contains Chinese, translate into English. Otherwise translate into Simplified Chinese.';
 
-function buildTranslationSystemPrompt(targetLanguage) {
+function buildTranslationSystemPrompt(targetLanguage, sourceLanguage) {
+  let prompt = TRANSLATION_SYSTEM_PROMPT;
   if (typeof targetLanguage === 'string' && targetLanguage.trim() && targetLanguage !== 'auto') {
-    return TRANSLATION_SYSTEM_PROMPT.replace(
+    prompt = prompt.replace(
       AUTO_DIRECTION_SENTENCE,
       `Translate only selectedText into ${targetLanguage.trim()}.`
     );
   }
-  return TRANSLATION_SYSTEM_PROMPT;
+  if (typeof sourceLanguage === 'string' && sourceLanguage.trim() && sourceLanguage !== 'auto') {
+    prompt = `${prompt} The source language is ${sourceLanguage.trim()}.`;
+  }
+  return prompt;
+}
+
+export function resolveSourceLanguage(sourceLanguage) {
+  if (typeof sourceLanguage === 'string' && sourceLanguage.trim() && sourceLanguage !== 'auto') {
+    return sourceLanguage.trim();
+  }
+  return 'auto';
 }
 
 export function isQwenMtModel(model) {
@@ -94,9 +105,10 @@ export function usesStructuredOutputForModel(model) {
   return !isQwenMtModel(model);
 }
 
-export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd, targetLanguage }) {
+export function buildQwenMtRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage }) {
   const scope = createQwenTranslationScope({ text, context, contextStart, contextEnd })
   const resolvedTarget = getTargetLanguage(text, targetLanguage)
+  const resolvedSource = resolveSourceLanguage(sourceLanguage)
   return {
     model,
     stream: isQwenMtStreamingModel(model),
@@ -107,16 +119,16 @@ export function buildQwenMtRequest({ model, text, context, contextStart, context
       }
     ],
     translation_options: {
-      source_lang: 'auto',
+      source_lang: resolvedSource,
       target_lang: resolvedTarget,
       ...(scope ? { domains: scope.domains } : {}),
     }
   };
 }
 
-export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage }) {
+export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage }) {
   const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage })
-  const systemPrompt = buildTranslationSystemPrompt(targetLanguage)
+  const systemPrompt = buildTranslationSystemPrompt(targetLanguage, sourceLanguage)
   const payload = {
     model,
     stream: false,

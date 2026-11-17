@@ -624,28 +624,74 @@ export async function runE2E(mode = 'core') {
 
       await check('language bar: detected source language is shown as you type', async () => {
         const input = mainPage.locator('#input')
+        const selectedLabel = () => mainPage.locator('#lang-source option:checked').textContent()
         try {
           await input.fill('')
           await input.dispatchEvent('input')
-          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '自动检测原文')
+          assert.equal((await selectedLabel()).trim(), '自动检测原文')
 
           await input.fill('你好,我的朋友')
           await input.dispatchEvent('input')
-          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:中文')
+          assert.match(await selectedLabel(), /检测为中文/u)
 
           await input.fill('Good morning, my friend.')
           await input.dispatchEvent('input')
-          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:英语')
+          assert.match(await selectedLabel(), /检测为英语/u)
 
           await input.fill('おはようございます')
           await input.dispatchEvent('input')
-          assert.equal((await mainPage.locator('#lang-source').textContent()).trim(), '检测:日语')
+          assert.match(await selectedLabel(), /检测为日语/u)
 
           await input.fill('')
           await input.dispatchEvent('input')
         } finally {
           await input.fill('')
           await input.dispatchEvent('input')
+        }
+      })
+
+      await check('language bar: source can be pinned and directions swapped', async () => {
+        const capturedBodies = []
+        const waitForCaptured = async (count) => {
+          const deadline = Date.now() + 20000
+          while (capturedBodies.length < count && Date.now() < deadline) await delay(50)
+          assert.ok(capturedBodies.length >= count, `expected ${count} captured requests, got ${capturedBodies.length}`)
+        }
+        mock.setHandler(async ({ body, res, defaultResponse }) => {
+          capturedBodies.push(body)
+          await defaultResponse({ body, res })
+        })
+        try {
+          await mainPage.locator('#lang-source').selectOption('Japanese')
+          await mainPage.locator('#lang-target').selectOption('Chinese')
+          const saved = await mainPage.evaluate(() => chrome.storage.sync.get(['desktop_source_language', 'desktop_target_language']))
+          assert.equal(saved.desktop_source_language, 'Japanese')
+          assert.equal(saved.desktop_target_language, 'Chinese')
+          await mainPage.locator('#input').fill('swap direction probe')
+          await mainPage.waitForFunction(() => /完成|翻译记忆/u.test(document.getElementById('statusbar')?.textContent || ''),
+            null, { timeout: 20000 })
+          await waitForCaptured(1)
+          assert.ok(capturedBodies.some((b) => b.translation_options?.source_lang === 'Japanese'),
+            'pinned source language must reach the model request')
+          const beforeSwap = capturedBodies.length
+
+          await mainPage.locator('#btn-swap-lang').click()
+          await waitForCaptured(beforeSwap + 1)
+          const swapBody = capturedBodies[beforeSwap]
+          const afterSwap = await mainPage.evaluate(() => chrome.storage.sync.get(['desktop_source_language', 'desktop_target_language']))
+          assert.equal(afterSwap.desktop_source_language, 'Chinese')
+          assert.equal(afterSwap.desktop_target_language, 'Japanese')
+          assert.equal(await mainPage.locator('#lang-source').inputValue(), 'Chinese')
+          assert.equal(await mainPage.locator('#lang-target').inputValue(), 'Japanese')
+          assert.equal(swapBody.translation_options?.source_lang, 'Chinese')
+          assert.equal(swapBody.translation_options?.target_lang, 'Japanese')
+          assert.equal((await mainPage.locator('#input').inputValue()).trim(), 'swap direction probe')
+          await shot(mainPage, 'main-language-swap')
+        } finally {
+          mock.resetHandler()
+          await mainPage.locator('#lang-source').selectOption('auto')
+          await mainPage.locator('#lang-target').selectOption('Chinese')
+          await mainPage.locator('#input').fill('')
         }
       })
 

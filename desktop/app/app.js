@@ -3,7 +3,7 @@ import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
-import { detectSourceLanguage, sourceLanguageLabel } from '../vendor/src/source-language.js'
+import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
 import {
   buildLearningArchive,
   parseLearningArchive,
@@ -18,6 +18,7 @@ const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
 const state = {
   mode: 'translate',
   targetLanguage: 'auto',
+  sourceLanguage: 'auto',
   liveTranslate: true,
   liveTimer: 0,
   liveText: '',
@@ -73,6 +74,43 @@ function setTargetLanguage(value, retranslate) {
   setStatus(`目标语言已设为 ${label}`)
 }
 
+function retranslateCurrent(message) {
+  if (state.liveTranslate && state.configured && $('input').value.trim().length >= 2) {
+    submit({ keepInput: true })
+    setStatus(message)
+    return
+  }
+  setStatus(message.replace(' · 已重新翻译', ''))
+}
+
+function setSourceLanguage(value, retranslate) {
+  state.sourceLanguage = value
+  void chrome.storage.sync.set({ desktop_source_language: value })
+  $('lang-source').value = value
+  const label = value === 'auto' ? '自动检测原文' : value
+  if (retranslate) retranslateCurrent(`原文语言已设为 ${label} · 已重新翻译`)
+  else setStatus(`原文语言已设为 ${label}`)
+}
+
+function swapLanguages() {
+  const detected = detectSourceLanguage($('input').value)
+  const plan = planLanguageSwap({ source: state.sourceLanguage, target: state.targetLanguage, detected })
+  if (!plan) {
+    setStatus('请先输入内容并设置原文或译文语言,再互换方向')
+    return
+  }
+  state.sourceLanguage = plan.source
+  state.targetLanguage = plan.target
+  void chrome.storage.sync.set({ desktop_source_language: plan.source, desktop_target_language: plan.target })
+  $('lang-source').value = plan.source
+  for (const id of ['lang-target', 'opt-target-language']) {
+    const select = $(id)
+    if (select) select.value = plan.target
+  }
+  updateComposer()
+  retranslateCurrent(`已互换语言方向 · 已重新翻译`)
+}
+
 function renderDiagnostics() {
   const lines = [
     `配置:${state.configured ? '已连接' : '未连接'}`,
@@ -96,7 +134,9 @@ function updateComposer() {
   countEl.classList.toggle('is-warn', count > 6000)
   countEl.title = count > 6000 ? '内容较长,可能造成响应变慢或超出模型上下文' : ''
   const detected = sourceLanguageLabel(detectSourceLanguage(input.value))
-  $('lang-source').textContent = detected ? `检测:${detected}` : '自动检测原文'
+  const sourceSelect = $('lang-source')
+  const autoOption = sourceSelect?.querySelector('option[value="auto"]')
+  if (autoOption) autoOption.textContent = detected ? `自动检测 · 检测为${detected}` : '自动检测原文'
   $('composer-hint').textContent = state.prefs.enterToSend
     ? 'Enter 发送 · Shift+Enter 换行' : 'Ctrl+Enter 发送 · Enter 换行'
 }
@@ -962,6 +1002,7 @@ function sendRequest(entry, forceRefresh = false) {
         contextStart: null,
         contextEnd: null,
         targetLanguage: state.targetLanguage,
+        sourceLanguage: state.sourceLanguage,
       },
     }, (response) => {
       if (!response?.accepted) failEntry(entry, '后台没有接受请求,请重试。')
@@ -1845,6 +1886,8 @@ function bind() {
   })
   $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
   $('lang-target').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
+  $('lang-source').addEventListener('change', (event) => setSourceLanguage(event.target.value, true))
+  $('btn-swap-lang').addEventListener('click', swapLanguages)
   $('btn-hotkey').addEventListener('click', async () => {
     const value = $('cfg-hotkey').value.trim()
     if (!value) return
@@ -2240,6 +2283,14 @@ async function init() {
     }
   } catch {
     // default target language
+  }
+  try {
+    const savedSource = await chrome.storage.sync.get(['desktop_source_language'])
+    state.sourceLanguage = savedSource?.desktop_source_language || 'auto'
+    const sourceSelect = $('lang-source')
+    if (sourceSelect) sourceSelect.value = state.sourceLanguage
+  } catch {
+    // default source language
   }
   try {
     const savedMemory = await chrome.storage.local.get('translation_memory')

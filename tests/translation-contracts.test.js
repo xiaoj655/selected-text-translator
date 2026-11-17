@@ -9,6 +9,7 @@ import {
   extractGenericResponse,
   extractGenericTranslation,
   getTargetLanguage,
+  resolveSourceLanguage,
   isQwenMtModel,
   isQwenMtStreamingModel,
   isSingleWordInput,
@@ -19,6 +20,27 @@ import {
 test('getTargetLanguage detects Chinese-containing text', () => {
   assert.equal(getTargetLanguage('你好 world'), 'English');
   assert.equal(getTargetLanguage('hello world'), 'Chinese');
+});
+
+test('resolveSourceLanguage honors an explicit source or defaults to auto', () => {
+  assert.equal(resolveSourceLanguage('Japanese'), 'Japanese');
+  assert.equal(resolveSourceLanguage('  French  '), 'French');
+  assert.equal(resolveSourceLanguage('auto'), 'auto');
+  assert.equal(resolveSourceLanguage(undefined), 'auto');
+});
+
+test('buildQwenMtRequest pins the source language when provided', () => {
+  const pinned = buildQwenMtRequest({ model: 'qwen-mt-flash', text: 'hello', sourceLanguage: 'Japanese' });
+  assert.equal(pinned.translation_options.source_lang, 'Japanese');
+  const automatic = buildQwenMtRequest({ model: 'qwen-mt-flash', text: 'hello' });
+  assert.equal(automatic.translation_options.source_lang, 'auto');
+});
+
+test('buildGenericRequest states the source language when provided', () => {
+  const pinned = buildGenericRequest({ model: 'qwen3-235b-a22b', text: 'hello', sourceLanguage: 'Japanese' });
+  assert.match(pinned.messages[0].content, /The source language is Japanese\./u);
+  const automatic = buildGenericRequest({ model: 'qwen3-235b-a22b', text: 'hello' });
+  assert.doesNotMatch(automatic.messages[0].content, /The source language is/u);
 });
 
 test('getTargetLanguage honors an explicit target language', () => {
