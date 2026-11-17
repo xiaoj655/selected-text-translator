@@ -19,13 +19,13 @@ button { font: inherit; cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-3);
-  overflow: hidden;
   position: relative;
 }
 .card::before {
   content: '';
   position: absolute; top: 0; left: 0; right: 0; height: 3px;
   background: var(--grad);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
 
 .card-head {
@@ -75,10 +75,12 @@ button { font: inherit; cursor: pointer; }
 .definitions { margin: 2px 0; padding-left: 16px; }
 
 .actions {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  padding: 10px 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  position: relative;
 }
 .actions button {
   font-size: 12px; padding: 5px 11px; border-radius: var(--r-pill);
@@ -87,7 +89,26 @@ button { font: inherit; cursor: pointer; }
 .actions button:hover { background: var(--surface-2); color: var(--text); }
 .actions button.is-primary { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 600; }
 .actions button.is-primary:hover { background: var(--accent); color: var(--on-accent); }
+.actions button.is-danger { color: var(--danger); }
+.actions button.is-danger:hover { background: var(--danger-soft); border-color: var(--danger); }
 .actions button.is-done { color: var(--success); border-color: var(--success); }
+.actions button.action-more { margin-left: auto; padding: 5px 9px; }
+.action-menu {
+  position: absolute;
+  right: 12px;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 140px;
+  padding: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-3);
+}
+.action-menu[hidden] { display: none; }
+.action-menu button { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 6px; }
+.action-menu button:hover { background: var(--surface-2); }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

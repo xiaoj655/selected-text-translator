@@ -212,18 +212,17 @@ function copyText(text, button) {
   showCopyDone(button)
 }
 
-function toggleSpeech() {
+function toggleSpeech(text = state.entry?.text) {
   if (state.speechId) {
     stopSpeech()
     renderActions()
     return
   }
-  const entry = state.entry
-  if (!entry) return
+  if (!text) return
   const speechId = makeId('speech')
   state.speechId = speechId
   try {
-    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text: entry.text } }, (response) => {
+    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
         state.speechId = null
         renderActions()
@@ -276,7 +275,11 @@ function scheduleResize() {
   resizeScheduled = true
   requestAnimationFrame(() => {
     resizeScheduled = false
-    const height = Math.ceil($('card').getBoundingClientRect().height)
+    const cardRect = $('card').getBoundingClientRect()
+    let height = cardRect.height
+    const menu = document.querySelector('.action-menu:not([hidden])')
+    if (menu) height += Math.max(0, menu.getBoundingClientRect().bottom - cardRect.bottom) + 8
+    height = Math.ceil(height)
     if (Math.abs(height - lastRequestedHeight) < 4) return
     lastRequestedHeight = height
     window.sttDesktop.resizeCard(height)
@@ -342,6 +345,38 @@ function lexicalRow(label, value) {
   return row
 }
 
+function closeActionMenu() {
+  const menu = document.querySelector('.action-menu:not([hidden])')
+  if (!menu) return
+  menu.hidden = true
+  const more = menu.previousElementSibling
+  if (more) more.setAttribute('aria-expanded', 'false')
+  scheduleResize()
+}
+
+function regenerate() {
+  const entry = state.entry
+  if (!entry) return
+  entry.requestId = makeId('r')
+  entry.status = 'pending'
+  entry.translatedText = ''
+  entry.lexical = null
+  entry.error = ''
+  state.reported = false
+  render()
+  sendRequest(true)
+}
+
+function cancelRequest() {
+  const entry = state.entry
+  if (!entry) return
+  cancelActiveRequest()
+  entry.status = 'error'
+  entry.error = '已取消请求,可以重新生成。'
+  render()
+  reportEntry()
+}
+
 function renderActions() {
   const entry = state.entry
   const bar = $('actions')
@@ -358,40 +393,63 @@ function renderActions() {
   if (entry.status === 'done' && entry.translatedText) {
     add(ACTION_LABELS.copyResult, (event) => copyText(resultPlainText(entry), event.currentTarget), 'is-primary')
   }
-  add(ACTION_LABELS.copySource, (event) => copyText(entry.text, event.currentTarget))
-  add(state.speechId ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, toggleSpeech)
-  if (['pending', 'loading', 'streaming'].includes(entry.status)) {
-    add(ACTION_LABELS.cancel, () => {
-      cancelActiveRequest()
-      entry.status = 'error'
-      entry.error = '已取消请求,可以重新生成。'
-      render()
-      reportEntry()
+  add(state.speechId ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak, () => toggleSpeech())
+  const isBusy = ['pending', 'loading', 'streaming'].includes(entry.status)
+  if (isBusy) add(ACTION_LABELS.cancel, cancelRequest, 'is-danger')
+
+  const more = add('⋯', (event) => {
+    event.stopPropagation()
+    const wasOpen = !menu.hidden
+    closeActionMenu()
+    if (!wasOpen) {
+      menu.hidden = false
+      more.setAttribute('aria-expanded', 'true')
+      scheduleResize()
+    }
+  }, 'action-more')
+  more.setAttribute('aria-label', '更多操作')
+  more.setAttribute('aria-expanded', 'false')
+
+  const menu = el('div', 'action-menu')
+  menu.hidden = true
+  const menuAdd = (label, handler, variant = '') => {
+    const button = el('button', variant, label)
+    button.type = 'button'
+    button.addEventListener('click', () => {
+      closeActionMenu()
+      handler(button)
     })
-  } else {
-    add(ACTION_LABELS.regenerate, () => {
-      entry.requestId = makeId('r')
-      entry.status = 'pending'
-      entry.translatedText = ''
-      entry.lexical = null
-      entry.error = ''
-      state.reported = false
-      render()
-      sendRequest(true)
-    })
+    menu.append(button)
+  }
+  menuAdd(ACTION_LABELS.copySource, () => copyText(entry.text))
+  if (entry.status === 'done' && resultPlainText(entry)) {
+    menuAdd('朗读译文', () => toggleSpeech(resultPlainText(entry)))
   }
   if (entry.status === 'done') {
-    add('收藏', (event) => void saveVocabulary(event.currentTarget))
+    menuAdd('收藏', (button) => void saveVocabulary(button))
   }
-  add('主窗口 ↗', openInMainWindow)
+  if (!isBusy) menuAdd(ACTION_LABELS.regenerate, regenerate)
+  menuAdd('在主窗口打开', openInMainWindow)
+  bar.append(menu)
 }
 
 function bind() {
   $('btn-close').addEventListener('click', () => window.sttDesktop.hideCard())
   $('btn-popout').addEventListener('click', openInMainWindow)
   $('btn-pin').addEventListener('click', () => setPinned(!state.pinned))
+  document.addEventListener('click', (event) => {
+    const menu = document.querySelector('.action-menu:not([hidden])')
+    if (!menu) return
+    if (menu.contains(event.target) || menu.previousElementSibling?.contains(event.target)) return
+    closeActionMenu()
+  })
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') window.sttDesktop.hideCard()
+    if (event.key !== 'Escape') return
+    if (document.querySelector('.action-menu:not([hidden])')) {
+      closeActionMenu()
+      return
+    }
+    window.sttDesktop.hideCard()
   })
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'TRANSLATION_EVENT') handleTranslationEvent(message.payload || {})

@@ -232,11 +232,38 @@ await shot(browser, '08-card', {
       result.innerHTML = '有证据表明，当团队具备清晰的沟通规范时，远程办公能够提升生产效率。'
       document.getElementById('src').textContent = 'The evidence suggests that remote work can boost productivity…'
       const actions = document.getElementById('actions')
-      actions.innerHTML = '<button type="button" class="is-primary">复制结果</button><button type="button">复制原文</button><button type="button">朗读</button><button type="button">重新生成</button><button type="button">表达本</button>'
+      actions.innerHTML = '<button type="button" class="is-primary">复制结果</button><button type="button">朗读</button><button type="button" class="action-more" aria-label="更多操作" aria-expanded="false">⋯</button><div class="action-menu" hidden><button type="button">复制原文</button><button type="button">朗读译文</button><button type="button">收藏</button><button type="button">重新生成</button><button type="button">在主窗口打开</button></div>'
     })
     await page.waitForTimeout(150)
   },
 }, { width: 460, height: 172 })
+await shot(browser, '11-card-menu', {
+  config: {},
+  url: cardUrl,
+  post: async (page) => {
+    await page.evaluate(() => {
+      const result = document.getElementById('result')
+      result.className = 'result'
+      result.innerHTML = '有证据表明，当团队具备清晰的沟通规范时，远程办公能够提升生产效率。'
+      document.getElementById('src').textContent = 'The evidence suggests that remote work can boost productivity…'
+      const actions = document.getElementById('actions')
+      actions.innerHTML = '<button type="button" class="is-primary">复制结果</button><button type="button">朗读</button><button type="button" class="action-more" aria-label="更多操作" aria-expanded="false">⋯</button><div class="action-menu"><button type="button">复制原文</button><button type="button">朗读译文</button><button type="button">收藏</button><button type="button">重新生成</button><button type="button">在主窗口打开</button></div>'
+    })
+    await page.waitForTimeout(150)
+  },
+}, { width: 460, height: 360 })
+
+await shot(browser, '12-bottom-menu', {
+  config: { history: entries },
+  url: indexUrl,
+  post: async (page) => {
+    await page.evaluate(() => { const s = document.getElementById('stream'); s.scrollTop = s.scrollHeight })
+    await page.waitForTimeout(100)
+    const more = page.locator('.entry .action-more').last()
+    await more.click()
+    await page.waitForTimeout(150)
+  },
+})
 
 await browser.close()
 server.close()

@@ -1094,6 +1094,9 @@ function renderActions(entry) {
     setStatus('双语对照已复制到剪贴板')
     showCopyDone(event.currentTarget)
   })
+  if (entry.status === 'done' && text) {
+    menuAdd('朗读译文', () => toggleSpeech(entry, resultPlainText(entry)))
+  }
   menuAdd('回填输入框', () => {
     $('input').value = entry.text
     updateComposer()
@@ -1116,6 +1119,11 @@ function renderActions(entry) {
     if (!wasOpen) {
       menu.hidden = false
       more.setAttribute('aria-expanded', 'true')
+      requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect()
+        const streamBottom = $('stream').getBoundingClientRect().bottom
+        menu.classList.toggle('is-up', rect.bottom > streamBottom - 8)
+      })
     }
   })
   bar.append(more, menu)
@@ -1240,7 +1248,7 @@ function regenerate(entry) {
   sendRequest(entry, true)
 }
 
-function toggleSpeech(entry) {
+function toggleSpeech(entry, text = entry.text) {
   if (state.speechId) {
     stopActiveSpeech()
     patchSpeechButtons()
@@ -1252,7 +1260,7 @@ function toggleSpeech(entry) {
   setStatus('正在朗读…')
   patchSpeechButtons()
   try {
-    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text: entry.text } }, (response) => {
+    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
         state.speechId = null
         state.speechEntryId = null

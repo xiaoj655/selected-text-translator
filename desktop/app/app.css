@@ -342,6 +342,7 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-2);
 }
+.action-menu.is-up { top: auto; bottom: calc(100% + 4px); }
 .action-menu[hidden] { display: none; }
 .action-menu button { text-align: left; border-color: transparent; background: transparent; border-radius: 6px; }
 .action-menu button:hover { background: var(--surface-2); }
