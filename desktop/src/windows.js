@@ -140,12 +140,14 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     win.setBounds({ x, y, width: CARD_WIDTH, height: CARD_HEIGHT })
   }
 
-  let cardShownAt = 0
   let escRegistered = false
   let cardPinned = false
 
   function setCardPinned(flag) {
     cardPinned = Boolean(flag)
+    if (card && !card.isDestroyed()) {
+      card.setAlwaysOnTop(true, cardPinned ? 'screen-saver' : 'floating')
+    }
   }
 
   function registerCardEscape() {
@@ -203,12 +205,6 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       card = null
       cardReady = null
     })
-    card.on('blur', () => {
-      if (!card || card.isDestroyed() || !card.isVisible()) return
-      if (cardPinned) return
-      if (Date.now() - cardShownAt < 500) return
-      hideCardWindow()
-    })
     aux.set('card', card)
     return card
   }
@@ -220,7 +216,6 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     cardPinned = false
     positionCardWindow(win)
     win.webContents.send('stt:selection', payload || {})
-    cardShownAt = Date.now()
     win.showInactive()
     registerCardEscape()
   }

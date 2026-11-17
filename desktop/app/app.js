@@ -81,7 +81,7 @@ function showHelp() {
 function hideHelp() {
   const wasOpen = !$('help-overlay').hidden
   $('help-overlay').hidden = true
-  if (wasOpen) $('btn-help').focus()
+  if (wasOpen) $('btn-more').focus()
 }
 
 function toggleHelp() {
@@ -116,6 +116,7 @@ function trapFocus(event, container) {
 function closeTransientPanels() {
   hideHelp()
   closeExportMenu()
+  closeMoreMenu()
   closeSidebar()
   closeSettings()
 }
@@ -338,6 +339,20 @@ function toggleExportMenu() {
   }
   closeTransientPanels()
   openExportMenu()
+}
+
+function closeMoreMenu() {
+  $('more-menu').hidden = true
+  $('btn-more').setAttribute('aria-expanded', 'false')
+}
+
+function toggleMoreMenu() {
+  const menu = $('more-menu')
+  const wasOpen = !menu.hidden
+  closeTransientPanels()
+  if (wasOpen) return
+  menu.hidden = false
+  $('btn-more').setAttribute('aria-expanded', 'true')
 }
 
 function runExport(kind) {
@@ -1382,6 +1397,19 @@ function bind() {
     if (!isExportOpen()) return
     if ($('export-menu').contains(event.target) || $('btn-export').contains(event.target)) return
     closeExportMenu()
+  })
+
+  $('btn-more').addEventListener('click', (event) => {
+    event.stopPropagation()
+    toggleMoreMenu()
+  })
+  $('more-menu').addEventListener('click', (event) => {
+    if (event.target.closest('button')) closeMoreMenu()
+  })
+  document.addEventListener('click', (event) => {
+    if ($('more-menu').hidden) return
+    if ($('more-menu').contains(event.target) || $('btn-more').contains(event.target)) return
+    closeMoreMenu()
   })
 
   $('btn-help').addEventListener('click', toggleHelp)

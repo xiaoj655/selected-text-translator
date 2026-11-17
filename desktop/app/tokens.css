@@ -1,326 +1,118 @@
-/* Material 3 color system: reference tones -> system roles -> legacy aliases */
-
+/*
+ * Native, restrained design tokens.
+ * One neutral surface ramp + a single accent, light/dark via light-dark().
+ * Both windows import this file so they stay in lockstep.
+ */
 :root {
   color-scheme: light dark;
-  accent-color: var(--md-sys-color-primary);
 
-  --accent-base: #4f57d6;
-  --accent-dark: #9aa0ff;
-  --accent-2: #7b5cf0;
+  /* surfaces & ink */
+  --bg: light-dark(#ffffff, #15171b);
+  --surface: light-dark(#f6f7f9, #1d2026);
+  --surface-2: light-dark(#eceef2, #262a32);
+  --surface-3: light-dark(#e2e5eb, #30353f);
+  --text: light-dark(#1b1f27, #eceef3);
+  --text-2: light-dark(#5d6675, #a2abba);
+  --text-3: light-dark(#8a93a3, #798394);
+  --border: light-dark(#dfe3e9, #333945);
+  --border-strong: light-dark(#cbd1da, #454c59);
 
-  /* M3 state-layer opacities */
-  --md-state-hover: 0.08;
-  --md-state-focus: 0.1;
-  --md-state-pressed: 0.1;
-  --md-state-dragged: 0.16;
+  /* accent (overridden by data-accent) */
+  --accent: #4f6ef7;
+  --accent-hover: #3d5ce8;
+  --accent-soft: light-dark(#eef1ff, #232c4a);
+  --accent-text: light-dark(#2b41b8, #b3c0ff);
+  --on-accent: #ffffff;
+  --grad: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #a855f7));
 
-  /* M3 shape scale */
-  --md-shape-xs: 4px;
-  --md-shape-sm: 8px;
-  --md-shape-md: 12px;
-  --md-shape-lg: 16px;
-  --md-shape-xl: 28px;
-  --md-shape-full: 999px;
+  /* semantics */
+  --danger: #d3453f;
+  --danger-soft: light-dark(#fdecea, #3a2322);
+  --success: #1f9361;
+  --success-soft: light-dark(#e8f6ef, #1c3529);
 
-  /* M3 neutral palette */
-  --md-n6: #0f0d13;
-  --md-n10: #1d1b20;
-  --md-n12: #141218;
-  --md-n17: #1d1b20;
-  --md-n20: #322f35;
-  --md-n22: #211f26;
-  --md-n24: #2b2930;
-  --md-n27: #36343b;
-  --md-n30: #48454f;
-  --md-n90: #e6e0e9;
-  --md-n92: #ebe5ee;
-  --md-n94: #f0ebf3;
-  --md-n95: #f3eef7;
-  --md-n96: #f7f2fa;
-  --md-n99: #fffbfe;
-  --md-n100: #ffffff;
-  --md-nv30: #49454f;
-  --md-nv50: #79747e;
-  --md-nv60: #938f99;
-  --md-nv80: #cac4d0;
+  /* shape */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
 
-  /* M3 error palette */
-  --md-e10: #410e0b;
-  --md-e30: #93000a;
-  --md-e40: #b3261e;
-  --md-e80: #ffb4ab;
-  --md-e90: #ffdad6;
+  /* elevation */
+  --shadow-1: 0 1px 2px rgba(18, 24, 40, .06), 0 1px 3px rgba(18, 24, 40, .05);
+  --shadow-2: 0 4px 14px rgba(18, 24, 40, .10);
+  --shadow-3: 0 12px 32px rgba(18, 24, 40, .18);
 
-  /* M3 success palette */
-  --md-ok10: #0a2d1c;
-  --md-ok30: #005234;
-  --md-ok40: #1b6c4b;
-  --md-ok80: #8bd5ac;
-  --md-ok90: #c6f0d8;
+  /* type */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-reading: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --fs-base: 14px;
+  --fs-result: 16px;
+  --lh-result: 1.85;
+  --measure: 62ch;
 
-  /* M3 primary tonal ramp (indigo default) */
-  --md-p10: #14156b;
-  --md-p20: #242b98;
-  --md-p30: #3740bd;
-  --md-p40: var(--accent-base);
-  --md-p80: var(--accent-dark);
-  --md-p90: #e1e0ff;
-  --md-p95: #f0efff;
-
-  /* M3 secondary / tertiary, derived from the seed */
-  --md-s10: color-mix(in oklab, var(--md-p40) 38%, #0c0a10);
-  --md-s20: color-mix(in oklab, var(--md-p40) 48%, #15121a);
-  --md-s30: color-mix(in oklab, var(--md-p40) 58%, #2b2530);
-  --md-s40: color-mix(in oklab, var(--md-p40) 62%, #625b71);
-  --md-s80: color-mix(in oklab, var(--md-p80) 58%, #cbc4db);
-  --md-s90: color-mix(in oklab, var(--md-p40) 15%, white);
-  --md-t10: color-mix(in oklab, var(--accent-2) 48%, black);
-  --md-t30: color-mix(in oklab, var(--accent-2) 72%, black);
-  --md-t40: var(--accent-2);
-  --md-t80: color-mix(in oklab, var(--accent-2) 48%, white);
-  --md-t90: color-mix(in oklab, var(--accent-2) 18%, white);
-
-  /* M3 system color roles */
-  --md-sys-color-primary: light-dark(var(--md-p40), var(--md-p80));
-  --md-sys-color-on-primary: light-dark(#ffffff, var(--md-p20));
-  --md-sys-color-primary-container: light-dark(var(--md-p90), var(--md-p30));
-  --md-sys-color-on-primary-container: light-dark(var(--md-p10), var(--md-p90));
-  --md-sys-color-secondary: light-dark(var(--md-s40), var(--md-s80));
-  --md-sys-color-on-secondary: light-dark(#ffffff, var(--md-s20));
-  --md-sys-color-secondary-container: light-dark(var(--md-s90), var(--md-s30));
-  --md-sys-color-on-secondary-container: light-dark(var(--md-s10), var(--md-s90));
-  --md-sys-color-tertiary: light-dark(var(--md-t40), var(--md-t80));
-  --md-sys-color-on-tertiary: light-dark(#ffffff, var(--md-t30));
-  --md-sys-color-tertiary-container: light-dark(var(--md-t90), var(--md-t30));
-  --md-sys-color-on-tertiary-container: light-dark(var(--md-t10), var(--md-t90));
-  --md-sys-color-surface: light-dark(var(--md-n99), var(--md-n12));
-  --md-sys-color-surface-dim: light-dark(var(--md-n90), var(--md-n6));
-  --md-sys-color-surface-bright: light-dark(var(--md-n100), var(--md-n24));
-  --md-sys-color-surface-container-lowest: light-dark(var(--md-n100), var(--md-n6));
-  --md-sys-color-surface-container-low: light-dark(var(--md-n96), var(--md-n17));
-  --md-sys-color-surface-container: light-dark(var(--md-n94), var(--md-n22));
-  --md-sys-color-surface-container-high: light-dark(var(--md-n92), var(--md-n24));
-  --md-sys-color-surface-container-highest: light-dark(var(--md-n90), var(--md-n27));
-  --md-sys-color-on-surface: light-dark(var(--md-n10), var(--md-n90));
-  --md-sys-color-on-surface-variant: light-dark(var(--md-nv30), var(--md-nv80));
-  --md-sys-color-outline: light-dark(var(--md-nv50), var(--md-nv60));
-  --md-sys-color-outline-variant: light-dark(var(--md-nv80), var(--md-nv30));
-  --md-sys-color-error: light-dark(var(--md-e40), var(--md-e80));
-  --md-sys-color-on-error: light-dark(#ffffff, var(--md-e10));
-  --md-sys-color-error-container: light-dark(var(--md-e90), var(--md-e30));
-  --md-sys-color-on-error-container: light-dark(var(--md-e10), var(--md-e90));
-  --md-sys-color-inverse-surface: light-dark(var(--md-n20), var(--md-n90));
-  --md-sys-color-inverse-on-surface: light-dark(var(--md-n95), var(--md-n20));
-  --md-sys-color-inverse-primary: light-dark(var(--md-p80), var(--md-p40));
-  --md-sys-color-shadow: #000000;
-  --md-sys-color-scrim: #000000;
-  --md-sys-color-surface-tint: var(--md-sys-color-primary);
-
-  /* M3 elevation */
-  --md-elev-1: 0 1px 2px color-mix(in oklab, #000 18%, transparent), 0 1px 3px 1px color-mix(in oklab, #000 8%, transparent);
-  --md-elev-2: 0 2px 6px 2px color-mix(in oklab, #000 12%, transparent), 0 8px 20px color-mix(in oklab, #000 10%, transparent);
-  --md-elev-3: 0 6px 12px 3px color-mix(in oklab, #000 14%, transparent), 0 16px 36px color-mix(in oklab, #000 12%, transparent);
-
-  /* Legacy aliases — keep every existing selector working */
-  --bg: var(--md-sys-color-surface-container);
-  --surface: var(--md-sys-color-surface-container-lowest);
-  --surface-2: var(--md-sys-color-surface-container-low);
-  --surface-3: var(--md-sys-color-surface-container-high);
-  --ink: var(--md-sys-color-on-surface);
-  --ink-2: var(--md-sys-color-on-surface-variant);
-  --muted: var(--md-sys-color-outline);
-  --line: light-dark(color-mix(in oklab, var(--md-nv80) 62%, var(--md-n99)), color-mix(in oklab, var(--md-nv30) 62%, var(--md-n12)));
-  --line-2: light-dark(color-mix(in oklab, var(--md-nv80) 88%, var(--md-n99)), color-mix(in oklab, var(--md-nv30) 88%, var(--md-n12)));
-  --accent: var(--md-sys-color-primary);
-  --accent-ink: #ffffff;
-  --accent-soft: var(--md-sys-color-primary-container);
-  --accent-soft-2: var(--md-sys-color-secondary-container);
-  --grad: linear-gradient(135deg, var(--md-p40) 0%, var(--accent-2) 100%);
-  --grad-glow: color-mix(in oklab, var(--md-p40) 30%, transparent);
-  --danger: var(--md-sys-color-error);
-  --danger-soft: var(--md-sys-color-error-container);
-  --success: light-dark(var(--md-ok40), var(--md-ok80));
-  --success-soft: light-dark(var(--md-ok90), var(--md-ok30));
-  --shadow-sm: var(--md-elev-1);
-  --shadow-md: var(--md-elev-2);
-  --shadow-lg: -14px 0 44px color-mix(in oklab, #000 14%, transparent);
-  --ring: 0 0 0 3px color-mix(in oklab, var(--md-p40) 32%, transparent);
-  --radius: var(--md-shape-lg);
-  --radius-sm: var(--md-shape-md);
-  --radius-lg: var(--md-shape-xl);
-  --t: 170ms cubic-bezier(.4, 0, .2, 1);
-}
-
-/* M3 typography scale — every size derives from one base so the font preference scales the whole UI */
-:root {
-  --md-font-family: 'Roboto Flex', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --md-font-size: 14px;
-  --md-type-line-body: 1.6;
-  --md-type-line-result: 1.8;
-  --md-type-line-headline: 1.3;
-  --md-type-weight-regular: 400;
-  --md-type-weight-medium: 500;
-  --md-type-weight-semibold: 600;
-  --md-type-weight-bold: 700;
-  --md-type-tracking-tight: -.01em;
-  --md-type-tracking-normal: 0;
-  --md-type-tracking-wide: .01em;
-  --md-type-tracking-label: .08em;
-
-  --md-sys-typescale-display-size: calc(var(--md-font-size) * 1.571);
-  --md-sys-typescale-headline-size: calc(var(--md-font-size) * 1.357);
-  --md-sys-typescale-title-size: calc(var(--md-font-size) * 1.214);
-  --md-sys-typescale-body-large-size: calc(var(--md-font-size) * 1.071);
-  --md-sys-typescale-body-size: var(--md-font-size);
-  --md-sys-typescale-label-large-size: calc(var(--md-font-size) * 0.893);
-  --md-sys-typescale-label-medium-size: calc(var(--md-font-size) * 0.821);
-  --md-sys-typescale-label-small-size: calc(var(--md-font-size) * 0.75);
-
-  --md-sys-shape-small: var(--md-shape-sm);
-  --md-sys-shape-medium: var(--md-shape-md);
-  --md-sys-shape-large: var(--md-shape-lg);
-  --md-sys-shape-extra-large: var(--md-shape-xl);
-  --md-sys-shape-full: var(--md-shape-full);
-
-  --md-sys-elevation-level0: none;
-  --md-sys-elevation-level1: var(--md-elev-1);
-  --md-sys-elevation-level2: var(--md-elev-2);
-  --md-sys-elevation-level3: var(--md-elev-3);
-}
-
-/* M3 button / FAB roles — one state layer driven by currentColor for every variant */
-:root {
-  --md-btn-height: 40px;
-  --md-btn-shape: var(--md-sys-shape-full);
-  --md-btn-filled-container: var(--md-sys-color-primary);
-  --md-btn-filled-label: var(--md-sys-color-on-primary);
-  --md-btn-tonal-container: var(--md-sys-color-secondary-container);
-  --md-btn-tonal-label: var(--md-sys-color-on-secondary-container);
-  --md-btn-outlined-label: var(--md-sys-color-primary);
-  --md-btn-outlined-outline: var(--md-sys-color-outline);
-  --md-btn-icon-label: var(--md-sys-color-on-surface-variant);
-  --md-btn-fab-container: var(--md-sys-color-primary-container);
-  --md-btn-fab-label: var(--md-sys-color-on-primary-container);
-}
-
-/* M3 cards, outlined text fields, FAB and chips */
-:root {
-  --md-sys-elevation-level4: 0 8px 14px 3px color-mix(in oklab, #000 16%, transparent), 0 18px 40px color-mix(in oklab, #000 12%, transparent);
-  --md-card-container: var(--md-sys-color-surface-container-low);
-  --md-card-outline: var(--md-sys-color-outline-variant);
-  --md-card-shape: var(--md-sys-shape-large);
-  --md-card-elevation-rest: var(--md-sys-elevation-level1);
-  --md-card-elevation-hover: var(--md-sys-elevation-level2);
-  --md-field-container: var(--md-sys-color-surface);
-  --md-field-container-focus: var(--md-sys-color-surface);
-  --md-field-outline: var(--md-sys-color-outline);
-  --md-field-outline-focus: var(--md-sys-color-primary);
-  --md-field-label: var(--md-sys-color-on-surface-variant);
-  --md-field-shape: var(--md-sys-shape-large);
-  --md-fab-container: var(--md-sys-color-primary-container);
-  --md-fab-label: var(--md-sys-color-on-primary-container);
-  --md-fab-shape: var(--md-sys-shape-large);
-  --md-fab-elevation-rest: var(--md-sys-elevation-level3);
-  --md-fab-elevation-hover: var(--md-sys-elevation-level4);
-  --md-chip-container: var(--md-sys-color-surface-container-low);
-  --md-chip-label: var(--md-sys-color-on-surface-variant);
-  --md-chip-outline: var(--md-sys-color-outline-variant);
-  --md-chip-selected-container: var(--md-sys-color-secondary-container);
-  --md-chip-selected-label: var(--md-sys-color-on-secondary-container);
-  --md-chip-shape: var(--md-shape-sm);
-  --md-chip-height: 32px;
-}
-
-/* M3 motion — emphasized easing and duration scale */
-:root {
-  --md-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
-  --md-motion-easing-emphasized-decelerate: cubic-bezier(.05, .7, .1, 1);
-  --md-motion-easing-emphasized-accelerate: cubic-bezier(.3, 0, .8, .15);
-  --md-motion-duration-short1: 50ms;
-  --md-motion-duration-short2: 100ms;
-  --md-motion-duration-short3: 150ms;
-  --md-motion-duration-short4: 200ms;
-  --md-motion-duration-medium1: 250ms;
-  --md-motion-duration-medium2: 300ms;
-  --md-motion-duration-long1: 350ms;
-  --md-motion-duration-long2: 500ms;
-  --t: var(--md-motion-duration-short4) var(--md-motion-easing-standard);
-}
-
-/* M3 floating card roles — compact elevated surface */
-:root {
-  --md-popover-container: var(--md-sys-color-surface-container-low);
-  --md-popover-outline: var(--md-sys-color-outline-variant);
-  --md-popover-head: var(--md-sys-color-surface-container-high);
-  --md-popover-shape: var(--md-sys-shape-large);
-  --md-popover-elevation: var(--md-sys-elevation-level3);
-  --md-popover-rail: var(--md-sys-color-primary);
-  --md-popover-body: var(--md-sys-color-on-surface);
-}
-
-/* M3 dialog surfaces — shared scrim, shape and elevation */
-:root {
-  --md-dialog-container: var(--md-sys-color-surface-container-high);
-  --md-dialog-shape: var(--md-sys-shape-extra-large);
-  --md-dialog-elevation: var(--md-sys-elevation-level3);
-  --md-dialog-scrim: #10142b59;
-}
-
-/* M3 reading typography — a comfortable measure, CJK-friendly stack and rhythm */
-:root {
-  --md-reading-font-family: 'Roboto Flex', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  --md-reading-measure: 40em;
-  --md-reading-line: 1.9;
-  --md-reading-tracking: .01em;
+  /* motion */
+  --t: 160ms;
+  --ease: cubic-bezier(.2, .7, .3, 1);
 }
 
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
-::selection {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
+:root[data-font="small"] { --fs-base: 13px; --fs-result: 15px; }
+:root[data-font="large"] { --fs-base: 15px; --fs-result: 18px; }
+
+:root[data-accent="indigo"] {
+  --accent: #4f6ef7;
+  --accent-hover: #3d5ce8;
+  --accent-soft: light-dark(#eef1ff, #232c4a);
+  --accent-text: light-dark(#2b41b8, #b3c0ff);
+}
+:root[data-accent="ocean"] {
+  --accent: #0e8aa6;
+  --accent-hover: #0a7391;
+  --accent-soft: light-dark(#e6f6fa, #15323c);
+  --accent-text: light-dark(#0a6479, #8fd6e8);
+}
+:root[data-accent="emerald"] {
+  --accent: #17865c;
+  --accent-hover: #126f4c;
+  --accent-soft: light-dark(#e7f5ee, #173026);
+  --accent-text: light-dark(#116a49, #8cd6b4);
+}
+:root[data-accent="rose"] {
+  --accent: #cf4f79;
+  --accent-hover: #b84067;
+  --accent-soft: light-dark(#fceef3, #3a2330);
+  --accent-text: light-dark(#a83259, #f0a8c1);
+}
+:root[data-accent="amber"] {
+  --accent: #b9821a;
+  --accent-hover: #9c6d13;
+  --accent-soft: light-dark(#fdf3e2, #352b18);
+  --accent-text: light-dark(#8a5f0d, #e8c684);
 }
 
-@media (prefers-contrast: more) {
-  :root {
-    --line: var(--md-sys-color-outline);
-    --line-2: var(--md-sys-color-outline);
-    --muted: var(--md-sys-color-on-surface-variant);
-  }
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
 }
+
+::selection { background: var(--accent-soft); color: var(--accent-text); }
 
 @media (forced-colors: active) {
   :root {
-    --md-sys-color-primary: Highlight;
-    --md-sys-color-on-primary: HighlightText;
-    --md-sys-color-primary-container: Canvas;
-    --md-sys-color-on-primary-container: CanvasText;
-    --md-sys-color-secondary: ButtonText;
-    --md-sys-color-secondary-container: Canvas;
-    --md-sys-color-tertiary: LinkText;
-    --md-sys-color-tertiary-container: Canvas;
-    --md-sys-color-surface: Canvas;
-    --md-sys-color-surface-container: Canvas;
-    --md-sys-color-surface-container-lowest: Canvas;
-    --md-sys-color-surface-container-low: Canvas;
-    --md-sys-color-surface-container-high: Canvas;
-    --md-sys-color-surface-container-highest: Canvas;
-    --md-sys-color-on-surface: CanvasText;
-    --md-sys-color-on-surface-variant: CanvasText;
-    --md-sys-color-outline: CanvasText;
-    --md-sys-color-outline-variant: CanvasText;
-    --md-sys-color-error: LinkText;
-    --md-sys-color-error-container: Canvas;
-    --success: CanvasText;
-    --success-soft: Canvas;
-    --accent-ink: HighlightText;
+    --bg: Canvas;
+    --surface: Canvas;
+    --surface-2: Canvas;
+    --text: CanvasText;
+    --text-2: CanvasText;
+    --border: CanvasText;
+    --accent: Highlight;
+    --accent-soft: Canvas;
+    --accent-text: Highlight;
   }
-  ::selection { background: Highlight; color: HighlightText; }
 }
-
-:root[data-accent="indigo"] { --accent-base: #4f57d6; --accent-dark: #9aa0ff; --accent-2: #7b5cf0; --md-p10: #14156b; --md-p20: #242b98; --md-p30: #3740bd; --md-p90: #e1e0ff; --md-p95: #f0efff; }
-:root[data-accent="ocean"] { --accent-base: #0e7c9b; --accent-dark: #74d4ea; --accent-2: #17a9b8; --md-p10: #003544; --md-p20: #004f66; --md-p30: #00667f; --md-p90: #c2e8f5; --md-p95: #e0f4fa; }
-:root[data-accent="emerald"] { --accent-base: #0f8a5f; --accent-dark: #74e0ac; --accent-2: #34b37e; --md-p10: #003822; --md-p20: #005234; --md-p30: #006b45; --md-p90: #b7f1d3; --md-p95: #dcf8e9; }
-:root[data-accent="rose"] { --accent-base: #c8436b; --accent-dark: #ffa3bd; --accent-2: #ec6a9c; --md-p10: #4a0c22; --md-p20: #6b1735; --md-p30: #8e2449; --md-p90: #ffd9e3; --md-p95: #ffeef2; }
-:root[data-accent="amber"] { --accent-base: #a86411; --accent-dark: #f5c477; --accent-2: #e5a02b; --md-p10: #3d2200; --md-p20: #5a3400; --md-p30: #7a4700; --md-p90: #ffe0a8; --md-p95: #fff1d8; }
