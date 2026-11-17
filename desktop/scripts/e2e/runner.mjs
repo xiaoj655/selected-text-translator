@@ -344,6 +344,31 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('main window: translate result renders a dictionary-style learning card', async () => {
+        await setConfig(mainPage, { model: 'mock-generic' })
+        try {
+          await mainPage.locator('#input').fill('record')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            const result = node?.querySelector('.result')
+            return Boolean(result && !result.classList.contains('is-loading') && result.textContent.trim())
+          }, null, { timeout: 20000 })
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            return Boolean(node && node.querySelector('.translation-answer') && node.querySelector('.pos-chip')
+              && node.querySelector('.sense-example') && node.querySelector('.phonetic-badge'))
+          }, null, { timeout: 20000 })
+          const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
+          assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
+          await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
+          await delay(300)
+          await shot(mainPage, 'main-dictionary-card')
+        } finally {
+          await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        }
+      })
+
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)

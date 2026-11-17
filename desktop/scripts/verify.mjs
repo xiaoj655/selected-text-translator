@@ -166,6 +166,11 @@ assert.match(appSource, /result-label/u, 'results need a labeled typography bloc
 assert.match(appCss, /\.export-menu/u, 'export menu must be styled')
 assert.match(appCss, /\.result-label/u, 'result label must be styled')
 assert.match(appCss, /\.status-stats/u, 'stats element must be styled')
+assert.match(appSource, /translation-answer/u, 'translate results need a prominent answer treatment')
+assert.match(appSource, /pos-chip/u, 'dictionary senses need part-of-speech chips')
+assert.match(appSource, /sense-example/u, 'dictionary senses need example lines')
+assert.match(appCss, /\.translation-answer/u, 'answer treatment must be styled')
+assert.match(appCss, /\.pos-chip/u, 'part-of-speech chips must be styled')
 
 assert.match(appSource, /function patchStreamResult/u, 'stream chunks must patch the result in place')
 assert.match(appSource, /if \(payload\.status === 'stream'\) \{/u, 'stream events must take the in-place path')

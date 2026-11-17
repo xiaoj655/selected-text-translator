@@ -1014,22 +1014,38 @@ function renderLexical(entry) {
   const lexical = entry.lexical
   if (!lexical) return null
   const box = el('div', 'lexical')
-  if (lexical.phonetic) box.append(lexicalRow('音标', lexical.phonetic))
-  if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
+  if (lexical.phonetic) {
     const row = el('div', 'lexical-row')
-    row.append(el('span', 'lexical-label', '释义'))
-    const list = el('ul', 'definitions')
-    for (const definition of lexical.definitions) {
-      const parts = []
-      if (definition.pos) parts.push(`[${definition.pos}]`)
-      parts.push(definition.meaning || '')
-      if (definition.example) parts.push(`(${definition.example.source} → ${definition.example.target})`)
-      list.append(el('li', '', parts.join(' ')))
-    }
-    row.append(list)
+    row.append(el('span', 'lexical-label', '音标'))
+    row.append(el('span', 'phonetic-badge', lexical.phonetic))
     box.append(row)
   }
-  if (lexical.contextual_analysis) box.append(lexicalRow('语境', lexical.contextual_analysis))
+  if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
+    const section = el('div', 'lexical-section')
+    section.append(el('div', 'lexical-section-title', '释义'))
+    const list = el('ul', 'definitions')
+    for (const definition of lexical.definitions) {
+      const item = el('li', 'sense')
+      if (definition.pos) item.append(el('span', 'pos-chip', definition.pos))
+      item.append(el('span', 'sense-meaning', definition.meaning || ''))
+      if (definition.example) {
+        const example = el('div', 'sense-example')
+        example.append(el('span', 'example-source', definition.example.source))
+        example.append(el('span', 'example-arrow', '→'))
+        example.append(el('span', 'example-target', definition.example.target))
+        item.append(example)
+      }
+      list.append(item)
+    }
+    section.append(list)
+    box.append(section)
+  }
+  if (lexical.contextual_analysis) {
+    const note = el('div', 'lexical-context')
+    note.append(el('span', 'lexical-label', '语境'))
+    note.append(el('span', '', lexical.contextual_analysis))
+    box.append(note)
+  }
   return box.childElementCount ? box : null
 }
 
@@ -1170,8 +1186,10 @@ function renderResult(entry) {
     result.textContent = '等待译文…'
     return result
   }
-  result.textContent = entry.translatedText
-  if (entry.status === 'streaming') result.append(el('span', 'caret'))
+  const answer = el('div', 'translation-answer')
+  answer.append(el('span', 'translation-text', entry.translatedText))
+  if (entry.status === 'streaming') answer.append(el('span', 'caret'))
+  result.append(answer)
   const lexical = renderLexical(entry)
   if (lexical) result.append(lexical)
   return result
