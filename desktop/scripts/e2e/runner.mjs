@@ -11,7 +11,9 @@ import { createMockApi } from './mock-api.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
 const artifactRoot = join(desktopDir, 'artifacts', 'e2e')
-const screenshotDir = join(artifactRoot, 'screenshots')
+const screenLabel = process.env.STT_E2E_SCREEN
+  ? process.env.STT_E2E_SCREEN.replace(/[^a-z0-9]/gi, '-') : ''
+const screenshotDir = screenLabel ? join(artifactRoot, 'screenshots', screenLabel) : join(artifactRoot, 'screenshots')
 const reportDir = join(artifactRoot, 'report')
 const logDir = join(artifactRoot, 'logs')
 
@@ -41,8 +43,9 @@ const LEXICAL = {
 
 export function ensureDisplay() {
   if (process.env.DISPLAY || process.env.STT_E2E_WRAPPED === '1') return false
+  const screen = process.env.STT_E2E_SCREEN || '1920x1080x24'
   const result = spawnSync('dbus-run-session', [
-    '--', 'xvfb-run', '-a', '-s', '-screen 0 1920x1080x24',
+    '--', 'xvfb-run', '-a', '-s', `-screen 0 ${screen}`,
     process.execPath, ...process.argv.slice(1),
   ], {
     stdio: 'inherit',
@@ -56,7 +59,7 @@ export function ensureDisplay() {
 }
 
 function watchErrors(page, bag) {
-  page.on('pageerror', (error) => bag.push(String(error?.message || error)))
+  page.on('pageerror', (error) => bag.push(String(error?.stack || error?.message || error)))
   page.on('console', (message) => {
     if (message.type() === 'error') bag.push(message.text())
   })
@@ -228,7 +231,7 @@ export async function runE2E(mode = 'core') {
       assert.equal(await mainPage.locator('.app').count(), 1, 'main window did not render its root')
     })
 
-    if (mode === 'core' || mode === 'all') {
+    if (mode === 'core' || mode === 'all' || mode === 'layout') {
       await check('short word: streaming translation and compact card', async () => {
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)
@@ -298,6 +301,27 @@ export async function runE2E(mode = 'core') {
           await openCard(app, mainPage, { text: sample.text, context: '' })
           await waitForResult(cardPage, { expect: /译文/u })
           await measure(cardPage, mainPage, `content variety: ${sample.label}`)
+        }
+      })
+
+      await check('screen edges: card stays inside the work area at every corner', async () => {
+        const cardPage = findCardPage(app)
+        const base = await windowMetrics(mainPage)
+        const { x, y, width, height } = base.workArea
+        const points = [
+          ['top-left', x + 2, y + 2],
+          ['top-right', x + width - 2, y + 2],
+          ['bottom-left', x + 2, y + height - 2],
+          ['bottom-right', x + width - 2, y + height - 2],
+          ['center', x + Math.round(width / 2), y + Math.round(height / 2)],
+        ]
+        for (const [label, px, py] of points) {
+          execFileSync('xdotool', ['mousemove', String(px), String(py)])
+          await delay(80)
+          await openCard(app, mainPage, { text: LONG_EN, context: '' })
+          await waitForResult(cardPage, { expect: /尽管/u })
+          await measure(cardPage, mainPage, `screen edge: ${label}`)
+          await shot(cardPage, `edge-${label}`)
         }
       })
 
@@ -376,12 +400,23 @@ export async function runE2E(mode = 'core') {
         await waitForResult(cardPage, { expect: /尽管/u })
         await cardPage.getByRole('button', { name: '更多操作' }).click()
         await cardPage.locator('.action-menu:not([hidden])').waitFor()
-        await measure(cardPage, mainPage, 'menu open')
+        const { win: openWin } = await measure(cardPage, mainPage, 'menu open')
         await shot(cardPage, 'core-menu-open')
         await cardPage.keyboard.press('Escape')
         await cardPage.waitForFunction(() => !document.querySelector('.action-menu:not([hidden])'))
-        const win = await windowMetrics(mainPage)
+        await cardPage.waitForFunction(
+          (openHeight) => {
+            const metrics = window.sttDesktop.e2e.cardMetrics()
+            return Boolean(metrics?.bounds && metrics.bounds.height < openHeight - 4)
+          },
+          openWin.bounds.height,
+          { timeout: 5000 },
+        ).catch(() => {})
+        const { win, dom } = await measure(cardPage, mainPage, 'menu closed')
         assert.equal(win.visible, true, 'Esc closed the whole card instead of only the menu')
+        assert.ok(win.bounds.height < openWin.bounds.height,
+          `card did not shrink after menu closed (${openWin.bounds.height} -> ${win.bounds.height}); `
+          + `docScrollHeight=${dom.docScrollHeight} card.bottom=${dom.card?.bottom} innerHeight=${dom.innerHeight}`)
       })
     }
 
@@ -421,10 +456,12 @@ export async function runE2E(mode = 'core') {
     results.push({ name: 'harness', ok: false, error: String(error?.message || error) })
     console.error(`[e2e] FAIL harness: ${error?.stack || error}`)
   } finally {
-    const report = { mode, date: new Date().toISOString(), results, pageErrors }
-    writeFileSync(join(reportDir, `${mode}.json`), JSON.stringify(report, null, 2))
+    const runTag = screenLabel ? `${mode}-${screenLabel}` : mode
+    const report = { mode, screen: process.env.STT_E2E_SCREEN || '1920x1080x24',
+      date: new Date().toISOString(), results, pageErrors }
+    writeFileSync(join(reportDir, `${runTag}.json`), JSON.stringify(report, null, 2))
     try {
-      writeFileSync(join(logDir, `${mode}-renderer.log`), pageErrors.join('\n'))
+      writeFileSync(join(logDir, `${runTag}-renderer.log`), pageErrors.join('\n'))
     } catch { }
     try {
       await app?.close()

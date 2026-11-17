@@ -339,7 +339,6 @@ function measureCardHeight() {
   return Math.ceil(Math.max(
     cardRect.bottom + window.scrollY + marginBottom,
     menuBottom + window.scrollY + marginBottom,
-    document.documentElement.scrollHeight,
   ))
 }
 

@@ -1,3 +1,8 @@
 import { runE2E } from './e2e/runner.mjs'
 
-await runE2E(process.argv.includes('--visual') ? 'visual' : process.argv.includes('--all') ? 'all' : 'core')
+const args = process.argv.slice(2)
+const mode = args.includes('--visual') ? 'visual'
+  : args.includes('--layout') ? 'layout'
+    : args.includes('--all') ? 'all' : 'core'
+
+await runE2E(mode)
