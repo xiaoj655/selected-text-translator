@@ -80,7 +80,7 @@ test('storage read failure emits a visible terminal error', async () => {
 })
 
 test('qwen SSE parser retains the last event even without a trailing newline', async () => {
-  await withBackground({ fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"你好"}}]}') },
+  await withBackground({ learningModel: '', fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"你好"}}]}') },
     async ({ send, waitFor, events }) => {
       send({ ...payload, kind: 'translate', context: '' })
       await waitFor(() => events.some((event) => event.payload.status === 'success'))
@@ -109,9 +109,40 @@ test('generic translation receives the exact selection context and keeps single-
   })
 })
 
+test('single-word qwen translation is enriched via the learning model into a lexical result', async () => {
+  const result = { translation: '唱片', phonetic: '/ˈrɛkərd/',
+    definitions: [{ pos: 'noun', meaning: '唱片' }] }
+  await withBackground({ learningModel: 'generic', fetchImpl: () => Response.json({
+    choices: [{ message: { content: JSON.stringify(result) } }],
+  }) }, async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, kind: 'translate', text: 'record', context: '' })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].body.model, 'generic')
+    assert.ok('response_format' in requests[0].body, 'enriched request must use structured output')
+    assert.equal('translation_options' in requests[0].body, false)
+    assert.equal(events.at(-1).payload.lexicalDetails.phonetic, result.phonetic)
+  })
+})
+
+test('single-word qwen translation falls back to qwen-mt without a learning model', async () => {
+  await withBackground({ learningModel: '', fetchImpl: (url, options) => {
+    const chunks = ['唱', '片']
+    return new Response(chunks.map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`).join('\n'))
+  } }, async ({ send, waitFor, events, requests }) => {
+    send({ ...payload, kind: 'translate', text: 'record', context: '' })
+    await waitFor(() => events.some((event) => event.payload.status === 'success'))
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].body.model, 'qwen-mt-flash')
+    assert.ok('translation_options' in requests[0].body)
+    assert.equal('response_format' in requests[0].body, false)
+    assert.equal(events.at(-1).payload.lexicalDetails, null)
+  })
+})
+
 test('qwen translation forwards distinct occurrences without adding unsupported message roles', async () => {
   const context = 'The band will record a new record tomorrow.'
-  await withBackground({ fetchImpl: (url, options) => {
+  await withBackground({ learningModel: '', fetchImpl: (url, options) => {
     const isNoun = JSON.parse(options.body).messages[0].content.indexOf('<stt-selected-0>') === 27
     const chunks = isNoun
       ? ['乐队明天将录制一张新的<stt-selec', 'ted-0>唱', '片</stt-select', 'ed-0>。']
@@ -144,7 +175,7 @@ test('qwen translation forwards distinct occurrences without adding unsupported 
 })
 
 test('qwen contextual non-stream responses extract the marked translation only', async () => {
-  await withBackground({ model: 'qwen-mt-plus', fetchImpl: () => Response.json({ choices: [{ message: {
+  await withBackground({ model: 'qwen-mt-plus', learningModel: '', fetchImpl: () => Response.json({ choices: [{ message: {
     content: '乐队明天将录制一张新的<stt-selected-0>唱片</stt-selected-0>。',
   } }] }) }, async ({ send, waitFor, events }) => {
     send({ ...payload, kind: 'translate', text: 'record',
@@ -156,7 +187,7 @@ test('qwen contextual non-stream responses extract the marked translation only',
 })
 
 test('missing qwen selection boundaries never expose full context or enter the result cache', async () => {
-  await withBackground({ fetchImpl: () => new Response(
+  await withBackground({ learningModel: '', fetchImpl: () => new Response(
     'data: {"choices":[{"delta":{"content":"She was hesitant to accept the offer."}}]}',
   ) }, async ({ send, waitFor, events, requests }) => {
     for (const requestId of ['missing-boundary', 'retry-missing-boundary']) {
@@ -171,7 +202,7 @@ test('missing qwen selection boundaries never expose full context or enter the r
 })
 
 test('qwen translation without usable context retains the plain-text request', async () => {
-  await withBackground({ fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"不情愿的"}}]}') },
+  await withBackground({ learningModel: '', fetchImpl: () => new Response('data: {"choices":[{"delta":{"content":"不情愿的"}}]}') },
     async ({ send, waitFor, events, requests }) => {
       send({ ...payload, kind: 'translate', context: '' })
       await waitFor(() => events.some((event) => event.payload.status === 'success'))

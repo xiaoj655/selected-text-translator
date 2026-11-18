@@ -332,6 +332,10 @@ assert.match(sharedBackgroundSource, /planRetry/u,
   'background must compute bounded retry delays for 429 responses')
 assert.match(sharedBackgroundSource, /sleepAbortable/u,
   'background retries must be abortable so cancellation stays responsive')
+assert.match(sharedBackgroundSource, /!IS_EXTENSION_SERVICE_WORKER && isQwenMtRequest && isSingleWordInput\(text\)/u,
+  'lexical enrichment must be desktop-only so the Chrome extension keeps its qwen-mt streaming behavior')
+assert.match(sharedBackgroundSource, /getLearningModel\('', reading\.learningModel\)/u,
+  'single words must be enriched via the configured learning model when available')
 assert.match(sharedContentSource, /stt-memory-badge/u,
   'extension card must surface a translation-memory badge')
 assert.match(sharedContentSource, /state\.activeSelection\.fromMemory/u,

@@ -164,7 +164,16 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       }
     }
     if (controller.signal.aborted) return
-    const isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
+    let isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
+    if (!IS_EXTENSION_SERVICE_WORKER && isQwenMtRequest && isSingleWordInput(text)) {
+      const reading = await readReadingSettings()
+      const enrichmentModel = getLearningModel('', reading.learningModel)
+      if (enrichmentModel) {
+        model = enrichmentModel
+        isQwenMtRequest = false
+        debugLog('single_word_lexical_enrichment', { selectionId, requestId, model })
+      }
+    }
     const useMemory = kind === 'translate' && IS_EXTENSION_SERVICE_WORKER
     const memoryKey = useMemory
       ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model, glossary: payload?.glossary })}`

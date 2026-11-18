@@ -723,6 +723,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('mode switch: changing intent re-translates the current input', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash', learning_model: '' })
         mock.setHandler(async ({ body, res, defaultResponse }) => {
           if (body?.model !== 'qwen3.8-flash') {
             await defaultResponse({ body, res })
@@ -764,6 +765,7 @@ export async function runE2E(mode = 'core') {
           }, null, { timeout: 20000 })
           assert.equal(await mainPage.locator('.entry:last-child .translation-answer').count(), 1)
 
+          await setConfig(mainPage, { learning_model: 'qwen3.8-flash' })
           await mainPage.locator('.mode[data-mode=guide]').click()
           await mainPage.waitForFunction(() => {
             const node = document.querySelector('.entry:last-child')
@@ -773,6 +775,7 @@ export async function runE2E(mode = 'core') {
             'switching mode must re-translate the same input, not clear it')
           assert.equal(await mainPage.locator('#input').inputValue(), 'mode-switch-probe')
 
+          await setConfig(mainPage, { learning_model: '' })
           await mainPage.locator('.mode[data-mode=translate]').click()
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .translation-answer')),
             null, { timeout: 20000 })
@@ -785,6 +788,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('target language: explicit setting reaches the model request', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash', learning_model: '' })
         const capturedBodies = []
         const ensureSettings = async () => {
           const hidden = await mainPage.locator('#settings-panel').evaluate((el) => el.hidden)
@@ -1400,6 +1404,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('short word: streaming translation and compact card', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash', learning_model: '' })
         const cardPage = await openCard(app, mainPage, { text: 'record', context: '' })
         watchErrors(cardPage, pageErrors)
         await waitForResult(cardPage, { expect: /唱片/u })
@@ -1433,6 +1438,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('reopen after hide: height dedup does not leave stale bounds', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash', learning_model: '' })
         const cardPage = findCardPage(app)
         await mainPage.evaluate(() => window.sttDesktop.e2e.hideCard())
         await delay(120)
@@ -1444,6 +1450,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('rapid consecutive triggers: latest request wins', async () => {
+        await setConfig(mainPage, { model: 'qwen-mt-flash', learning_model: '' })
         const cardPage = findCardPage(app)
         await mainPage.evaluate(async () => {
           await window.sttDesktop.e2e.showCard({ text: 'record', context: '' })
@@ -1455,6 +1462,7 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('content variety: word, sentence, Chinese, mixed, multiline, unbroken', async () => {
+        await setConfig(mainPage, { learning_model: 'qwen3.8-flash' })
         const cardPage = findCardPage(app)
         const samples = [
           { text: 'respect', label: 'single word' },
