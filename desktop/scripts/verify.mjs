@@ -316,6 +316,10 @@ assert.match(appSource, /readMemoryEntry\(state\.translationMemory/u, 'main wind
 assert.match(appSource, /writeMemoryEntry\(state\.translationMemory/u, 'main window must fill translation memory on success')
 assert.match(appSource, /translation_memory/u, 'translation memory must be persisted across sessions')
 assert.match(appSource, /memory-tag/u, 'memory hits must be labeled on the study card')
+assert.match(appSource, /模型没有返回译文/u,
+  'empty translation results must surface as a clear retryable error')
+assert.match(appSource, /entry\.memoryKey && \(entry\.mode === 'guide' \? entry\.guide : entry\.translatedText\)/u,
+  'empty results must never be written into translation memory')
 
 const sharedContentSource = readFileSync(new URL('../../src/content.js', import.meta.url), 'utf8')
 assert.match(sharedBackgroundSource, /loadTranslationMemory/u,

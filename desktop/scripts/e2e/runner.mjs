@@ -1517,6 +1517,39 @@ export async function runE2E(mode = 'core') {
         }
       })
 
+      await check('empty translation: surfaced as an error and never cached', async () => {
+        await openSettings(mainPage)
+        await mainPage.locator('#opt-live-translate').uncheck()
+        await mainPage.locator('#btn-close-settings').click()
+        mock.setHandler(async ({ res }) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ translation: '' }) } }] }))
+        })
+        try {
+          await mainPage.locator('#input').fill('empty-translation-probe')
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const label = document.querySelector('.entry:last-child .result-label')
+            return Boolean(label && /出错了/u.test(label.textContent))
+          }, null, { timeout: 15000 })
+          const message = mainPage.locator('.entry:last-child .error-message')
+          assert.equal(await message.count(), 1, 'an empty translation must show an error message, not a spinner')
+          assert.ok((await message.textContent()).length > 0, 'the error message must not be blank')
+          assert.equal(await mainPage.locator('.entry:last-child button').count() > 0, true)
+          const cached = await mainPage.evaluate(async () => {
+            const memory = await chrome.storage.local.get('translation_memory')
+            return Object.values(memory.translation_memory || {}).some((entry) => entry?.translatedText === '')
+          })
+          assert.equal(cached, false, 'an empty translation must not be cached')
+          await shot(mainPage, 'main-empty-translation')
+        } finally {
+          mock.resetHandler()
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
+        }
+      })
+
       await check('cancel: busy state is cancellable and stays laid out', async () => {
         mock.setHandler(async ({ res }) => {
           res.writeHead(200, { 'Content-Type': 'text/event-stream' })

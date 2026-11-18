@@ -1212,13 +1212,21 @@ function handleTranslationEvent(payload) {
       else {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
+        if (!entry.translatedText) {
+          entry.status = 'error'
+          entry.error = '模型没有返回译文,请重试或换个模型。'
+          setStatus(entry.error)
+          restoreFailedText(entry)
+          announceResult(entry.error)
+          break
+        }
       }
       state.lastElapsed = Date.now() - entry.createdAt
       setStatus(`完成 · ${state.lastElapsed} ms`)
       announceResult(entry.mode === 'guide'
         ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
         : entry.translatedText)
-      if (entry.memoryKey) {
+      if (entry.memoryKey && (entry.mode === 'guide' ? entry.guide : entry.translatedText)) {
         state.translationMemory = writeMemoryEntry(state.translationMemory, entry.memoryKey, {
           translatedText: entry.translatedText,
           lexical: entry.lexical,
