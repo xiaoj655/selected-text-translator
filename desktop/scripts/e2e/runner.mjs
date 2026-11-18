@@ -257,9 +257,11 @@ export async function runE2E(mode = 'core') {
       await mainPage.locator('#btn-clear').click()
       await mainPage.locator('.snackbar-action').click()
       await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length === 0, null, { timeout: 5000 })
+      await mainPage.locator('#btn-clear-input').click()
     })
 
     await check('differentiation empty state: dual-mode cards switch translate/guide intent', async () => {
+      assert.equal(await mainPage.locator('#input').inputValue(), '', 'input must be empty for the empty state')
       assert.equal(await mainPage.locator('.empty').count(), 1, 'empty state should be visible')
       assert.equal(await mainPage.locator('.empty-mode').count(), 2, 'two mode cards should be shown')
       await shot(mainPage, 'empty-state-modes')
@@ -438,7 +440,7 @@ export async function runE2E(mode = 'core') {
         assert.match(visible, /唱片/u)
       })
 
-      await check('input draft: autosaved text survives reload and is cleared after submit', async () => {
+      await check('in-place source: translate keeps the original in the input; clear input clears the draft', async () => {
         const probe = 'draft-survives-reload-probe'
         await mainPage.evaluate(() => chrome.storage.local.remove('desktop_input_draft'))
         await openSettings(mainPage)
@@ -460,15 +462,23 @@ export async function runE2E(mode = 'core') {
           await shot(mainPage, 'main-draft-restored')
 
           await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => /完成|翻译记忆/u.test(
+            document.getElementById('statusbar')?.textContent || ''), null, { timeout: 20000 })
+          assert.equal(await mainPage.locator('#input').inputValue(), probe,
+            'the original must stay in the input after translating so it can be edited in place')
+          const stillSaved = await mainPage.evaluate(() => chrome.storage.local.get('desktop_input_draft'))
+          assert.equal(stillSaved.desktop_input_draft, probe, 'the in-place source stays saved as a draft')
+
+          await mainPage.locator('#btn-clear-input').click()
           await mainPage.waitForFunction(() => !document.getElementById('input')?.value, null, { timeout: 5000 })
           await delay(300)
           const cleared = await mainPage.evaluate(() => chrome.storage.local.get('desktop_input_draft'))
-          assert.equal(cleared.desktop_input_draft, undefined, 'submit should clear the saved draft')
+          assert.equal(cleared.desktop_input_draft, undefined, 'clearing the input should clear the saved draft')
           await mainPage.reload()
           await mainPage.locator('.app').waitFor({ state: 'attached', timeout: 15000 })
           await delay(300)
           assert.equal(await mainPage.locator('#input').inputValue(), '',
-            'submitted text must not be restored as a draft')
+            'cleared input must not be restored as a draft')
         } finally {
           await mainPage.evaluate(() => chrome.storage.local.remove('desktop_input_draft'))
           await openSettings(mainPage)
@@ -629,11 +639,11 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('#btn-send').click()
           await mainPage.waitForFunction(() => {
             const node = document.querySelector('.entry:last-child')
-            return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.guide-intro')
-              && node.querySelector('.hint-step'))
+            return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.hint-step'))
           }, null, { timeout: 20000 })
           assert.ok((await mainPage.locator('.entry:last-child .hint-step').count()) >= 1)
-          assert.match(await mainPage.locator('.entry:last-child .guide-intro').textContent(), /主动思考/u)
+          assert.equal(await mainPage.locator('.entry:last-child .guide-intro').count(), 0,
+            'the vague guide-intro sentence must not be rendered')
           await mainPage.locator('.entry:last-child').getByRole('button', { name: '揭晓答案' }).click()
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .answer')),
             null, { timeout: 5000 })
@@ -693,7 +703,7 @@ export async function runE2E(mode = 'core') {
             'companion action should live inside the more menu, not the visible toolbar')
 
           await mainPage.locator('.entry:last-child .action-more').click()
-          await mainPage.locator('.entry:last-child .action-companion').click()
+          await mainPage.locator('.entry:last-child .action-companion').click({ force: true })
           await mainPage.waitForFunction(() => {
             const node = document.querySelector('.entry:last-child')
             return Boolean(node && node.querySelector('.entry-card--guide') && node.querySelector('.hint-step'))
@@ -701,7 +711,7 @@ export async function runE2E(mode = 'core') {
           assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /companion-probe/u)
 
           await mainPage.locator('.entry:last-child .action-more').click()
-          await mainPage.locator('.entry:last-child .action-companion').click()
+          await mainPage.locator('.entry:last-child .action-companion').click({ force: true })
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .translation-answer')),
             null, { timeout: 20000 })
           assert.match(await mainPage.locator('.entry:last-child .entry-source .bubble').textContent(), /companion-probe/u)
@@ -1314,33 +1324,42 @@ export async function runE2E(mode = 'core') {
 
       await check('translation memory: repeat text is served instantly without a new API call', async () => {
         await setConfig(mainPage, { model: 'qwen-mt-flash' })
+        await openSettings(mainPage)
+        await mainPage.locator('#opt-live-translate').uncheck()
+        await mainPage.locator('#btn-close-settings').click()
         const text = 'memory-probe-alpha'
-        const before = mock.requests.length
-        await mainPage.locator('#input').fill(text)
-        await mainPage.locator('#btn-send').click()
-        await mainPage.waitForFunction(() => {
-          const result = document.querySelector('.entry:last-child .result')
-          const status = document.getElementById('statusbar')?.textContent || ''
-          return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading')
-            && /完成/u.test(status))
-        }, null, { timeout: 20000 })
-        const afterFirst = mock.requests.length
-        assert.ok(afterFirst > before, 'first submission should reach the model API')
-        const stored = await mainPage.evaluate(() => chrome.storage.local.get('translation_memory'))
-        assert.ok(Object.keys(stored.translation_memory || {}).length >= 1,
-          'completed translation should be persisted to translation memory')
+        try {
+          const before = mock.requests.length
+          await mainPage.locator('#input').fill(text)
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const result = document.querySelector('.entry:last-child .result')
+            const status = document.getElementById('statusbar')?.textContent || ''
+            return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading')
+              && /完成/u.test(status))
+          }, null, { timeout: 20000 })
+          const afterFirst = mock.requests.length
+          assert.ok(afterFirst > before, 'first submission should reach the model API')
+          const stored = await mainPage.evaluate(() => chrome.storage.local.get('translation_memory'))
+          assert.ok(Object.keys(stored.translation_memory || {}).length >= 1,
+            'completed translation should be persisted to translation memory')
 
-        await mainPage.locator('#input').fill(text)
-        await mainPage.locator('#btn-send').click()
-        await mainPage.waitForFunction(() => {
-          const node = document.querySelector('.entry:last-child')
-          return Boolean(node && node.querySelector('.memory-tag') && node.querySelector('.result')?.textContent.trim())
-        }, null, { timeout: 15000 })
-        assert.equal(mock.requests.length, afterFirst, 'repeat submission must be served from memory, not the API')
-        assert.match(await mainPage.locator('#statusbar').textContent(), /来自翻译记忆/u)
-        await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
-        await delay(200)
-        await shot(mainPage, 'main-translation-memory')
+          await mainPage.locator('#input').fill(text)
+          await mainPage.locator('#btn-send').click()
+          await mainPage.waitForFunction(() => {
+            const node = document.querySelector('.entry:last-child')
+            return Boolean(node && node.querySelector('.memory-tag') && node.querySelector('.result')?.textContent.trim())
+          }, null, { timeout: 15000 })
+          assert.equal(mock.requests.length, afterFirst, 'repeat submission must be served from memory, not the API')
+          assert.match(await mainPage.locator('#statusbar').textContent(), /来自翻译记忆/u)
+          await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
+          await delay(200)
+          await shot(mainPage, 'main-translation-memory')
+        } finally {
+          await openSettings(mainPage)
+          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#btn-close-settings').click()
+        }
       })
 
       await check('translation memory: case-differing texts are not confused', async () => {

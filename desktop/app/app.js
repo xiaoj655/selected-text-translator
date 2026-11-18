@@ -1180,11 +1180,6 @@ function submit(options = {}) {
   stopActiveSpeech()
   state.entries.push(entry)
   state.activeEntryId = entry.id
-  if (!options.keepInput) {
-    $('input').value = ''
-    updateComposer()
-    clearSavedDraft()
-  }
   hideNotice()
   render()
   cancelStaleRequests(entry.id)
@@ -1425,7 +1420,6 @@ function renderGuide(entry) {
   const guide = entry.guide
   if (!guide) return null
   const box = document.createDocumentFragment()
-  box.append(el('div', 'guide-intro', '先想一想,再看提示,最后揭晓答案 · 主动思考记得更牢'))
   const tools = el('div', 'guide-tools')
   if (guide.phonetic) box.append(lexicalRow('音标', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
