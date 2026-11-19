@@ -7,19 +7,12 @@ const desktopDir = join(here, '..')
 const repoRoot = join(desktopDir, '..')
 const vendorDir = join(desktopDir, 'vendor')
 const srcTarget = join(vendorDir, 'src')
-const iconSource = join(repoRoot, 'assets', 'icon128.png')
-
-if (!existsSync(join(repoRoot, 'src', 'content.js'))) {
+if (!existsSync(join(repoRoot, 'src', 'background.js'))) {
   throw new Error('Cannot find shared src/ directory. Run this from the repository checkout.')
 }
 
 rmSync(vendorDir, { recursive: true, force: true })
 mkdirSync(srcTarget, { recursive: true })
 cpSync(join(repoRoot, 'src'), srcTarget, { recursive: true })
-
-if (existsSync(iconSource)) {
-  mkdirSync(join(vendorDir, 'assets'), { recursive: true })
-  cpSync(iconSource, join(vendorDir, 'assets', 'icon128.png'))
-}
 
 console.log(`[sync] shared sources copied to ${srcTarget}`)

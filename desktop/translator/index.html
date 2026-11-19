@@ -6,11 +6,20 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
   <title>Selected Text Translator</title>
   <link rel="stylesheet" href="./translator.css">
+  <link rel="stylesheet" href="./teacher.css">
   <script type="module" src="./translator.js"></script>
 </head>
 <body>
   <main class="workbench">
-    <header class="toolbar">
+    <header class="app-header">
+      <nav class="mode-switch" aria-label="使用模式">
+        <button id="translation-mode" type="button" aria-controls="translation-page" aria-pressed="true">翻译</button>
+        <button id="teacher-mode" type="button" aria-controls="teacher-page" aria-pressed="false">AI 老师</button>
+      </nav>
+      <button id="settings-button" class="quiet" type="button">模型设置</button>
+    </header>
+
+    <div id="translation-page" class="translation-page">
       <div class="language-direction">
         <select id="source-language" aria-label="原文语言"></select>
         <svg class="direction-arrow" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -18,33 +27,129 @@
         </svg>
         <select id="target-language" aria-label="译文语言"></select>
       </div>
-      <button id="settings-button" class="secondary" type="button">模型设置</button>
-    </header>
 
-    <div class="panes">
-      <section class="pane source-pane" aria-labelledby="source-heading">
-        <h1 id="source-heading">原文</h1>
-        <textarea id="source-text" aria-labelledby="source-heading" placeholder="在此粘贴或输入文字" spellcheck="false" autofocus></textarea>
-        <div class="pane-footer">
-          <button id="translate-button" class="primary" type="button" disabled>翻译 <kbd id="shortcut">⌘↵</kbd></button>
-        </div>
-      </section>
+      <div class="panes">
+        <section class="pane source-pane" aria-labelledby="source-heading">
+          <div class="pane-header">
+            <h1 id="source-heading">原文</h1>
+            <button id="clear-button" class="quiet" type="button" disabled>清空</button>
+          </div>
+          <textarea id="source-text" aria-labelledby="source-heading" aria-describedby="source-count" placeholder="在此粘贴或输入文字" spellcheck="false" autofocus></textarea>
+          <div class="pane-footer">
+            <small id="source-count" hidden></small>
+            <button id="translate-button" class="primary" type="button" disabled>翻译 <kbd id="shortcut">⌘↵</kbd></button>
+          </div>
+        </section>
 
-      <section class="pane target-pane" aria-labelledby="target-heading">
-        <h2 id="target-heading">译文</h2>
-        <div class="result-area">
-          <div id="target-text" tabindex="0" hidden></div>
-          <div id="status" role="status"></div>
-          <div class="recovery">
-            <button id="retry-button" class="secondary" type="button" hidden>重试</button>
-            <button id="configure-button" class="secondary" type="button" hidden>配置模型</button>
+        <section class="pane target-pane" aria-labelledby="target-heading">
+          <div class="pane-header">
+            <h2 id="target-heading">译文</h2>
+          </div>
+          <div class="result-area">
+            <div id="target-placeholder">等待翻译</div>
+            <div id="target-text" tabindex="0" hidden></div>
+          </div>
+          <div class="pane-footer">
+            <div class="result-feedback">
+              <div id="status" role="status"></div>
+              <div class="recovery">
+                <button id="retry-button" class="secondary" type="button" hidden>重试</button>
+                <button id="configure-button" class="secondary" type="button" hidden>配置模型</button>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button id="stop-button" class="secondary" type="button" hidden>停止 <kbd>Esc</kbd></button>
+              <button id="copy-button" class="secondary" type="button" disabled>复制译文</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section id="teacher-page" class="teacher-page" aria-label="AI 老师" hidden>
+      <header class="teacher-heading">
+        <nav class="teacher-tabs" aria-label="学习方式">
+          <button id="practice-tab" type="button" aria-controls="teacher-practice" aria-pressed="true">阅读练习</button>
+          <button id="guide-tab" type="button" aria-controls="teacher-guide" aria-pressed="false">引导阅读</button>
+        </nav>
+        <button id="teacher-clear" class="quiet" type="button">清除学习数据</button>
+      </header>
+
+      <section id="teacher-practice" class="teacher-panel" aria-label="阅读练习">
+        <div id="practice-intro" class="teacher-card">
+          <h1>阅读练习</h1>
+          <p id="practice-overview"></p>
+          <div id="practice-terms" class="practice-terms" hidden></div>
+          <p id="practice-privacy" class="teacher-note" hidden></p>
+          <div class="teacher-actions">
+            <button id="practice-start" class="primary" type="button">开始练习</button>
           </div>
         </div>
-        <div class="pane-footer">
-          <button id="copy-button" class="secondary" type="button" disabled>复制译文</button>
+
+        <div id="practice-lesson" class="teacher-card" hidden>
+          <p id="practice-passage" class="teacher-passage" lang="en" tabindex="-1"></p>
+          <p id="practice-question" class="teacher-question"></p>
+          <ul id="practice-hints" class="teacher-hints" hidden></ul>
+          <div class="teacher-actions">
+            <button id="practice-hint" class="secondary" type="button">给个提示</button>
+          </div>
+          <form id="practice-form" class="teacher-form">
+            <label for="practice-answer">说说你的理解</label>
+            <textarea id="practice-answer" rows="3" placeholder="用中文或英文回答" spellcheck="false"></textarea>
+            <div class="teacher-actions">
+              <button id="practice-submit" class="primary" type="submit" disabled>提交回答</button>
+            </div>
+          </form>
+          <p id="practice-submitted-answer" class="teacher-note" hidden></p>
+        </div>
+
+        <section id="practice-feedback" class="teacher-card teacher-feedback" aria-labelledby="practice-verdict" hidden>
+          <h2 id="practice-verdict" tabindex="-1"></h2>
+          <p id="practice-feedback-text"></p>
+          <p id="practice-focus" class="teacher-note"></p>
+          <div class="teacher-actions">
+            <button id="practice-next" class="primary" type="button">下一题</button>
+          </div>
+        </section>
+
+        <div class="teacher-recovery">
+          <p id="practice-status" class="teacher-status" role="status"></p>
+          <button id="practice-configure" class="secondary" type="button" hidden>配置学习模型</button>
         </div>
       </section>
-    </div>
+
+      <section id="teacher-guide" class="teacher-panel" aria-label="引导阅读" hidden>
+        <form id="guide-form" class="teacher-card teacher-form">
+          <h1>引导阅读</h1>
+          <label for="guide-text">想读懂的单词、短语或句子</label>
+          <textarea id="guide-text" rows="3" placeholder="粘贴英文原文" spellcheck="false"></textarea>
+          <div class="teacher-actions">
+            <button id="guide-start" class="primary" type="submit" disabled>给我提示</button>
+          </div>
+        </form>
+
+        <div class="teacher-recovery">
+          <p id="guide-status" class="teacher-status" role="status"></p>
+          <button id="guide-configure" class="secondary" type="button" hidden>配置学习模型</button>
+        </div>
+
+        <section id="guide-result" class="teacher-card" aria-labelledby="guide-result-heading" hidden>
+          <h2 id="guide-result-heading" tabindex="-1">提示</h2>
+          <p id="guide-phonetic" class="teacher-note" hidden></p>
+          <ul id="guide-hints" class="teacher-hints" lang="en"></ul>
+          <div class="teacher-actions">
+            <button id="guide-more" class="secondary" type="button">再提示一点</button>
+            <button id="guide-reveal" class="primary" type="button">看解析</button>
+          </div>
+          <div id="guide-answer" class="guide-answer" lang="en" tabindex="-1" hidden>
+            <p id="guide-meaning" class="teacher-question"></p>
+            <p id="guide-explanation"></p>
+            <p id="guide-example" hidden></p>
+            <p id="guide-usage" class="teacher-note" hidden></p>
+          </div>
+        </section>
+      </section>
+    </section>
   </main>
 
   <dialog id="settings-dialog" aria-labelledby="settings-heading">
@@ -54,14 +159,27 @@
       <input id="base-url" type="url" required spellcheck="false" autocomplete="off">
       <label for="api-key">API Key</label>
       <input id="api-key" type="password" autocomplete="off">
-      <label for="model">模型</label>
+      <label for="model">翻译模型</label>
       <input id="model" type="text" required spellcheck="false" autocomplete="off">
+      <label for="learning-model">学习模型（可选）</label>
+      <input id="learning-model" type="text" placeholder="例如 qwen-flash" aria-describedby="learning-model-help" spellcheck="false" autocomplete="off">
+      <p id="learning-model-help" class="field-note">留空时沿用通用翻译模型。使用专用翻译模型时，请单独填写。</p>
       <p id="settings-error" role="alert" hidden></p>
       <div class="dialog-actions">
         <button id="close-settings" class="secondary" type="button">取消</button>
         <button id="save-settings" class="primary" type="submit">保存</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="teacher-clear-dialog" aria-labelledby="teacher-clear-heading">
+    <h2 id="teacher-clear-heading">清除学习数据？</h2>
+    <p>这会删除本机为 AI 老师积累的查词统计和练习进度。</p>
+    <p id="teacher-clear-status" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button id="teacher-clear-cancel" class="secondary" type="button" autofocus>取消</button>
+      <button id="teacher-clear-confirm" class="danger" type="button">清除</button>
+    </div>
   </dialog>
 </body>
 </html>

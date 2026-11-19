@@ -7,4 +7,9 @@ contextBridge.exposeInMainWorld('desktopTranslator', {
   cancel: (requestId) => ipcRenderer.invoke('translator:cancel', requestId),
   copy: (text) => ipcRenderer.invoke('translator:copy', text),
   onResult: (callback) => ipcRenderer.on('translator:result', (_event, payload) => callback(payload)),
+  teacherOverview: () => ipcRenderer.invoke('translator:teacher-overview'),
+  teacherStart: () => ipcRenderer.invoke('translator:teacher-start'),
+  teacherGrade: (response) => ipcRenderer.invoke('translator:teacher-grade', response),
+  teacherGuide: (text) => ipcRenderer.invoke('translator:teacher-guide', text),
+  teacherClear: () => ipcRenderer.invoke('translator:teacher-clear'),
 })

@@ -1,3 +1,5 @@
+import { createTeacherView } from './teacher-view.js'
+
 const LANGUAGES = [
   ['Chinese', '简体中文'], ['English', '英语'], ['Japanese', '日语'], ['Korean', '韩语'],
   ['French', '法语'], ['German', '德语'], ['Spanish', '西班牙语'], ['Russian', '俄语'],
@@ -6,18 +8,28 @@ const MAX_SOURCE_LENGTH = 12000
 const $ = (id) => document.getElementById(id)
 const api = window.desktopTranslator
 
+const translationPageEl = $('translation-page')
+const teacherPageEl = $('teacher-page')
+const translationModeEl = $('translation-mode')
+const teacherModeEl = $('teacher-mode')
 const sourceEl = $('source-text')
 const sourceLanguageEl = $('source-language')
 const targetLanguageEl = $('target-language')
 const targetEl = $('target-text')
+const placeholderEl = $('target-placeholder')
 const statusEl = $('status')
+const countEl = $('source-count')
+const clearEl = $('clear-button')
 const translateEl = $('translate-button')
 const copyEl = $('copy-button')
+const stopEl = $('stop-button')
 const retryEl = $('retry-button')
 const configureEl = $('configure-button')
 const dialogEl = $('settings-dialog')
 const settingsErrorEl = $('settings-error')
 const apiKeyEl = $('api-key')
+const learningModelEl = $('learning-model')
+const teacherView = createTeacherView({ api, openSettings })
 
 let activeRequestId = null
 let completedText = ''
@@ -29,14 +41,39 @@ for (const [selectEl, autoLabel] of [[sourceLanguageEl, '自动检测'], [target
 }
 if (!navigator.platform.startsWith('Mac')) $('shortcut').textContent = 'Ctrl+↵'
 
+function setMode(isLearning) {
+  translationPageEl.hidden = isLearning
+  teacherPageEl.hidden = !isLearning
+  translationModeEl.setAttribute('aria-pressed', String(!isLearning))
+  teacherModeEl.setAttribute('aria-pressed', String(isLearning))
+  if (isLearning) teacherView.show()
+  else sourceEl.focus()
+}
+
 function setStatus(text, kind = '') {
   statusEl.textContent = text
   statusEl.dataset.kind = kind
+  placeholderEl.hidden = Boolean(text) || !targetEl.hidden
 }
 
 function showResult(text) {
   targetEl.textContent = text
   targetEl.hidden = !text
+  placeholderEl.hidden = !targetEl.hidden || Boolean(statusEl.textContent)
+}
+
+function updateSourceControls() {
+  const length = sourceEl.value.trim().length
+  const isOverLimit = length > MAX_SOURCE_LENGTH
+  const count = length.toLocaleString('zh-CN')
+  const limit = MAX_SOURCE_LENGTH.toLocaleString('zh-CN')
+  countEl.hidden = !length
+  countEl.textContent = isOverLimit ? `${count} 字符，超出 ${limit} 上限` : `${count} / ${limit} 字符`
+  countEl.dataset.kind = isOverLimit ? 'error' : ''
+  sourceEl.setAttribute('aria-invalid', String(isOverLimit))
+  clearEl.disabled = !sourceEl.value
+  translateEl.disabled = !length || isOverLimit || Boolean(activeRequestId)
+  stopEl.hidden = !activeRequestId
 }
 
 function resetResult() {
@@ -51,14 +88,14 @@ function resetResult() {
   copyEl.textContent = '复制译文'
   retryEl.hidden = true
   configureEl.hidden = true
-  translateEl.disabled = !sourceEl.value.trim()
+  updateSourceControls()
 }
 
 function fail(message, showSettings = false) {
   activeRequestId = null
   showResult('')
   setStatus(message, 'error')
-  translateEl.disabled = !sourceEl.value.trim()
+  updateSourceControls()
   retryEl.hidden = showSettings
   configureEl.hidden = !showSettings
 }
@@ -81,16 +118,12 @@ function formatError(message) {
 
 async function translate() {
   const text = sourceEl.value.trim()
-  if (!text || activeRequestId) return
+  if (!text || text.length > MAX_SOURCE_LENGTH || activeRequestId) return
   resetResult()
-  if (text.length > MAX_SOURCE_LENGTH) {
-    setStatus('原文超过 12,000 个字符。请分段翻译。', 'error')
-    return
-  }
   const requestId = crypto.randomUUID()
   activeRequestId = requestId
-  translateEl.disabled = true
-  setStatus('正在翻译…')
+  updateSourceControls()
+  setStatus('正在翻译…', 'working')
   try {
     const response = await api.translate({
       requestId, text, sourceLanguage: sourceLanguageEl.value, targetLanguage: targetLanguageEl.value,
@@ -113,8 +146,15 @@ api.onResult(({ requestId, status, translatedText, message }) => {
   showResult(completedText)
   setStatus('')
   copyEl.disabled = false
-  translateEl.disabled = false
+  updateSourceControls()
 })
+
+function stopTranslation() {
+  if (!activeRequestId) return
+  resetResult()
+  setStatus('已停止翻译')
+  sourceEl.focus()
+}
 
 async function copyTranslation() {
   const text = completedText
@@ -134,6 +174,7 @@ async function openSettings() {
     const settings = await api.settings()
     $('base-url').value = settings.baseUrl
     $('model').value = settings.model
+    learningModelEl.value = settings.learningModel
     apiKeyEl.value = ''
     apiKeyEl.required = !settings.hasKey
     apiKeyEl.placeholder = settings.hasKey ? '已保存，留空沿用' : ''
@@ -156,12 +197,19 @@ async function saveSettings(event) {
   try {
     const result = await api.saveSettings({
       baseUrl: $('base-url').value.trim(), apiKey: apiKeyEl.value.trim(), model: $('model').value.trim(),
+      learningModel: learningModelEl.value.trim(),
     })
+    if (result?.code === 'learning-model') {
+      settingsErrorEl.textContent = '学习模型需要支持对话和引导，请填写通用模型。'
+      settingsErrorEl.hidden = false
+      learningModelEl.focus()
+      return
+    }
     if (!result?.ok) throw new Error('Incomplete settings')
     dialogEl.close()
-    resetResult()
-    if (result.isSessionOnly) setStatus('系统无法安全保存密钥。此配置仅在本次运行中有效。')
-    sourceEl.focus()
+    if (result.didTranslationSettingsChange) resetResult()
+    if (result.isSessionOnly && !activeRequestId) setStatus('系统无法安全保存密钥。此配置仅在本次运行中有效。')
+    if (!translationPageEl.hidden) sourceEl.focus()
   } catch {
     settingsErrorEl.textContent = '无法保存。请检查 API 地址、密钥和模型。'
     settingsErrorEl.hidden = false
@@ -175,16 +223,30 @@ sourceEl.addEventListener('input', resetResult)
 sourceLanguageEl.addEventListener('change', resetResult)
 targetLanguageEl.addEventListener('change', resetResult)
 document.addEventListener('keydown', (event) => {
-  if (dialogEl.open || event.isComposing || event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+  if (translationPageEl.hidden || dialogEl.open || event.isComposing) return
+  if (event.key === 'Escape' && activeRequestId) {
+    event.preventDefault()
+    stopTranslation()
+    return
+  }
+  if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
   event.preventDefault()
   void translate()
 })
+clearEl.addEventListener('click', () => {
+  sourceEl.value = ''
+  resetResult()
+  sourceEl.focus()
+})
 translateEl.addEventListener('click', translate)
+stopEl.addEventListener('click', stopTranslation)
 retryEl.addEventListener('click', () => {
   sourceEl.focus()
   void translate()
 })
 copyEl.addEventListener('click', copyTranslation)
+translationModeEl.addEventListener('click', () => setMode(false))
+teacherModeEl.addEventListener('click', () => setMode(true))
 $('settings-button').addEventListener('click', openSettings)
 configureEl.addEventListener('click', openSettings)
 $('settings-form').addEventListener('submit', saveSettings)
