@@ -111,8 +111,7 @@ This is a Chrome extension—no build step required. Load the repository root (c
 ## Iteration Workflow
 
 - Work in small, useful slices: fix one user-visible problem, verify it, then expand scope.
-- Reuse `scripts/verify-browser.mjs`; do not rebuild the browser harness or reinstall existing tools each iteration.
-- During implementation, run focused behavior tests. Run the full suite and browser flow at integration checkpoints.
+- For extension changes, reuse `scripts/verify-browser.mjs`. Run focused behavior tests and reserve the full suite and browser flow for integration checkpoints.
 - Delegate independent work with narrow file ownership and only the context it needs. Inspect the integrated result.
 - Real API tests are opt-in (`test:live`, `test:live:browser`) and may incur provider charges.
 - Read test credentials from environment variables or a private configuration file outside the repository.
@@ -120,3 +119,11 @@ This is a Chrome extension—no build step required. Load the repository root (c
 - Package with `npm run package:extension`; keep generated archives and previews in ignored `dist/`.
 
 - Card tests should target `.entry-card > summary`; nested context and editor details have their own summaries.
+
+### Desktop iterations
+
+- Follow the feature boundaries and priorities in [桌面端迭代路线](docs/desktop-roadmap.md). Keep direct translation as the startup path. Guided translation helps with the current text. AI Tutor has a dedicated learning view and its own progress.
+- Pick the smallest check that proves the user-visible change. Reuse `desktop/scripts/verify-translator.mjs` for UI flows. For a desktop code release, run `npm run verify --prefix desktop` once on the release candidate. It already includes smoke and Electron E2E. Run the root suite when shared code or the extension is affected. For docs-only changes, review the diff and links.
+- Use DOM and layout assertions for behavior, overflow, focus, and theme state. Capture and inspect a screenshot when it answers a visual question the assertions leave open. Reuse the same screenshot for review and delivery. Reserve real API calls for authorized checks of actual model or provider behavior, with a synthetic input that covers the changed path.
+- Choose the release level by user impact before editing the version. A fix or small polish is a patch (`0.9.62`). A compatible feature increment is a minor release (`0.10.0`). A new core mode combined with a redesign of the product experience belongs in a major release (`1.0.0`). `desktop/scripts/bump.mjs` only increments the patch. Keep `desktop/package.json`, `desktop/package-lock.json`, and `desktop/CHANGELOG.md` aligned with the tag.
+- Commit and push desktop code releases to `desktop` with the matching `desktop-v<version>` tag. After the push succeeds, report the version, commit, and release or Actions link. CI continues independently. Push docs-only changes with a regular commit.
