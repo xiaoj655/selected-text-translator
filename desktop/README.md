@@ -1,5 +1,23 @@
 # Desktop build
 
+## 单窗口原型（macOS）
+
+发布页提供独立的 `Selected Text Translator Preview` 安装包。Apple Silicon 选择带 `arm64` 的 DMG，Intel 选择另一份同名 DMG。也可以直接从源码运行：
+
+```bash
+cd desktop
+npm ci
+npm run start:prototype
+```
+
+首次打开后，在「模型设置」填写 API 地址、API Key 和模型。直接在左侧粘贴或编辑原文，点击「翻译」或按 `⌘ Enter` 提交。右侧显示译文，可直接复制。窗口缩窄时原文和译文上下排列。
+
+原型使用独立的 `Selected Text Translator Preview` 配置目录。API Key 由系统安全存储加密后写入；系统无法加密时，配置只在本次运行中有效。原文和译文随窗口关闭清空。`npm start` 仍可启动原桌面版。
+
+在仓库根目录和 `desktop/` 安装依赖后，可运行 `npm run test:prototype --prefix desktop`，用本地模拟 API 验证原型流程。
+
+## 原桌面版
+
 桌面版是一个**独立窗口应用**,复用仓库根目录 `src/` 的翻译协议与业务逻辑(provider 设置、流式解析、缓存、表达本、复习、朗读消息),但交互按桌面软件重新设计,不是把浏览器注入浮层照搬过来。
 
 ## 交互

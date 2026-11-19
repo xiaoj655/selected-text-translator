@@ -73,6 +73,13 @@ jobs:
         working-directory: desktop
         run: npm run dist -- --mac --arm64
 
+      - name: Build single-window preview for macOS
+        if: matrix.name == 'macOS'
+        working-directory: desktop
+        run: |
+          npm run dist:prototype -- --x64
+          npm run dist:prototype -- --arm64
+
       - name: Build Windows
         if: matrix.name == 'Windows'
         working-directory: desktop

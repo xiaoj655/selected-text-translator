@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.58",
+  "version": "0.9.59",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
@@ -18,6 +18,12 @@
     "test:live:languages:zh": "node scripts/verify-live-languages-zh.mjs",
     "test:e2e:resolutions": "npm run sync && node scripts/e2e-resolutions.mjs",
     "start": "npm run sync && electron .",
+    "prestart:prototype": "npm run sync",
+    "start:prototype": "electron ./prototype/main.js",
+    "pretest:prototype": "npm run sync",
+    "test:prototype": "node scripts/verify-prototype.mjs",
+    "predist:prototype": "npm run sync",
+    "dist:prototype": "electron-builder --mac --config prototype/builder.cjs",
     "predist": "node scripts/sync-src.mjs",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir"

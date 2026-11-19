@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>轻译 · 桌面预览</title>
+  <link rel="stylesheet" href="./preview.css">
+  <script type="module" src="./preview.js"></script>
+</head>
+<body>
+  <main class="workbench">
+    <header class="toolbar">
+      <div class="language-direction">
+        <select id="source-language" aria-label="原文语言"></select>
+        <svg class="direction-arrow" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 8h10m-4-4 4 4-4 4" />
+        </svg>
+        <select id="target-language" aria-label="译文语言"></select>
+      </div>
+      <button id="settings-button" class="secondary" type="button">模型设置</button>
+    </header>
+
+    <div class="panes">
+      <section class="pane source-pane" aria-labelledby="source-heading">
+        <h1 id="source-heading">原文</h1>
+        <textarea id="source-text" aria-labelledby="source-heading" placeholder="在此粘贴或输入文字" spellcheck="false" autofocus></textarea>
+        <div class="pane-footer">
+          <button id="translate-button" class="primary" type="button" disabled>翻译 <kbd id="shortcut">⌘↵</kbd></button>
+        </div>
+      </section>
+
+      <section class="pane target-pane" aria-labelledby="target-heading">
+        <h2 id="target-heading">译文</h2>
+        <div class="result-area">
+          <div id="target-text" tabindex="0" hidden></div>
+          <div id="status" role="status"></div>
+          <div class="recovery">
+            <button id="retry-button" class="secondary" type="button" hidden>重试</button>
+            <button id="configure-button" class="secondary" type="button" hidden>配置模型</button>
+          </div>
+        </div>
+        <div class="pane-footer">
+          <button id="copy-button" class="secondary" type="button" disabled>复制译文</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-heading">
+    <form id="settings-form">
+      <h2 id="settings-heading">模型设置</h2>
+      <label for="base-url">API 地址</label>
+      <input id="base-url" type="url" required spellcheck="false" autocomplete="off">
+      <label for="api-key">API Key</label>
+      <input id="api-key" type="password" autocomplete="off">
+      <label for="model">模型</label>
+      <input id="model" type="text" required spellcheck="false" autocomplete="off">
+      <p id="settings-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="close-settings" class="secondary" type="button">取消</button>
+        <button id="save-settings" class="primary" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
