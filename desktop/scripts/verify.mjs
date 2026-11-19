@@ -17,7 +17,7 @@ function collect(dir, out = []) {
   return out
 }
 
-const files = [...collect(join(root, 'src')), ...collect(join(root, 'app')), ...collect(join(root, 'scripts'))]
+const files = ['src', 'app', 'translator', 'scripts'].flatMap((name) => collect(join(root, name)))
 for (const file of files) {
   execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' })
 }

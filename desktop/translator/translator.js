@@ -4,7 +4,7 @@ const LANGUAGES = [
 ]
 const MAX_SOURCE_LENGTH = 12000
 const $ = (id) => document.getElementById(id)
-const api = window.translationPreview
+const api = window.desktopTranslator
 
 const sourceEl = $('source-text')
 const sourceLanguageEl = $('source-language')

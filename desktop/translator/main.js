@@ -1,23 +1,22 @@
 import { mkdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, clipboard, ipcMain, safeStorage } from 'electron'
 import { readProviderSettings, saveProviderSettings } from '../vendor/src/provider-settings.js'
 import { installMainChrome } from '../src/chrome-shim-main.js'
 import { createStorage, setCrypto } from '../src/storage.js'
 
-const WINDOW_TITLE = '轻译 · 桌面预览'
+const WINDOW_TITLE = 'Selected Text Translator'
 const MAX_SOURCE_LENGTH = 12000
-const SELECTION_ID = 'prototype-editor'
+const SELECTION_ID = 'translator-editor'
 const LANGUAGES = new Set(['auto', 'Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Russian'])
 const rendererPath = fileURLToPath(new URL('./index.html', import.meta.url))
 
-const profileDir = process.env.STT_PROTOTYPE_USER_DATA
-  ? resolve(process.env.STT_PROTOTYPE_USER_DATA)
-  : join(app.getPath('appData'), 'Selected Text Translator Preview')
-mkdirSync(profileDir, { recursive: true })
-app.setName('Selected Text Translator Preview')
-app.setPath('userData', profileDir)
+if (process.env.STT_DESKTOP_TEST_PROFILE) {
+  const profileDir = resolve(process.env.STT_DESKTOP_TEST_PROFILE)
+  mkdirSync(profileDir, { recursive: true })
+  app.setPath('userData', profileDir)
+}
 
 let windowRef = null
 let activeRequestId = null
@@ -48,7 +47,7 @@ function openWindow() {
 }
 
 async function bootstrap() {
-  const storage = createStorage(profileDir)
+  const storage = createStorage(app.getPath('userData'))
   setCrypto({
     encrypt: (value) => safeStorage.encryptString(value).toString('base64'),
     decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),
@@ -82,14 +81,14 @@ async function bootstrap() {
         if (contents?.id !== id || message?.type !== 'TRANSLATION_EVENT') return
         if (message.payload.requestId !== activeRequestId) return
         if (['success', 'error', 'missing-configuration'].includes(message.payload.status)) activeRequestId = null
-        contents.send('preview:result', message.payload)
+        contents.send('translator:result', message.payload)
       },
     },
   })
   await import('../vendor/src/background.js')
 
   function handle(channel, callback) {
-    ipcMain.handle(`preview:${channel}`, (event, value) => {
+    ipcMain.handle(`translator:${channel}`, (event, value) => {
       if (event.sender !== windowRef?.webContents) throw new Error('Invalid sender')
       return callback(value, { tab: { id: event.sender.id }, frameId: 0 })
     })
@@ -140,7 +139,7 @@ if (app.requestSingleInstanceLock()) {
   })
   app.on('window-all-closed', () => app.quit())
   app.whenReady().then(bootstrap).catch((error) => {
-    console.error('Unable to start the desktop preview:', error.message)
+    console.error('Unable to start the desktop translator:', error.message)
     app.exit(1)
   })
 } else {

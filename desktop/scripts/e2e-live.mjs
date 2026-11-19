@@ -83,7 +83,7 @@ export async function runLiveE2E() {
   try {
     app = await playwrightElectron.launch({
       executablePath: electronBinary,
-      args: [desktopDir, `--user-data-dir=${userDataDir}`, '--no-sandbox'],
+      args: [join(desktopDir, 'src', 'main.js'), `--user-data-dir=${userDataDir}`, '--no-sandbox'],
       env: { ...process.env, STT_E2E: '1' },
       timeout: 60000,
     })
