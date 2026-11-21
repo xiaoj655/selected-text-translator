@@ -17,4 +17,4 @@
 ## 界面
 
 - 参考 OpenAI 产品的整体风格。突出正文和主操作，统一字号、间距和组件，使用中性色和少量强调色。省去装饰性渐变、徽章、嵌套卡片和重复文案。
-- 沿用现有 JavaScript 风格，复用已有逻辑和组件。桌面端的产品路径见 `desktop` 分支的 `docs/desktop-roadmap.md`。
+- 复用已有逻辑和组件。桌面端的产品路径见 `desktop` 分支的 `docs/desktop-roadmap.md`。
