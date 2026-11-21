@@ -1,27 +1,23 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, clipboard, globalShortcut, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
 import { createWindows } from './windows.js'
-import { createCapture } from './capture.js'
 import { createTts } from './tts.js'
-import { createShortcuts, HOTKEY_OPTIONS } from './shortcuts.js'
-import { shouldShowMainWindow } from './hotkey-route.js'
+import { createSpeechPlayer } from './speech-player.js'
+import { createTutor } from './tutor.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
 const vendorDir = join(desktopDir, 'vendor', 'src')
+const RELEASES_URL = 'https://github.com/xiaoj655/selected-text-translator/releases'
 
 let logFile = ''
 let windows
-let shortcuts
-let capture
 let dispatch
-let storageRef
-let floatingCardDisabled = false
 
 function logger(event, detail) {
   let text = ''
@@ -44,38 +40,17 @@ function logger(event, detail) {
   console.log('[desktop]', event, short)
 }
 
-async function onHotkey() {
-  let payload
-  try {
-    payload = await capture.capture()
-    logger('capture', { source: payload.source, length: payload.text.length })
-  } catch (error) {
-    logger('capture-failed', error)
-    payload = { text: '', context: '', contextStart: null, contextEnd: null, source: 'error' }
-  }
-  try {
-    if (payload.text) {
-      try {
-        const saved = await storageRef?.sync.get(['desktop_prefs'])
-        payload.prefs = saved?.desktop_prefs || null
-      } catch {
-        payload.prefs = null
-      }
-    }
-    if (shouldShowMainWindow(payload, floatingCardDisabled)) {
-      await windows.showMainWindow(payload)
-    } else {
-      await windows.showCardWindow(payload)
-    }
-  } catch (error) {
-    logger('show-failed', error)
-  }
-}
-
 function installIpc(storage, history) {
+  const tutor = createTutor({ storage, history })
   ipcMain.handle('stt:history-load', () => history.load())
   ipcMain.handle('stt:history-save', (_event, entries) => history.save(entries))
   ipcMain.handle('stt:history-clear', () => history.clear())
+  ipcMain.handle('stt:app-version', () => app.getVersion())
+  ipcMain.handle('stt:open-releases', () => shell.openExternal(RELEASES_URL))
+  ipcMain.handle('stt:tutor-plan', () => tutor.getPlan())
+  ipcMain.handle('stt:tutor-lesson', (_event, sourceId) => tutor.startLesson(sourceId))
+  ipcMain.handle('stt:tutor-lookup', (_event, lookup) => tutor.recordLookup(lookup))
+  ipcMain.handle('stt:tutor-result', (_event, result) => tutor.recordResult(result))
   ipcMain.handle('stt:message', (event, message) => dispatch(message, windows.senderFor(event.sender)))
   ipcMain.handle('stt:storage', (_event, request) => {
     const store = request?.area === 'local' ? storage.local : storage.sync
@@ -88,28 +63,12 @@ function installIpc(storage, history) {
     windows.open(name)
     return true
   })
-  ipcMain.handle('stt:hotkey-options', () => HOTKEY_OPTIONS)
-  ipcMain.handle('stt:get-hotkey', () => shortcuts.current() || '')
-  ipcMain.handle('stt:set-hotkey', (_event, value) => shortcuts.register(value))
-  ipcMain.handle('stt:platform', () => process.platform)
   ipcMain.handle('stt:get-flags', () => ({
     alwaysOnTop: windows.getAlwaysOnTop(),
     loginItem: app.getLoginItemSettings().openAtLogin,
-    clipboardOnly: capture.getMode() === 'clipboard',
-    floatingCardDisabled,
   }))
-  ipcMain.handle('stt:set-floating-card-disabled', (_event, disabled) => {
-    floatingCardDisabled = Boolean(disabled)
-    void storage.sync.set({ desktop_floating_card_disabled: floatingCardDisabled })
-    return true
-  })
   ipcMain.handle('stt:set-theme', (_event, theme) => {
     windows.setTheme(theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors))
-    return true
-  })
-  ipcMain.handle('stt:set-capture-mode', (_event, mode) => {
-    capture.setMode(mode)
-    void storage.sync.set({ desktop_capture_mode: mode === 'clipboard' ? 'clipboard' : 'auto' })
     return true
   })
   ipcMain.handle('stt:set-always-on-top', (_event, flag) => {
@@ -163,7 +122,14 @@ function installIpc(storage, history) {
 }
 
 async function bootstrap() {
-  Menu.setApplicationMenu(null)
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: app.name, submenu: [{ role: 'about' }, { role: 'quit' }] },
+      { role: 'editMenu' },
+    ]))
+  } else {
+    Menu.setApplicationMenu(null)
+  }
   const userDataDir = app.getPath('userData')
   mkdirSync(userDataDir, { recursive: true })
   logFile = join(userDataDir, 'desktop.log')
@@ -184,68 +150,52 @@ async function bootstrap() {
   }
 
   const storage = createStorage(userDataDir)
-  storageRef = storage
   const history = createHistory(userDataDir)
-  const tts = createTts({ logger })
+  const { play } = createSpeechPlayer({ BrowserWindow })
+  const tts = createTts({
+    logger,
+    play,
+    readCloudSettings: () => storage.sync.get(['desktop_tts_cloud', 'desktop_tts_api_key', 'base_url', 'api_key']),
+  })
   windows = createWindows({ desktopDir, userDataDir, logger })
   try {
-    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item', 'desktop_floating_card_disabled'])
+    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item'])
     if (flags?.desktop_always_on_top) windows.setAlwaysOnTop(true)
     if (flags?.desktop_login_item) app.setLoginItemSettings({ openAtLogin: true })
-    floatingCardDisabled = Boolean(flags?.desktop_floating_card_disabled)
   } catch {
     // window flags are best effort
   }
   const shim = installMainChrome({ storage, windows, tts, logger })
   dispatch = shim.dispatch
-  capture = createCapture({ clipboard, logger })
-  try {
-    const savedMode = await storage.sync.get(['desktop_capture_mode'])
-    if (savedMode?.desktop_capture_mode === 'clipboard') capture.setMode('clipboard')
-  } catch {
-    // capture mode is best effort
-  }
-  shortcuts = createShortcuts({ globalShortcut, storage, onTrigger: onHotkey, logger })
-
   installIpc(storage, history)
 
   await import(pathToFileURL(join(vendorDir, 'background.js')).href)
   logger('background module loaded')
 
-  windows.ensureMainWindow()
   windows.createTray({
-    onTrigger: onHotkey,
     onQuit: () => app.quit(),
     onOpenLog: () => {
       if (logFile) void shell.openPath(logFile)
     },
-    hotkeyOptions: HOTKEY_OPTIONS,
-    onHotkeyChange: (value) => shortcuts.register(value),
-    currentHotkey: () => shortcuts.current(),
   })
-
-  const registered = await shortcuts.init()
-  if (registered) {
-    logger('hotkey', registered)
-    windows.notifyStatus({ hotkey: registered, message: `热键 ${registered} 已就绪` })
-  } else {
-    logger('hotkey-unavailable', 'no accelerator could be registered')
-    new Notification({
-      title: 'Selected Text Translator',
-      body: '全局热键被占用,请用托盘菜单打开主窗口,或换一个快捷键。',
-    }).show()
-    windows.notifyStatus({ hotkey: '', message: '热键注册失败,请用托盘菜单打开主窗口' })
-  }
-
-  if (process.platform === 'darwin' && app.dock) app.dock.hide()
+  await windows.showMainWindow()
   logger('ready', process.platform)
 }
 
-app.whenReady().then(bootstrap).catch((error) => {
-  logger('bootstrap failed', error)
-  app.exit(1)
-})
+function showExistingWindow() {
+  void windows?.showMainWindow().catch((error) => logger('show-failed', error))
+}
+
+if (app.requestSingleInstanceLock()) {
+  app.on('second-instance', showExistingWindow)
+  app.on('activate', showExistingWindow)
+  app.whenReady().then(bootstrap).catch((error) => {
+    logger('bootstrap failed', error)
+    app.exit(1)
+  })
+} else {
+  app.quit()
+}
 
 app.on('window-all-closed', (event) => event.preventDefault())
 app.on('before-quit', () => windows?.setQuitting())
-app.on('will-quit', () => globalShortcut.unregisterAll())

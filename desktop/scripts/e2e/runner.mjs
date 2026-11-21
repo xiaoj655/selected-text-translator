@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { _electron as playwrightElectron } from 'playwright'
 import electronBinary from 'electron'
 import { createMockApi } from './mock-api.mjs'
+import { verifyComposerInput } from './composer-input.mjs'
+import { verifyResultMenu } from './result-menu.mjs'
+import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
+import { verifyCloudSpeech } from './cloud-speech.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -18,6 +22,17 @@ const reportDir = join(artifactRoot, 'report')
 const logDir = join(artifactRoot, 'logs')
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function waitForSignal(promise, label) {
+  let timer
+  try {
+    return await Promise.race([promise, new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 5000)
+    })])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 const LONG_EN = 'Although the proposal looked promising and the initial demonstrations were well received, '
   + 'the board remained reluctant to approve the budget without a more detailed risk assessment and a clear '
@@ -208,8 +223,10 @@ export async function runE2E(mode = 'core') {
   const userDataDir = mkdtempSync(join(tmpdir(), 'stt-e2e-'))
   const pageErrors = []
   const results = []
+  const filter = process.env.STT_E2E_FILTER ? new RegExp(process.env.STT_E2E_FILTER, 'u') : null
   let app
   const check = async (name, fn) => {
+    if (filter && !filter.test(name)) return
     const startedAt = Date.now()
     try {
       await fn()
@@ -248,47 +265,53 @@ export async function runE2E(mode = 'core') {
       assert.equal(await mainPage.locator('.app').count(), 1, 'main window did not render its root')
     })
 
-    await check('empty state: example translates in one click when configured', async () => {
-      await mainPage.getByRole('button', { name: '试一个单词' }).click()
-      await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length >= 1, null, { timeout: 15000 })
-      const source = await mainPage.locator('.entry .bubble').first().textContent()
-      assert.match(source, /record/u)
-      await mainPage.locator('#btn-more').click()
-      await mainPage.locator('#btn-clear').click()
-      await mainPage.locator('.snackbar-action').click()
-      await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length === 0, null, { timeout: 5000 })
-      await mainPage.locator('#btn-clear-input').click()
-    })
+    if (mode !== 'input') {
+      await check('empty state: example translates in one click when configured', async () => {
+        await mainPage.getByRole('button', { name: '试一个单词' }).click()
+        await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length >= 1, null, { timeout: 15000 })
+        const source = await mainPage.locator('.entry .bubble').first().textContent()
+        assert.match(source, /record/u)
+        await mainPage.locator('#btn-more').click()
+        await mainPage.locator('#btn-clear').click()
+        await mainPage.locator('.snackbar-action').click()
+        await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length === 0, null, { timeout: 5000 })
+        await mainPage.locator('#btn-clear-input').click()
+      })
 
-    await check('differentiation empty state: dual-mode cards switch translate/guide intent', async () => {
-      assert.equal(await mainPage.locator('#input').inputValue(), '', 'input must be empty for the empty state')
-      assert.equal(await mainPage.locator('.empty').count(), 1, 'empty state should be visible')
-      assert.equal(await mainPage.locator('.empty-mode').count(), 2, 'two mode cards should be shown')
-      await shot(mainPage, 'empty-state-modes')
-      await mainPage.locator('.empty-mode[data-empty-mode="guide"]').click()
-      await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="guide"]')?.classList.contains('is-active'))
-      const savedMode = await mainPage.evaluate(() => chrome.storage.sync.get('reading_mode'))
-      assert.equal(savedMode.reading_mode, 'guide')
-      assert.equal(await mainPage.locator('.empty-mode[data-empty-mode="guide"].is-active').count(), 1)
-      await shot(mainPage, 'empty-state-guide-active')
-      await mainPage.locator('.empty-mode[data-empty-mode="translate"]').click()
-      await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="translate"]')?.classList.contains('is-active'))
-      await shot(mainPage, 'empty-state-translate-active')
-    })
+      await check('differentiation empty state: dual-mode cards switch translate/guide intent', async () => {
+        assert.equal(await mainPage.locator('#input').inputValue(), '', 'input must be empty for the empty state')
+        assert.equal(await mainPage.locator('.empty').count(), 1, 'empty state should be visible')
+        assert.equal(await mainPage.locator('.empty-mode').count(), 2, 'two mode cards should be shown')
+        await shot(mainPage, 'empty-state-modes')
+        await mainPage.locator('.empty-mode[data-empty-mode="guide"]').click()
+        await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="guide"]')?.classList.contains('is-active'))
+        const savedMode = await mainPage.evaluate(() => chrome.storage.sync.get('reading_mode'))
+        assert.equal(savedMode.reading_mode, 'guide')
+        assert.equal(await mainPage.locator('.empty-mode[data-empty-mode="guide"].is-active').count(), 1)
+        await shot(mainPage, 'empty-state-guide-active')
+        await mainPage.locator('.empty-mode[data-empty-mode="translate"]').click()
+        await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="translate"]')?.classList.contains('is-active'))
+        await shot(mainPage, 'empty-state-translate-active')
+      })
 
-    await check('floating card switch: UI toggle updates the main-process flag', async () => {
-      await mainPage.locator('#btn-settings').click()
-      await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
-      await mainPage.locator('#opt-main-window-only').check()
-      const enabled = await mainPage.evaluate(() => window.sttDesktop.getFlags())
-      assert.equal(enabled.floatingCardDisabled, true)
-      await mainPage.locator('#opt-main-window-only').uncheck()
-      const disabled = await mainPage.evaluate(() => window.sttDesktop.getFlags())
-      assert.equal(disabled.floatingCardDisabled, false)
-      await mainPage.locator('#btn-close-settings').click()
-    })
+    }
+
+    if (mode === 'core' || mode === 'all' || mode === 'input') {
+      await verifyComposerInput({ app, page: mainPage, mock, check })
+    }
+
+    if (mode === 'core' || mode === 'all') {
+      await verifyCloudSpeech({ app, page: mainPage, check })
+      await verifyDesktopWorkflow({ app, page: mainPage, mock, check })
+    }
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {
+      await mainPage.evaluate(() => {
+        const control = document.getElementById('opt-live-translate')
+        control.checked = true
+        control.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+
       await check('paste and translate: clipboard text becomes a translation without hotkey', async () => {
         const clipText = 'clipboard selection test'
         await mainPage.evaluate((text) => window.sttDesktop.copyText(text), clipText)
@@ -531,11 +554,28 @@ export async function runE2E(mode = 'core') {
       })
 
       await check('regenerate: a new request supersedes other in-flight entries', async () => {
+        const slowStarted = Promise.withResolvers()
+        const slowClosed = Promise.withResolvers()
+        const releaseSlow = Promise.withResolvers()
+        const regenerated = Promise.withResolvers()
+        const counts = { fast: 0, slow: 0 }
         await openSettings(mainPage)
+        const wasLive = await mainPage.locator('#opt-live-translate').isChecked()
         await mainPage.locator('#opt-live-translate').uncheck()
         await mainPage.locator('#btn-close-settings').click()
         mock.setHandler(async ({ body, res, defaultResponse }) => {
-          if (JSON.stringify(body?.messages || []).includes('stale-regenerate-slow')) await delay(8000)
+          const text = body.messages.at(-1)?.content
+          if (text === 'stale-regenerate-slow') {
+            counts.slow += 1
+            res.once('close', () => slowClosed.resolve({ ended: res.writableEnded }))
+            slowStarted.resolve()
+            await releaseSlow.promise
+            if (res.destroyed) return
+          }
+          if (text === 'stale-regenerator-fast') {
+            counts.fast += 1
+            if (counts.fast === 2) regenerated.resolve()
+          }
           await defaultResponse({ body, res })
         })
         try {
@@ -549,15 +589,18 @@ export async function runE2E(mode = 'core') {
 
           await mainPage.locator('#input').fill('stale-regenerate-slow')
           await mainPage.locator('#btn-send').click()
-          await mainPage.waitForFunction(() => /请求中|已自动翻译/u.test(
-            document.getElementById('statusbar')?.textContent || ''), null, { timeout: 10000 })
+          await waitForSignal(slowStarted.promise, 'the slow request to reach the mock API')
 
           await mainPage.locator('#btn-history').click()
           await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
           await mainPage.locator('.history-item', { hasText: 'stale-regenerator-fast' }).first().click()
           await mainPage.waitForFunction(() => document.querySelector('.entry .bubble')?.textContent.includes('stale-regenerator-fast'))
           await mainPage.locator('.entry .action-more').click()
-          await mainPage.getByRole('button', { name: '重新生成' }).click({ force: true })
+          await mainPage.getByRole('button', { name: '重新生成', exact: true }).click()
+          await waitForSignal(regenerated.promise, 'the regenerated request to reach the mock API')
+          const closed = await waitForSignal(slowClosed.promise, 'the superseded request to be aborted')
+          assert.equal(closed.ended, false, 'the slow response must be aborted before returning a result')
+          assert.deepEqual(counts, { fast: 2, slow: 1 }, 'regenerate must make a fresh request and cancel the pending one')
 
           await mainPage.locator('#btn-history').click()
           await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
@@ -570,12 +613,19 @@ export async function runE2E(mode = 'core') {
             'the in-flight entry must be marked as superseded when regenerate starts a new request')
           await shot(mainPage, 'main-regenerate-stale-cancel')
         } finally {
+          releaseSlow.resolve()
           mock.resetHandler()
           await openSettings(mainPage)
-          await mainPage.locator('#opt-live-translate').check()
+          await mainPage.locator('#opt-live-translate').setChecked(wasLive)
           await mainPage.locator('#btn-close-settings').click()
         }
       })
+
+      if (mode === 'core' || mode === 'all') {
+        await check('result menu: short-window pointer access, Escape and outside dismissal', async () => {
+          await verifyResultMenu({ app, page: mainPage, mock, shot })
+        })
+      }
 
       await check('main window: translate result renders a dictionary-style learning card', async () => {
         await setConfig(mainPage, { model: 'mock-generic' })
@@ -1660,12 +1710,13 @@ export async function runE2E(mode = 'core') {
     await check('no renderer errors during the whole run', async () => {
       assert.deepEqual(pageErrors, [], `renderer errors: ${pageErrors.join(' | ')}`)
     })
+    if (!results.length) throw new Error('No E2E scenarios matched STT_E2E_FILTER.')
   } catch (error) {
     results.push({ name: 'harness', ok: false, error: String(error?.message || error) })
     console.error(`[e2e] FAIL harness: ${error?.stack || error}`)
   } finally {
     const runTag = screenLabel ? `${mode}-${screenLabel}` : mode
-    const report = { mode, screen: process.env.STT_E2E_SCREEN || '1920x1080x24',
+    const report = { mode, filter: process.env.STT_E2E_FILTER || '', screen: process.env.STT_E2E_SCREEN || '1920x1080x24',
       date: new Date().toISOString(), results, pageErrors }
     writeFileSync(join(reportDir, `${runTag}.json`), JSON.stringify(report, null, 2))
     try {

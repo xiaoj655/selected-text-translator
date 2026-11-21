@@ -23,6 +23,12 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
+function createWindow(options) {
+  const win = new BrowserWindow(options)
+  if (process.platform === 'win32' || process.platform === 'linux') win.removeMenu()
+  return win
+}
+
 export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
   const vendorDir = join(desktopDir, 'vendor', 'src')
@@ -89,7 +95,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   function ensureMainWindow() {
     if (main && !main.isDestroyed()) return main
     const saved = loadBounds()
-    main = new BrowserWindow({
+    main = createWindow({
       width: saved?.width || 920,
       height: saved?.height || 720,
       ...(Number.isFinite(saved?.x) && Number.isFinite(saved?.y) ? { x: saved.x, y: saved.y } : {}),
@@ -124,13 +130,14 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     return main
   }
 
-  async function showMainWindow(payload) {
+  async function showMainWindow(payload = { text: '', source: 'app' }) {
     const win = ensureMainWindow()
     await mainReady
     if (win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
     if (!win.isVisible()) win.show()
     win.focus()
-    win.webContents.send('stt:selection', payload || {})
+    win.webContents.send('stt:selection', payload)
   }
 
   function hideMainWindow() {
@@ -178,7 +185,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
 
   function ensureCardWindow() {
     if (card && !card.isDestroyed()) return card
-    card = new BrowserWindow({
+    card = createWindow({
       width: CARD_WIDTH,
       height: CARD_HEIGHT,
       frame: false,
@@ -288,11 +295,6 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     if (main && !main.isDestroyed()) main.setAlwaysOnTop(alwaysOnTop, 'floating')
   }
 
-  function toggleMainWindow() {
-    if (!main || main.isDestroyed() || !main.isVisible()) void showMainWindow({ text: '', source: 'tray' })
-    else main.hide()
-  }
-
   function open(name) {
     const key = AUX_FILES[name] ? name : 'settings'
     const existing = aux.get(key)
@@ -300,7 +302,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       existing.focus()
       return existing
     }
-    const win = new BrowserWindow({
+    const win = createWindow({
       width: key === 'library' ? 960 : 500,
       height: key === 'library' ? 720 : 660,
       title: key === 'library' ? '我的表达本' : key === 'options' ? '高级设置' : '设置',
@@ -317,30 +319,22 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     return win
   }
 
-  function createTray({ onTrigger, onQuit, hotkeyOptions, onHotkeyChange, currentHotkey, onOpenLog }) {
+  function createTray({ onQuit, onOpenLog }) {
     let image = nativeImage.createFromPath(join(desktopDir, 'vendor', 'assets', 'icon128.png'))
     if (image.isEmpty()) image = nativeImage.createEmpty()
     if (process.platform === 'darwin' && !image.isEmpty()) image = image.resize({ width: 18, height: 18 })
     tray = new Tray(image)
-    if (process.platform !== 'darwin') tray.on('click', toggleMainWindow)
-
-    const hotkeyMenu = hotkeyOptions.map((option) => ({
-      label: option,
-      type: 'radio',
-      checked: option === currentHotkey(),
-      click: () => onHotkeyChange(option),
-    }))
+    const openMainWindow = () => void showMainWindow()
+    if (process.platform !== 'darwin') tray.on('click', openMainWindow)
 
     tray.setToolTip('Selected Text Translator')
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: '打开主窗口', click: () => void showMainWindow({ text: '', source: 'tray' }) },
-      { label: '查词 / 翻译', click: onTrigger },
+      { label: '打开主窗口', click: openMainWindow },
       { type: 'separator' },
       { label: '设置', click: () => open('settings') },
       { label: '高级设置', click: () => open('options') },
       { label: '我的表达本', click: () => open('library') },
       { type: 'separator' },
-      { label: '快捷键', submenu: hotkeyMenu },
       { label: '打开日志', click: onOpenLog },
       { type: 'separator' },
       { label: '退出', click: onQuit },
@@ -352,7 +346,6 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     sendToWindow,
     sendToMainWindow,
     senderFor,
-    ensureMainWindow,
     showMainWindow,
     hideMainWindow,
     showCardWindow,
@@ -360,13 +353,11 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     resizeCardWindow,
     cardMetrics,
     setCardPinned,
-    toggleMainWindow,
     setAlwaysOnTop,
     setTheme,
     getAlwaysOnTop: () => alwaysOnTop,
     open,
     createTray,
-    notifyStatus: (payload) => broadcast('stt:status', payload),
     mainId: () => (main && !main.isDestroyed() ? main.id : 0),
     setQuitting: () => {
       isQuitting = true

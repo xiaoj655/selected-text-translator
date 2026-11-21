@@ -118,6 +118,9 @@ export function createLibraryAudio({ send, onChange = () => {}, onStatus = () =>
 
   function handleEvent(payload = {}) {
     if (payload.clientId !== clientId || payload.speechId !== ownedSpeech?.speechId) return
+    if (payload.status === 'fallback' && desiredSpeech === ownedSpeech && payload.message) {
+      onStatus(payload.message)
+    }
     if (!FINAL_SPEECH_EVENTS.has(payload.status)) return
     const isCurrent = desiredSpeech === ownedSpeech
     if (isCurrent) desiredSpeech = null

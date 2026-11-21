@@ -1,4 +1,8 @@
 import { execFile, spawn } from 'node:child_process'
+import { dashScopeSpeechKey, synthesizeDashScopeSpeech } from './dashscope-tts.js'
+
+const CLOUD_SPEECH_TIMEOUT_MS = 10000
+const CLOUD_SPEECH_MAX_LENGTH = 600
 
 const VOICE_BY_LANG = Object.freeze({
   'zh-CN': { darwin: 'Ting-Ting', win32: 'Microsoft Huihui Desktop' },
@@ -40,8 +44,11 @@ export function buildSpeechCommand({ platform = process.platform, text = '', rat
   return { command: 'spd-say', args }
 }
 
-export function createTts({ platform = process.platform, logger = () => {} }) {
-  let child = null
+export function createTts({
+  platform = process.platform, logger = () => {}, readCloudSettings, play,
+  synthesize = synthesizeDashScopeSpeech, spawnImpl = spawn,
+}) {
+  let current = null
 
   function getVoices() {
     return new Promise((resolve) => {
@@ -73,41 +80,104 @@ export function createTts({ platform = process.platform, logger = () => {} }) {
     })
   }
 
-  function stop() {
-    if (!child) return
-    const current = child
-    child = null
-    try {
-      current.kill()
-    } catch {
-      // already gone
-    }
+  function finish(task, type) {
+    if (current !== task) return
+    current = null
+    task.onEvent({ type })
   }
 
-  function speak(text, options = {}, done) {
-    stop()
-    const onEvent = typeof options.onEvent === 'function' ? options.onEvent : () => {}
+  function stop(type = 'cancelled') {
+    const task = current
+    if (!task) return
+    current = null
+    task.controller.abort()
+    try {
+      task.child?.kill()
+    } catch { }
+    task.onEvent({ type })
+  }
+
+  function speakSystem(task, text, options) {
+    if (current !== task) return
     const { command, args } = buildSpeechCommand({
       platform, text, rate: options.rate, lang: options.lang, voiceName: options.voiceName,
     })
-
     try {
-      child = spawn(command, args, { windowsHide: true, stdio: 'ignore' })
-      child.on('error', () => {
-        onEvent({ type: 'error' })
-        child = null
+      task.child = spawnImpl(command, args, { windowsHide: true, stdio: 'ignore' })
+      task.child.on('spawn', () => {
+        if (current === task) task.onEvent({ type: 'start' })
       })
-      child.on('close', (code) => {
-        if (!child) return
-        child = null
-        onEvent({ type: code === 0 ? 'end' : 'error' })
-      })
-      if (typeof done === 'function') done()
-    } catch (error) {
-      logger('speech failed', error)
-      onEvent({ type: 'error' })
-      if (typeof done === 'function') done()
+      task.child.on('error', () => finish(task, 'error'))
+      task.child.on('close', (code) => finish(task, code === 0 ? 'end' : 'error'))
+    } catch {
+      finish(task, 'error')
     }
+  }
+
+  async function speakPreferred(task, text, options) {
+    if (!readCloudSettings || !play || !options.lang?.startsWith('en-')) {
+      speakSystem(task, text, options)
+      return
+    }
+    let settings
+    try {
+      settings = await readCloudSettings()
+    } catch {
+      logger('speech settings unavailable')
+    }
+    if (current !== task) return
+    if (settings?.desktop_tts_cloud !== true) {
+      speakSystem(task, text, options)
+      return
+    }
+
+    const apiKey = dashScopeSpeechKey(settings)
+    let fallbackMessage = ''
+    if (!apiKey) fallbackMessage = '请在朗读设置填写百炼 API Key。正在使用系统语音。'
+    else if (text.length > CLOUD_SPEECH_MAX_LENGTH) fallbackMessage = '这段文字超过 600 字符，正在使用系统语音。'
+    else {
+      const signal = task.controller.signal
+      let hasStarted = false
+      try {
+        const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(CLOUD_SPEECH_TIMEOUT_MS)])
+        const audio = await synthesize(text, { apiKey, signal: requestSignal })
+        if (current !== task) return
+        requestSignal.throwIfAborted()
+        await play(audio, {
+          rate: options.rate,
+          signal,
+          onStart() {
+            if (current !== task) return
+            hasStarted = true
+            task.onEvent({ type: 'start' })
+          },
+        })
+        finish(task, 'end')
+        return
+      } catch {
+        if (current !== task) return
+        logger('cloud speech unavailable')
+        if (hasStarted) {
+          finish(task, 'error')
+          return
+        }
+        fallbackMessage = '阿里云朗读暂时不可用，正在使用系统语音。'
+      }
+    }
+    task.onEvent({ type: 'fallback', message: fallbackMessage })
+    speakSystem(task, text, options)
+  }
+
+  function speak(text, options = {}, done) {
+    stop('interrupted')
+    const task = {
+      controller: new AbortController(),
+      child: null,
+      onEvent: typeof options.onEvent === 'function' ? options.onEvent : () => {},
+    }
+    current = task
+    if (typeof done === 'function') done()
+    void speakPreferred(task, text, options)
   }
 
   return { getVoices, speak, stop }

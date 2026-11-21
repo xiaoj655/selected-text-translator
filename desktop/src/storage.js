@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const SECRET_PREFIX = 'enc:v1:'
+const SECRET_KEYS = new Set(['api_key', 'desktop_tts_api_key'])
 let cryptoTransform = null
 
 export function setCrypto(transform) {
@@ -9,7 +10,7 @@ export function setCrypto(transform) {
 }
 
 function encode(key, value) {
-  if (key !== 'api_key' || typeof value !== 'string' || !cryptoTransform?.encrypt) return value
+  if (!SECRET_KEYS.has(key) || typeof value !== 'string' || !cryptoTransform?.encrypt) return value
   return SECRET_PREFIX + cryptoTransform.encrypt(value)
 }
 

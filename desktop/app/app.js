@@ -1,6 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
+import { createTutorWorkspace } from './tutor.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
@@ -15,14 +16,18 @@ import {
 const $ = (id) => document.getElementById(id)
 
 const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
+const SPEECH_PREVIEW_ID = 'speech-preview'
+const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
 
 const state = {
   mode: 'translate',
+  workspace: 'translate',
   targetLanguage: 'auto',
   sourceLanguage: 'auto',
-  liveTranslate: true,
+  liveTranslate: false,
   liveTimer: 0,
   liveText: '',
+  isComposing: false,
   model: '',
   glossary: [],
   translationMemory: {},
@@ -32,8 +37,8 @@ const state = {
   configured: false,
   speechId: null,
   speechEntryId: null,
-  hotkey: '',
-  capture: null,
+  lastLookup: null,
+  lastSubmittedText: '',
   draft: null,
   draftTimer: 0,
   snackbarTimer: null,
@@ -44,6 +49,12 @@ const state = {
   selection: null,
   reviewReminderShown: false,
 }
+
+const tutor = createTutorWorkspace({
+  rootEl: $('tutor-workspace'),
+  api: window.sttDesktop.tutor,
+  onOpenSettings: openSettings,
+})
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -118,17 +129,16 @@ function setTargetLanguage(value, retranslate) {
     if (select) select.value = value
   }
   const label = value === 'auto' ? '自动(按原文语言判断)' : value
-  if (retranslate && state.liveTranslate && state.configured && $('input').value.trim().length >= 2) {
-    submit({ keepInput: true })
-    setStatus(`目标语言已设为 ${label} · 已重新翻译`)
-    return
-  }
-  setStatus(`目标语言已设为 ${label}`)
+  if (retranslate) retranslateCurrent(`目标语言已设为 ${label} · 已重新翻译`)
+  else setStatus(`目标语言已设为 ${label}`)
 }
 
 function retranslateCurrent(message) {
-  if (state.liveTranslate && state.configured && $('input').value.trim().length >= 2) {
-    submit({ keepInput: true })
+  const text = $('input').value.trim()
+  if (state.workspace === 'translate' && state.configured && text
+    && (state.liveTranslate || state.lastSubmittedText === text)) {
+    const lookup = state.lastSubmittedText === text ? state.lastLookup : undefined
+    submit({ keepInput: true, lookup })
     setStatus(message)
     return
   }
@@ -166,8 +176,6 @@ function swapLanguages() {
 function renderDiagnostics() {
   const lines = [
     `配置:${state.configured ? '已连接' : '未连接'}`,
-    `热键:${state.hotkey || '未注册'}`,
-    `取词:${state.capture?.source || '尚未触发'}`,
     `模式:${state.mode === 'guide' ? '引导理解' : '翻译'}`,
   ]
   if (state.lastElapsed) lines.push(`上次耗时:${state.lastElapsed} ms`)
@@ -189,8 +197,7 @@ function updateComposer() {
   const sourceSelect = $('lang-source')
   const autoOption = sourceSelect?.querySelector('option[value="auto"]')
   if (autoOption) autoOption.textContent = detected ? `自动检测 · 检测为${detected}` : '自动检测原文'
-  $('composer-hint').textContent = state.prefs.enterToSend
-    ? 'Enter 发送 · Shift+Enter 换行' : 'Ctrl+Enter 发送 · Enter 换行'
+  $('composer-hint').textContent = state.prefs.pasteAutoSubmit ? '粘贴即翻译' : '粘贴后点击翻译'
 }
 
 function isTyping(node) {
@@ -201,7 +208,6 @@ function isTyping(node) {
 
 function showHelp() {
   closeTransientPanels()
-  $('help-hotkey').textContent = state.hotkey || '未注册'
   $('help-overlay').hidden = false
   $('btn-close-help').focus()
 }
@@ -242,6 +248,7 @@ function trapFocus(event, container) {
 }
 
 function closeTransientPanels() {
+  closeActionMenus()
   hideHelp()
   closeExportMenu()
   closeMoreMenu()
@@ -252,7 +259,7 @@ function closeTransientPanels() {
 function updateScrollFab() {
   const stream = $('stream')
   const far = stream.scrollHeight - stream.scrollTop - stream.clientHeight > 120
-  $('btn-scroll-bottom').hidden = !far
+  $('btn-scroll-bottom').hidden = state.workspace !== 'translate' || !far
 }
 
 function isNearBottom() {
@@ -342,6 +349,7 @@ function renderHistory() {
 function jumpToEntry(id) {
   const entry = state.entries.find((item) => item.id === id)
   if (!entry) return
+  switchWorkspace('translate')
   state.collapsed.delete(id)
   state.activeEntryId = id
   render()
@@ -525,6 +533,30 @@ function toggleMoreMenu() {
   $('btn-more').setAttribute('aria-expanded', 'true')
 }
 
+function switchWorkspace(workspace) {
+  const isTutor = workspace === 'tutor'
+  if (workspace === state.workspace) {
+    if (!isTutor && $('settings-panel').hidden) $('input').focus()
+    return
+  }
+  closeTransientPanels()
+  hideSelectionToolbar()
+  hideNotice()
+  clearTimeout(state.liveTimer)
+  state.workspace = workspace
+  $('btn-translate-workspace').setAttribute('aria-pressed', String(!isTutor))
+  $('btn-tutor-workspace').setAttribute('aria-pressed', String(isTutor))
+  $('translation-workspace').hidden = isTutor
+  $('tutor-workspace').hidden = !isTutor
+  document.title = isTutor ? 'AI 老师 · Selected Text Translator' : 'Selected Text Translator'
+  updateScrollFab()
+  if (isTutor) void tutor.open()
+  else {
+    updateComposer()
+    $('input').focus()
+  }
+}
+
 function runExport(kind) {
   if (!state.entries.length) {
     setStatus('还没有可导出的记录')
@@ -566,6 +598,7 @@ async function savePrefs() {
 function applyPrefs() {
   $('opt-paste').checked = state.prefs.pasteAutoSubmit !== false
   $('opt-enter').checked = state.prefs.enterToSend === true
+  $('opt-live-translate').checked = state.liveTranslate
   $('opt-theme').value = ['system', 'light', 'dark'].includes(state.prefs.theme) ? state.prefs.theme : 'system'
   $('opt-font').value = ['small', 'normal', 'large'].includes(state.prefs.font) ? state.prefs.font : 'normal'
   $('opt-reduced-motion').checked = state.prefs.reducedMotion === true
@@ -710,26 +743,6 @@ function hideNotice() {
   $('notice').hidden = true
 }
 
-async function showCaptureHint(payload) {
-  let platform = ''
-  try {
-    platform = await window.sttDesktop.platform?.() || ''
-  } catch { }
-  const source = payload?.source || ''
-  let text = '没能自动取词。把文字粘贴到下面的输入框即可,或先复制再按热键。'
-  if (source === 'error') {
-    if (platform === 'darwin') {
-      text = '自动取词需要「辅助功能」权限。请在系统设置 → 隐私与安全性 → 辅助功能中允许本应用,然后选中文字再按热键;也可直接粘贴。'
-    } else if (platform === 'win32') {
-      text = '自动取词失败。请先选中文字再按热键;若仍失败,可复制文字后直接粘贴,或在设置里切换为「仅用剪贴板取词」。'
-    }
-  }
-  showNotice(text, 'info', {
-    label: '查看设置',
-    run: openSettings,
-  })
-}
-
 function hideSelectionToolbar() {
   $('selection-toolbar').hidden = true
   state.selection = null
@@ -815,7 +828,7 @@ function hideSnackbar() {
 
 function stashDraft(incoming) {
   const current = $('input').value
-  if (!current.trim() || current === incoming) return
+  if (!current.trim() || current.trim() === incoming || current.trim() === state.lastSubmittedText) return
   state.draft = current
 }
 function restoreDraft() {
@@ -823,6 +836,7 @@ function restoreDraft() {
   $('input').value = state.draft
   state.draft = null
   updateComposer()
+  scheduleDraftSave()
   hideNotice()
   setStatus('已恢复草稿')
   $('input').focus()
@@ -861,6 +875,11 @@ function openSettings() {
 
 function closeSettings() {
   const wasOpen = !$('settings-panel').hidden
+  if (state.speechEntryId === SPEECH_PREVIEW_ID) {
+    setSpeechStatus('已停止朗读。')
+    stopActiveSpeech()
+    patchSpeechButtons()
+  }
   $('settings-backdrop').hidden = true
   $('settings-panel').hidden = true
   if (wasOpen) $('btn-settings').focus()
@@ -871,9 +890,6 @@ async function loadFlags() {
     const flags = await window.sttDesktop.getFlags()
     $('opt-always-on-top').checked = Boolean(flags?.alwaysOnTop)
     $('opt-login-item').checked = Boolean(flags?.loginItem)
-    $('opt-clipboard-only').checked = Boolean(flags?.clipboardOnly)
-    $('opt-main-window-only').checked = Boolean(flags?.floatingCardDisabled)
-    $('cfg-hotkey').value = state.hotkey || ''
   } catch {
     // flags are optional
   }
@@ -882,15 +898,16 @@ async function loadFlags() {
 async function loadSettings() {
   try {
     const values = await chrome.storage.sync.get([
-      'base_url', 'api_key', 'model', 'learning_model', 'speech_rate', 'desktop_live_translate',
+      'base_url', 'api_key', 'model', 'learning_model', 'speech_rate',
+      'desktop_tts_cloud', 'desktop_tts_api_key',
     ])
     const rate = Number(values?.speech_rate)
     const safeRate = Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9
     $('cfg-speech-rate').value = String(safeRate)
     $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
+    $('opt-cloud-speech').checked = values?.desktop_tts_cloud === true
+    $('cfg-cloud-speech-key').value = String(values?.desktop_tts_api_key || '')
     $('cfg-base-url').value = String(values?.base_url || '')
-    $('opt-live-translate').checked = values?.desktop_live_translate !== false
-    state.liveTranslate = $('opt-live-translate').checked
     $('cfg-api-key').value = String(values?.api_key || '')
     $('cfg-model').value = String(values?.model || '')
     $('cfg-learning').value = String(values?.learning_model || '')
@@ -900,6 +917,24 @@ async function loadSettings() {
     updateSettingsValidity()
   } catch {
     setStatus('读取设置失败')
+  }
+}
+
+async function saveSpeechSettings(event) {
+  event.preventDefault()
+  const button = $('btn-save-speech')
+  const statusEl = $('speech-settings-status')
+  button.disabled = true
+  try {
+    await chrome.storage.sync.set({
+      desktop_tts_cloud: $('opt-cloud-speech').checked,
+      desktop_tts_api_key: $('cfg-cloud-speech-key').value.trim(),
+    })
+    statusEl.textContent = '已保存朗读设置。'
+  } catch {
+    statusEl.textContent = '保存朗读设置失败，请重试。'
+  } finally {
+    button.disabled = false
   }
 }
 
@@ -1052,7 +1087,7 @@ async function setMode(mode) {
   }
   const label = mode === 'guide' ? '引导理解' : '翻译'
   retranslateCurrent(`已切换到${label} · 已重新翻译`)
-  $('input').focus()
+  if (state.workspace === 'translate') $('input').focus()
 }
 
 function sendRequest(entry, forceRefresh = false) {
@@ -1105,22 +1140,41 @@ async function pasteAndTranslate() {
       $('input').focus()
       return
     }
-    $('input').value = text
-    updateComposer()
-    submit()
+    if (state.workspace === 'translate') translatePastedText(text)
   } catch {
     setStatus('读取剪贴板失败')
   }
 }
 
+function translatePastedText(text) {
+  stashDraft(text)
+  $('input').value = text
+  updateComposer()
+  scheduleDraftSave()
+  submit()
+  showDraftNotice()
+}
+
+async function recordTutorLookup(entry) {
+  if (!entry.lookup || entry.status !== 'done' || (entry.mode === 'guide' && !entry.guide)) return
+  try {
+    await window.sttDesktop.tutor.recordLookup({
+      ...entry.lookup,
+      sourceLanguage: entry.sourceLanguage,
+      guideType: entry.guide?.guideType,
+    })
+    if (state.workspace === 'tutor') void tutor.refresh()
+  } catch { }
+}
+
 function scheduleLiveTranslate() {
   clearTimeout(state.liveTimer)
-  if (!state.liveTranslate) return
+  if (!state.liveTranslate || state.isComposing) return
   const text = $('input').value.trim()
   if (text.length < 2 || text === state.liveText) return
   state.liveTimer = setTimeout(() => {
     const current = $('input').value.trim()
-    if (!current || current !== text || current === state.liveText) return
+    if (state.isComposing || !current || current !== text || current === state.liveText) return
     state.liveText = current
     submit({ keepInput: true })
     setStatus('已自动翻译')
@@ -1128,6 +1182,7 @@ function scheduleLiveTranslate() {
 }
 
 function submit(options = {}) {
+  if (state.isComposing || state.workspace !== 'translate') return
   clearTimeout(state.liveTimer)
   state.liveTimer = 0
   if (!options.keepInput) state.liveText = ''
@@ -1142,14 +1197,22 @@ function submit(options = {}) {
     setStatus('请先完成模型设置')
     return
   }
+  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
+    sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary })
   const recent = state.entries[state.entries.length - 1]
-  if (recent && recent.text === text && ['pending', 'loading', 'streaming'].includes(recent.status)
+  if (recent && recent.memoryKey === memoryKey && ['pending', 'loading', 'streaming'].includes(recent.status)
     && Date.now() - recent.createdAt < 2000) {
     setStatus('相同内容正在处理中,请稍候')
     return
   }
+  const id = makeId('s')
+  const createdAt = Date.now()
+  const sourceLanguage = state.sourceLanguage
+  const lookup = options.lookup === undefined
+    ? { id, text, sourceLanguage, createdAt }
+    : options.lookup
   const entry = {
-    id: makeId('s'),
+    id,
     requestId: makeId('r'),
     text,
     mode: state.mode,
@@ -1158,13 +1221,17 @@ function submit(options = {}) {
     lexical: null,
     guide: null,
     error: '',
-    createdAt: Date.now(),
+    createdAt,
     hintCount: 1,
     answerRevealed: false,
     fromMemory: false,
+    sourceLanguage,
+    lookupExcluded: lookup === null,
+    lookup,
+    memoryKey,
   }
-  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
-    sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary })
+  state.lastLookup = lookup
+  state.lastSubmittedText = text
   const cached = readMemoryEntry(state.translationMemory, memoryKey)
   if (cached) {
     entry.status = 'done'
@@ -1172,10 +1239,7 @@ function submit(options = {}) {
     entry.lexical = cached.lexical || null
     entry.guide = cached.guide || null
     entry.fromMemory = true
-    entry.memoryKey = memoryKey
     state.lastElapsed = 0
-  } else {
-    entry.memoryKey = memoryKey
   }
   stopActiveSpeech()
   state.entries.push(entry)
@@ -1189,6 +1253,7 @@ function submit(options = {}) {
       ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
       : entry.translatedText)
     persistHistory()
+    void recordTutorLookup(entry)
   } else {
     sendRequest(entry)
   }
@@ -1236,6 +1301,7 @@ function handleTranslationEvent(payload) {
           Promise.resolve(chrome.storage.local.set({ translation_memory: state.translationMemory })).catch(() => {})
         } catch { }
       }
+      void recordTutorLookup(entry)
       break
     case 'missing-configuration':
     case 'error':
@@ -1256,12 +1322,23 @@ function handleTranslationEvent(payload) {
   renderEntry(entry)
 }
 
+function setSpeechStatus(message) {
+  if (state.speechEntryId === SPEECH_PREVIEW_ID) $('speech-settings-status').textContent = message
+  else setStatus(message)
+}
+
 function handleSpeechEvent(payload) {
   if (payload.speechId !== state.speechId) return
+  if (payload.status === 'fallback') {
+    setSpeechStatus(payload.message)
+    return
+  }
   if (!['end', 'error', 'interrupted', 'cancelled'].includes(payload.status)) return
+  if (payload.status === 'error') setSpeechStatus('朗读不可用，请检查朗读设置与系统语音。')
+  if (payload.status === 'end') setSpeechStatus('朗读结束。')
+  if (payload.status === 'interrupted' || payload.status === 'cancelled') setSpeechStatus('已停止朗读。')
   state.speechId = null
   state.speechEntryId = null
-  if (payload.message) setStatus(payload.message)
   patchSpeechButtons()
 }
 
@@ -1273,6 +1350,10 @@ function patchSpeechButtons() {
     button.textContent = speaking ? ACTION_LABELS.stopSpeak : ACTION_LABELS.speak
     button.setAttribute('aria-pressed', speaking ? 'true' : 'false')
   }
+  const previewButton = $('btn-preview-speech')
+  const isPreviewPlaying = Boolean(state.speechId) && state.speechEntryId === SPEECH_PREVIEW_ID
+  previewButton.textContent = isPreviewPlaying ? '停止试听' : '试听英文'
+  previewButton.setAttribute('aria-pressed', String(isPreviewPlaying))
 }
 
 function stopActiveSpeech() {
@@ -1292,8 +1373,7 @@ function renderEmpty() {
   const hero = el('div', 'empty-hero')
   hero.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
   box.append(hero)
-  box.append(el('h2', '', '让每个英文词句,都真正读懂'))
-  box.append(el('p', 'empty-lead', '不只给译文。按需选择「直接翻译」快速理解,或用「引导理解」自己想出含义。'))
+  box.append(el('h2', '', '粘贴一段文字开始'))
 
   const modes = el('div', 'empty-modes')
   for (const [mode, icon, title, desc] of [
@@ -1317,8 +1397,6 @@ function renderEmpty() {
   }
   box.append(modes)
 
-  const line1 = el('p', 'empty-tip', '复制内容后点「粘贴并翻译」,或直接试试:')
-  box.append(line1)
   const examples = el('div', 'empty-examples')
   for (const [label, text] of [
     ['试一个单词', 'record'],
@@ -1331,17 +1409,12 @@ function renderEmpty() {
       $('input').value = text
       updateComposer()
       $('input').focus()
-      if (state.configured) submit()
-      else setStatus('已填入示例,点「翻译」或按 Ctrl+Enter')
+      if (state.configured) submit({ lookup: null })
+      else setStatus('已填入示例，配置模型后点「翻译」')
     })
     examples.append(button)
   }
   box.append(examples)
-  const hotkey = el('p', 'empty-hotkey')
-  hotkey.append('在任意应用中选中英文,按 ')
-  hotkey.append(el('kbd', '', state.hotkey || 'Alt+Shift+E'))
-  hotkey.append(' 即可取词。')
-  box.append(hotkey)
   return box
 }
 
@@ -1553,6 +1626,9 @@ function startCompanionEntry(entry, mode) {
     hintCount: 1,
     answerRevealed: false,
     fromMemory: false,
+    sourceLanguage: state.sourceLanguage,
+    lookupExcluded: entry.lookupExcluded,
+    lookup: entry.lookup,
     memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage,
       sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary }),
   }
@@ -1572,6 +1648,7 @@ function startCompanionEntry(entry, mode) {
   if (cached) {
     setStatus('来自翻译记忆 · 即时')
     persistHistory()
+    void recordTutorLookup(companion)
   } else {
     sendRequest(companion)
   }
@@ -1587,6 +1664,25 @@ function deleteEntry(entry) {
     render()
     setStatus('已撤销删除')
   })
+}
+
+function closeActionMenu(menuEl) {
+  if (menuEl.matches(':popover-open')) menuEl.hidePopover()
+}
+
+function closeActionMenus() {
+  document.querySelectorAll('.action-menu:popover-open').forEach(closeActionMenu)
+}
+
+function positionActionMenu(menuEl, triggerEl) {
+  if (CSS.supports('position-area: block-end span-inline-start')) return
+  const trigger = triggerEl.getBoundingClientRect()
+  const menu = menuEl.getBoundingClientRect()
+  const left = Math.max(8, Math.min(window.innerWidth - menu.width - 8, trigger.right - menu.width))
+  const below = trigger.bottom + 4
+  const top = below + menu.height <= window.innerHeight - 8 ? below : trigger.top - menu.height - 4
+  menuEl.style.left = `${left}px`
+  menuEl.style.top = `${Math.max(8, Math.min(window.innerHeight - menu.height - 8, top))}px`
 }
 
 function renderActions(entry) {
@@ -1635,13 +1731,25 @@ function renderActions(entry) {
   more.setAttribute('aria-label', '更多操作')
   more.setAttribute('aria-expanded', 'false')
   const menu = el('div', 'action-menu')
+  menu.id = makeId('actions')
+  menu.setAttribute('popover', 'auto')
+  menu.setAttribute('role', 'group')
+  menu.setAttribute('aria-label', '结果操作')
   menu.hidden = true
+  more.setAttribute('popovertarget', menu.id)
+  menu.addEventListener('beforetoggle', (event) => {
+    const isOpen = event.newState === 'open'
+    menu.hidden = !isOpen
+    more.setAttribute('aria-expanded', String(isOpen))
+  })
+  menu.addEventListener('toggle', (event) => {
+    if (event.newState === 'open') positionActionMenu(menu, more)
+  })
   const menuAdd = (label, handler, danger = false, className = '') => {
     const button = el('button', [danger ? 'is-danger' : '', className].filter(Boolean).join(' '), label)
     button.type = 'button'
     button.addEventListener('click', (event) => {
-      menu.hidden = true
-      more.setAttribute('aria-expanded', 'false')
+      closeActionMenu(menu)
       handler(event)
     })
     menu.append(button)
@@ -1685,18 +1793,6 @@ function renderActions(entry) {
   menuAdd('删除', () => deleteEntry(entry), true)
   more.addEventListener('click', (event) => {
     event.stopPropagation()
-    const wasOpen = !menu.hidden
-    document.querySelectorAll('.action-menu').forEach((item) => { item.hidden = true })
-    document.querySelectorAll('.action-more').forEach((item) => item.setAttribute('aria-expanded', 'false'))
-    if (!wasOpen) {
-      menu.hidden = false
-      more.setAttribute('aria-expanded', 'true')
-      requestAnimationFrame(() => {
-        const rect = menu.getBoundingClientRect()
-        const streamBottom = $('stream').getBoundingClientRect().bottom
-        menu.classList.toggle('is-up', rect.bottom > streamBottom - 8)
-      })
-    }
   })
   bar.append(more, menu)
   return bar
@@ -1847,28 +1943,30 @@ function regenerate(entry) {
 
 function toggleSpeech(entry, text = entry.text) {
   if (state.speechId) {
+    const isSameEntry = state.speechEntryId === entry.id
+    setSpeechStatus('已停止朗读。')
     stopActiveSpeech()
     patchSpeechButtons()
-    return
+    if (isSameEntry) return
   }
   const speechId = makeId('speech')
   state.speechId = speechId
   state.speechEntryId = entry.id
-  setStatus('正在朗读…')
+  setSpeechStatus('正在朗读…')
   patchSpeechButtons()
   try {
     chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
+        setSpeechStatus(response?.message || '朗读不可用')
         state.speechId = null
         state.speechEntryId = null
-        setStatus(response?.message || '朗读不可用')
         patchSpeechButtons()
       }
     })
   } catch {
+    setSpeechStatus('朗读不可用')
     state.speechId = null
     state.speechEntryId = null
-    setStatus('朗读不可用')
     patchSpeechButtons()
   }
 }
@@ -1907,7 +2005,20 @@ function bind() {
     const button = event.target.closest('.mode')
     if (button) void setMode(button.dataset.mode)
   })
-  $('btn-send').addEventListener('click', submit)
+  const form = $('translation-form')
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    submit()
+  })
+  $('btn-translate-workspace').addEventListener('click', () => switchWorkspace('translate'))
+  $('btn-tutor-workspace').addEventListener('click', () => switchWorkspace('tutor'))
+  $('btn-releases').addEventListener('click', async () => {
+    try {
+      await window.sttDesktop.openReleases()
+    } catch {
+      showNotice('无法打开发布页面', 'error', null, true)
+    }
+  })
   $('btn-settings').addEventListener('click', openSettings)
   $('btn-close-settings').addEventListener('click', closeSettings)
   $('btn-save-settings').addEventListener('click', () => void saveSettings())
@@ -1917,6 +2028,7 @@ function bind() {
   }
   $('btn-toggle-key').addEventListener('click', (event) => { event.preventDefault(); toggleKeyVisibility() })
   $('settings-panel').addEventListener('keydown', (event) => {
+    if (event.isComposing) return
     if (event.key === 'Escape') {
       event.stopPropagation()
       closeSettings()
@@ -1951,24 +2063,12 @@ function bind() {
     void window.sttDesktop.setLoginItem(event.target.checked)
     setStatus(event.target.checked ? '已开启开机自启' : '已关闭开机自启')
   })
-  $('opt-clipboard-only').addEventListener('change', (event) => {
-    void window.sttDesktop.setCaptureMode(event.target.checked ? 'clipboard' : 'auto')
-    setStatus(event.target.checked
-      ? '已切换为仅剪贴板取词:复制后按热键即可,不需要辅助功能权限'
-      : '已恢复自动取词')
-  })
   $('opt-live-translate').addEventListener('change', (event) => {
     state.liveTranslate = event.target.checked
     clearTimeout(state.liveTimer)
     state.liveTimer = 0
     void chrome.storage.sync.set({ desktop_live_translate: state.liveTranslate })
     setStatus(state.liveTranslate ? '已开启输入后自动翻译' : '已关闭输入后自动翻译')
-  })
-  $('opt-main-window-only').addEventListener('change', (event) => {
-    void window.sttDesktop.setFloatingCardDisabled(event.target.checked)
-    setStatus(event.target.checked
-      ? '已停用悬浮翻译卡:快捷键取词会直接在主窗口翻译'
-      : '已恢复悬浮翻译卡')
   })
   $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
   $('glossary-add').addEventListener('click', () => {
@@ -1988,30 +2088,18 @@ function bind() {
   $('lang-target').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
   $('lang-source').addEventListener('change', (event) => setSourceLanguage(event.target.value, true))
   $('btn-swap-lang').addEventListener('click', swapLanguages)
-  $('btn-hotkey').addEventListener('click', async () => {
-    const value = $('cfg-hotkey').value.trim()
-    if (!value) return
-    const applied = await window.sttDesktop.setHotkey(value)
-    if (applied) {
-      state.hotkey = applied
-      setStatus(`热键已设为 ${applied}`)
-      renderDiagnostics()
-    } else {
-      setStatus('热键注册失败,可能与其他程序冲突,请换一个组合')
-    }
-  })
   $('btn-clear').addEventListener('click', () => {
     if (!state.entries.length) {
-      setStatus('没有可清空的学习记录')
+      setStatus('没有可清空的翻译历史')
       return
     }
     const count = state.entries.length
-    showSnackbar('确定清空全部 ' + count + ' 条学习记录？', '清空', () => {
+    showSnackbar('确定清空全部 ' + count + ' 条翻译历史？', '清空', () => {
       const removed = state.entries.slice()
       state.entries = []
       void window.sttDesktop.clearHistory()
       render()
-      showSnackbar('已清空 ' + count + ' 条学习记录', '撤销', () => {
+      showSnackbar('已清空 ' + count + ' 条翻译历史', '撤销', () => {
         state.entries = removed
         render()
         setStatus('已撤销清空')
@@ -2020,31 +2108,24 @@ function bind() {
   })
   $('snackbar-close').addEventListener('click', hideSnackbar)
   const input = $('input')
-  input.addEventListener('input', () => {
+  input.addEventListener('compositionstart', () => {
+    state.isComposing = true
+    clearTimeout(state.liveTimer)
+  })
+  input.addEventListener('compositionend', () => {
+    state.isComposing = false
     updateComposer()
     scheduleLiveTranslate()
     scheduleDraftSave()
   })
+  input.addEventListener('input', (event) => {
+    updateComposer()
+    if (event.isComposing) clearTimeout(state.liveTimer)
+    else scheduleLiveTranslate()
+    scheduleDraftSave()
+  })
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      if (!$('help-overlay').hidden) {
-        event.stopPropagation()
-        hideHelp()
-        return
-      }
-      if (isExportOpen()) {
-        event.stopPropagation()
-        closeExportMenu()
-        return
-      }
-      if (isSidebarOpen()) {
-        event.stopPropagation()
-        closeSidebar()
-        return
-      }
-      window.sttDesktop.hide()
-      return
-    }
+    if (event.isComposing || state.isComposing) return
     if (event.key !== 'Enter') return
     const modifier = event.ctrlKey || event.metaKey
     const shouldSubmit = state.prefs.enterToSend
@@ -2052,14 +2133,14 @@ function bind() {
       : modifier
     if (!shouldSubmit) return
     event.preventDefault()
-    submit()
+    form.requestSubmit()
   })
-  input.addEventListener('paste', () => {
-    if (state.prefs.pasteAutoSubmit === false) return
-    setTimeout(() => {
-      if (input.value.trim()) submit()
-      else updateComposer()
-    }, 0)
+  input.addEventListener('paste', (event) => {
+    if (state.prefs.pasteAutoSubmit === false || state.isComposing) return
+    const text = event.clipboardData?.getData('text/plain').trim()
+    if (!text) return
+    event.preventDefault()
+    translatePastedText(text)
   })
   $('btn-clear-input').addEventListener('click', () => {
     input.value = ''
@@ -2070,6 +2151,7 @@ function bind() {
   $('btn-paste-translate').addEventListener('click', () => void pasteAndTranslate())
   $('opt-paste').addEventListener('change', (event) => {
     state.prefs.pasteAutoSubmit = event.target.checked
+    updateComposer()
     void savePrefs()
     setStatus(event.target.checked ? '粘贴后会自动翻译' : '粘贴后需手动点翻译')
   })
@@ -2082,6 +2164,10 @@ function bind() {
     const rate = Number(event.target.value)
     $('speech-rate-value').textContent = `${rate.toFixed(1)}×`
     void chrome.storage.sync.set({ speech_rate: rate })
+  })
+  $('speech-settings-form').addEventListener('submit', (event) => void saveSpeechSettings(event))
+  $('btn-preview-speech').addEventListener('click', () => {
+    toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT })
   })
   $('opt-theme').addEventListener('change', (event) => {
     state.prefs.theme = event.target.value
@@ -2137,8 +2223,7 @@ function bind() {
       if (menu.hidden || menu.contains(event.target)) return
       const more = menu.previousElementSibling
       if (more && more.contains(event.target)) return
-      menu.hidden = true
-      more?.setAttribute('aria-expanded', 'false')
+      closeActionMenu(menu)
     })
   })
 
@@ -2148,6 +2233,7 @@ function bind() {
     if (event.target === $('help-overlay')) hideHelp()
   })
   $('help-overlay').addEventListener('keydown', (event) => {
+    if (event.isComposing) return
     if (event.key === 'Escape') {
       event.stopPropagation()
       hideHelp()
@@ -2231,6 +2317,7 @@ function bind() {
   $('btn-close-sidebar').addEventListener('click', closeSidebar)
   $('sidebar-backdrop').addEventListener('click', closeSidebar)
   $('sidebar').addEventListener('keydown', (event) => {
+    if (event.isComposing) return
     if (event.key === 'Escape') {
       event.stopPropagation()
       closeSidebar()
@@ -2245,9 +2332,12 @@ function bind() {
   })
 
   document.addEventListener('keydown', (event) => {
+    if (event.isComposing || state.isComposing) return
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key.toLowerCase() === 'k' && $('help-overlay').hidden) {
       event.preventDefault()
+      switchWorkspace('translate')
+      closeActionMenus()
       $('input').focus()
       $('input').select()
       return
@@ -2275,9 +2365,7 @@ function bind() {
       }
       const openActionMenu = document.querySelector('.action-menu:not([hidden])')
       if (openActionMenu) {
-        openActionMenu.hidden = true
-        const more = openActionMenu.previousElementSibling
-        if (more) more.setAttribute('aria-expanded', 'false')
+        closeActionMenu(openActionMenu)
         return
       }
       if (!$('more-menu').hidden) {
@@ -2314,27 +2402,21 @@ function bind() {
       return
     }
     if (areaName !== 'sync') return
-    if (['base_url', 'api_key', 'model', 'learning_model'].some((key) => key in changes)) void checkConfig()
+    if (['base_url', 'api_key', 'model', 'learning_model'].some((key) => key in changes)) {
+      void checkConfig()
+      if (state.workspace === 'tutor') void tutor.refresh()
+    }
   })
 
   window.sttDesktop.onSelection((payload) => {
-    state.capture = payload
-    renderDiagnostics()
     const text = String(payload?.text || '').trim()
-    void checkConfig()
     if (text) {
-      stashDraft(text)
-      $('input').value = text
-      updateComposer()
-      setStatus(`已取到 ${text.length} 字 · 来源:${payload.source || '剪贴板'}`)
-      submit()
-      showDraftNotice()
-    } else {
-      setStatus('没有取到选中文字,可以直接粘贴到这里翻译')
-      if (state.draft) showDraftNotice()
-      else void showCaptureHint(payload)
-      $('input').focus()
+      switchWorkspace('translate')
+      translatePastedText(text)
+      return
     }
+    if (state.workspace === 'translate' && $('settings-panel').hidden
+      && $('help-overlay').hidden && !isSidebarOpen()) $('input').focus()
   })
   window.sttDesktop.onCardEntry((entry) => {
     if (!entry || typeof entry.text !== 'string' || !entry.text.trim()) return
@@ -2358,12 +2440,6 @@ function bind() {
     persistHistory()
     render()
     setStatus('悬浮卡片的翻译已同步到学习记录')
-  })
-  window.sttDesktop.onStatus((info) => {
-    if (info?.hotkey) state.hotkey = info.hotkey
-    if (info?.message) setStatus(info.message)
-    if (info?.hotkey) renderDiagnostics()
-    if (!state.entries.length) render()
   })
 }
 
@@ -2410,7 +2486,8 @@ async function init() {
     // translation memory is optional
   }
   try {
-    const savedPrefs = await chrome.storage.sync.get(['desktop_prefs'])
+    const savedPrefs = await chrome.storage.sync.get(['desktop_prefs', 'desktop_live_translate'])
+    state.liveTranslate = savedPrefs?.desktop_live_translate === true
     if (savedPrefs?.desktop_prefs && typeof savedPrefs.desktop_prefs === 'object') {
       state.prefs = { ...state.prefs, ...savedPrefs.desktop_prefs }
     }
@@ -2434,17 +2511,25 @@ async function init() {
   void updateStudyProgress()
   void maybeShowReviewReminder()
   try {
-    state.hotkey = await window.sttDesktop.getHotkey()
+    const version = await window.sttDesktop.getAppVersion()
+    $('installed-version').textContent = version ? `v${version}` : '未知'
   } catch {
-    state.hotkey = ''
+    $('installed-version').textContent = '未知'
   }
   try {
     const savedDraft = await chrome.storage.local.get('desktop_input_draft')
     if (typeof savedDraft?.desktop_input_draft === 'string' && savedDraft.desktop_input_draft.trim()
       && !$('input').value.trim()) {
       $('input').value = savedDraft.desktop_input_draft
+      const previous = state.entries.at(-1)
+      if (previous?.text === $('input').value.trim()) {
+        state.lastSubmittedText = previous.text
+        state.lastLookup = previous.lookupExcluded ? null : {
+          id: previous.id, text: previous.text, sourceLanguage: previous.sourceLanguage, createdAt: previous.createdAt,
+        }
+      }
       updateComposer()
-      setStatus('已恢复上次未发送的内容')
+      setStatus(state.lastSubmittedText ? '已恢复上次原文' : '已恢复上次未发送的内容')
     }
   } catch {
     // saved draft is optional

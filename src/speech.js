@@ -126,7 +126,8 @@ async function startSpeech({ message, tabId, frameId, speechId, clientId, docume
             speechId,
             ...(clientId ? { clientId } : {}),
             status: event.type,
-            message: event.type === 'error' ? 'Unable to speak. Check the installed system voices.' : '',
+            message: event.type === 'error' ? 'Unable to speak. Check the installed system voices.'
+              : event.type === 'fallback' ? String(event.message || '') : '',
           },
         }
         if (clientId) {

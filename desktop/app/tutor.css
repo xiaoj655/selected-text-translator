@@ -1,0 +1,89 @@
+#tutor-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tutor-frame {
+  width: min(100% - 48px, 720px);
+  margin-inline: auto;
+  padding-block: clamp(20px, 6vh, 48px);
+}
+
+.tutor-title {
+  width: fit-content;
+  margin: 0 0 18px;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.tutor-card {
+  padding: clamp(16px, 4vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-1);
+}
+
+.tutor-card h3 { margin: 0; font-size: 18px; font-weight: 650; }
+.tutor-card p { margin: 8px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
+.tutor-card > p:first-child { margin-top: 0; }
+.tutor-detail { color: var(--text-2); }
+
+.tutor-card .tutor-source,
+.tutor-card .tutor-sentence {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: var(--fs-result);
+  line-height: var(--lh-result);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.tutor-card .tutor-sentence { font-size: calc(var(--fs-result) + 2px); }
+.tutor-card .tutor-prompt { margin-block: 14px 12px; font-weight: 600; }
+.tutor-card > button, .tutor-summary-status button { margin-top: 14px; }
+.tutor-card > #tutor-hint { margin-top: 0; }
+
+.tutor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.tutor-choices {
+  display: grid;
+  gap: 8px;
+  margin-block: 14px 0;
+}
+
+.tutor-choice {
+  background: var(--bg);
+  padding: 9px 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.tutor-choice:disabled { opacity: 1; cursor: default; transform: none; }
+.tutor-choice:disabled:hover { background: var(--bg); }
+.tutor-choice[data-result="correct"]:disabled { background: var(--success-soft); border-color: var(--success); }
+.tutor-choice[data-result="incorrect"]:disabled { background: var(--danger-soft); border-color: var(--danger); }
+
+.tutor-card .tutor-hint-text,
+.tutor-feedback {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+
+.tutor-feedback { margin-top: 16px; }
+.tutor-feedback[data-result="correct"] { background: var(--success-soft); }
+.tutor-feedback[data-result="incorrect"], .tutor-card .tutor-error { background: var(--danger-soft); }
+.tutor-feedback h4 { font-size: var(--fs-base); margin: 0; }
+.tutor-correct-answer { font-weight: 600; }
+.tutor-card .tutor-error { padding: 8px 12px; border-radius: var(--r-sm); }

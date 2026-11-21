@@ -102,9 +102,6 @@ window.sttDesktop = {
   onSelection(callback) {
     ipcRenderer.on('stt:selection', (_event, payload) => callback(payload))
   },
-  onStatus(callback) {
-    ipcRenderer.on('stt:status', (_event, payload) => callback(payload))
-  },
   copyText(text) {
     return ipcRenderer.invoke('stt:copy-text', text)
   },
@@ -129,17 +126,17 @@ window.sttDesktop = {
   clearHistory() {
     return ipcRenderer.invoke('stt:history-clear')
   },
-  hotkeyOptions() {
-    return ipcRenderer.invoke('stt:hotkey-options')
+  getAppVersion() {
+    return ipcRenderer.invoke('stt:app-version')
   },
-  getHotkey() {
-    return ipcRenderer.invoke('stt:get-hotkey')
+  openReleases() {
+    return ipcRenderer.invoke('stt:open-releases')
   },
-  setHotkey(value) {
-    return ipcRenderer.invoke('stt:set-hotkey', value)
-  },
-  platform() {
-    return ipcRenderer.invoke('stt:platform')
+  tutor: {
+    getPlan: () => ipcRenderer.invoke('stt:tutor-plan'),
+    startLesson: (sourceId) => ipcRenderer.invoke('stt:tutor-lesson', sourceId),
+    recordLookup: (lookup) => ipcRenderer.invoke('stt:tutor-lookup', lookup),
+    recordResult: (result) => ipcRenderer.invoke('stt:tutor-result', result),
   },
   getFlags() {
     return ipcRenderer.invoke('stt:get-flags')
@@ -150,14 +147,8 @@ window.sttDesktop = {
   setLoginItem(flag) {
     return ipcRenderer.invoke('stt:set-login-item', flag)
   },
-  setCaptureMode(mode) {
-    return ipcRenderer.invoke('stt:set-capture-mode', mode)
-  },
   readClipboard() {
     return ipcRenderer.invoke('stt:read-clipboard')
-  },
-  setFloatingCardDisabled(disabled) {
-    return ipcRenderer.invoke('stt:set-floating-card-disabled', disabled)
   },
   setTheme(theme) {
     return ipcRenderer.invoke('stt:set-theme', theme)
