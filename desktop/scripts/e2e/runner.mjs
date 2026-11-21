@@ -11,6 +11,7 @@ import { verifyComposerInput } from './composer-input.mjs'
 import { verifyResultMenu } from './result-menu.mjs'
 import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
 import { verifyCloudSpeech } from './cloud-speech.mjs'
+import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -251,6 +252,7 @@ export async function runE2E(mode = 'core') {
       // older Playwright builds expose pages per window only
     }
     const mainPage = await waitForMainPage(app)
+    const readingFeeds = await installReadingFeeds(app)
     watchErrors(mainPage, pageErrors)
     await setConfig(mainPage, {
       base_url: mockUrl,
@@ -303,6 +305,7 @@ export async function runE2E(mode = 'core') {
 
     if (mode === 'core' || mode === 'all') {
       await verifyCloudSpeech({ app, page: mainPage, check })
+      await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
     }
 

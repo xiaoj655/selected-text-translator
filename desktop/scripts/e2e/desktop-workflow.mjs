@@ -152,6 +152,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       await paste(page, SOURCE)
       await shot?.(page, 'main-translation')
       await page.locator('#btn-tutor-workspace').click()
+      await page.locator('#tutor-review-mode').click()
       await page.locator('#tutor-start').waitFor({ state: 'visible' })
       assert.match(await page.locator('#tutor-workspace').textContent(), /来自查词记录/u)
       assert.equal(await page.locator('#translation-workspace').isVisible(), false)

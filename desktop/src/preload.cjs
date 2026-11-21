@@ -160,6 +160,11 @@ window.sttDesktop = {
     recordLookup: (lookup) => ipcRenderer.invoke('stt:tutor-lookup', lookup),
     recordResult: (result) => ipcRenderer.invoke('stt:tutor-result', result),
   },
+  reading: {
+    discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
+    discuss: (input) => ipcRenderer.invoke('stt:reading-discuss', input),
+    openArticle: (id) => ipcRenderer.invoke('stt:reading-open', id),
+  },
   getFlags() {
     return ipcRenderer.invoke('stt:get-flags')
   },

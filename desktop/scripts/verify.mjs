@@ -24,7 +24,9 @@ for (const file of files) {
 
 execFileSync(process.execPath, [join(root, 'scripts', 'sync-src.mjs')], { stdio: 'pipe' })
 execFileSync(process.execPath, [join(root, 'scripts', 'smoke.mjs')], { stdio: 'pipe' })
-execFileSync(process.execPath, ['--test', join(root, 'scripts', 'tutor-smoke.mjs')], { stdio: 'pipe' })
+execFileSync(process.execPath, [
+  '--test', join(root, 'scripts', 'tutor-smoke.mjs'), join(root, 'scripts', 'reading-sources.test.mjs'),
+], { stdio: 'pipe' })
 
 const appSource = readFileSync(join(root, 'app', 'app.js'), 'utf8')
 const htmlSource = readFileSync(join(root, 'app', 'index.html'), 'utf8')

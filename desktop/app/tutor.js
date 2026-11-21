@@ -5,14 +5,14 @@ const OUTCOME_LABELS = {
   incorrect: '最后一道新句还有卡点，下一次会换个场景再练。',
 }
 
-function el(tag, className, text) {
+export function el(tag, className, text) {
   const node = document.createElement(tag)
   if (className) node.className = className
   if (text) node.textContent = text
   return node
 }
 
-function button(label, id, onClick, className) {
+export function button(label, id, onClick, className) {
   const node = el('button', className, label)
   node.type = 'button'
   if (id) node.id = id
@@ -20,7 +20,7 @@ function button(label, id, onClick, className) {
   return node
 }
 
-function englishText(tag, className, text) {
+export function englishText(tag, className, text) {
   const node = el(tag, className, text)
   node.lang = 'en'
   return node
@@ -36,14 +36,11 @@ function lessonOutcome(answers) {
   return answers.every((answer) => answer.correct && !answer.hinted) ? 'independent' : 'hinted'
 }
 
-export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
-  const frameEl = el('div', 'tutor-frame')
-  const titleEl = el('h2', 'tutor-title', 'AI 老师')
-  titleEl.id = 'tutor-title'
+export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
+  const titleEl = el('h3', 'sr-only', '复习练习')
   titleEl.tabIndex = -1
   const contentEl = el('div', 'tutor-content')
-  frameEl.append(titleEl, contentEl)
-  rootEl.replaceChildren(frameEl)
+  rootEl.append(titleEl, contentEl)
 
   let plan = null
   let lesson = null
@@ -68,7 +65,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   function showActionMessage(heading, message, actionEl) {
-    const headingEl = el('h3', '', heading)
+    const headingEl = el('h4', '', heading)
     const cardEl = setCard(headingEl, el('p', 'tutor-detail', message))
     if (!actionEl) return
     cardEl.append(actionEl)
@@ -95,7 +92,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
       showActionMessage('暂时没有待练习的内容', next ? `下次复练时间是 ${next}。` : '到复练时间会换一句英文再练。')
       return
     }
-    const headingEl = el('h3', '', KIND_LABELS[source.kind])
+    const headingEl = el('h4', '', KIND_LABELS[source.kind])
     const reason = source.isReview
       ? '来自查词记录 · 到期复练'
       : source.occurrenceCount > 1 ? `来自查词记录 · 在 ${source.occurrenceCount} 天里查过` : '来自查词记录'
@@ -154,7 +151,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
 
   function renderQuestion() {
     const question = lesson.questions[position]
-    const headingEl = el('h3', '', KIND_LABELS[plan.source.kind])
+    const headingEl = el('h4', '', KIND_LABELS[plan.source.kind])
     headingEl.tabIndex = -1
     const counterEl = el('p', 'tutor-step', `第 ${position + 1} / ${lesson.questions.length} 题`)
     const questionHead = el('header', 'tutor-question-head')
@@ -200,7 +197,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
   function showFeedback(question, cardEl, answer) {
     const hasNext = position + 1 < lesson.questions.length
     const feedbackEl = el('div', 'tutor-feedback')
-    const headingEl = el('h4', '', answer.correct ? '答对了' : '这句的理解有一点偏差')
+    const headingEl = el('h5', '', answer.correct ? '答对了' : '这句的理解有一点偏差')
     headingEl.tabIndex = -1
     headingEl.id = 'tutor-feedback'
     feedbackEl.dataset.result = answer.correct ? 'correct' : 'incorrect'
@@ -219,7 +216,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   function showSummary(outcome) {
-    const headingEl = el('h3', '', '练习完成')
+    const headingEl = el('h4', '', '练习完成')
     headingEl.id = 'tutor-summary'
     headingEl.tabIndex = -1
     const numCorrect = answers.filter((answer) => answer.correct).length

@@ -1,7 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
-import { createTutorWorkspace } from './tutor.js'
+import { createTutorWorkspace } from './reading.js'
 import { bindUpdateMenu } from './update-menu.js'
 import { bindRequestDebug } from './request-debug.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
@@ -55,6 +55,7 @@ const state = {
 const tutor = createTutorWorkspace({
   rootEl: $('tutor-workspace'),
   api: window.sttDesktop.tutor,
+  readingApi: window.sttDesktop.reading,
   onOpenSettings: openSettings,
 })
 

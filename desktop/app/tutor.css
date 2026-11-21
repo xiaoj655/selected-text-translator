@@ -11,15 +11,7 @@
   padding-block: clamp(28px, 6vh, 60px);
 }
 
-.tutor-title {
-  width: fit-content;
-  margin: 0 0 28px;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.tutor-card h3 {
+.tutor-card h4 {
   margin: 0;
   font-size: clamp(22px, 3.8vw, 29px);
   font-weight: 640;
@@ -109,8 +101,107 @@
 }
 
 .tutor-feedback { margin-top: 18px; }
-.tutor-feedback[data-result="correct"] h4 { color: var(--success); }
-.tutor-feedback[data-result="incorrect"] h4 { color: var(--danger); }
-.tutor-feedback h4 { font-size: var(--fs-base); margin: 0; }
+.tutor-feedback[data-result="correct"] h5 { color: var(--success); }
+.tutor-feedback[data-result="incorrect"] h5 { color: var(--danger); }
+.tutor-feedback h5 { font-size: var(--fs-base); margin: 0; }
 .tutor-correct-answer { font-weight: 600; }
 .tutor-card .tutor-error { color: var(--danger); }
+
+.tutor-modes,
+.reading-tools,
+.reading-filters,
+.reading-suggestions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tutor-modes {
+  gap: 2px;
+  margin-block-end: 30px;
+  border-block-end: 1px solid var(--border);
+}
+
+.tutor-modes button {
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--text-2);
+}
+
+.tutor-modes button:hover { background: var(--surface); }
+.tutor-modes button[aria-pressed="true"] { color: var(--text); border-block-end-color: var(--accent); font-weight: 600; }
+.reading-filters button[aria-pressed="true"] { background: var(--surface-2); border-color: var(--border-strong); font-weight: 600; }
+
+.reading-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block-end: 16px;
+}
+
+.reading-heading { margin: 0; font-size: clamp(22px, 4vw, 30px); line-height: 1.25; overflow-wrap: anywhere; }
+.reading-title { font-weight: 630; }
+.reading-meta { color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.reading-list-status:empty, .reading-discussion-status:empty { margin: 0; }
+
+.reading-list { margin: 18px 0 0; padding: 0; }
+.reading-list li { display: block; border-block-start: 1px solid var(--border); padding: 11px 0 12px; }
+.reading-list .reading-meta { margin: 1px 0 0; }
+.reading-article-title, .reading-back {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 4px 0;
+  min-block-size: 30px;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.reading-article-title { font-size: calc(var(--fs-result) + 1px); font-weight: 600; line-height: 1.45; }
+.reading-article-title:hover, .reading-back:hover { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.reading-back { color: var(--text-2); margin-block-end: 12px; }
+.reading-original { color: var(--text); text-underline-offset: 3px; }
+.reading-preview {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: calc(var(--fs-result) + 2px);
+  line-height: 1.65;
+  margin: 16px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.reading-material summary { width: fit-content; padding: 5px 0; cursor: pointer; color: var(--text-2); }
+.reading-material .reading-preview { margin-block-start: 8px; }
+
+.reading-thread { margin-block-start: 22px; }
+.reading-thread:empty { margin: 0; }
+.reading-turn { border-block-start: 1px solid var(--border); padding: 14px 0; }
+.reading-turn-speaker { margin: 0 0 5px; color: var(--text-2); font-weight: 600; font-size: 13px; }
+.reading-turn-text { margin: 0; line-height: var(--lh-result); font-size: var(--fs-result); white-space: pre-wrap; overflow-wrap: anywhere; }
+.reading-quote {
+  margin: 12px 0 0;
+  padding-inline-start: 14px;
+  border-inline-start: 2px solid var(--border-strong);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.reading-suggestions:not(:empty) { margin-block: 8px 16px; }
+.reading-suggestions button { white-space: normal; text-align: start; }
+#reading-start { margin-block-start: 12px; }
+.reading-paste-form, .reading-question-form { display: grid; gap: 8px; justify-items: start; }
+.reading-question-form { margin-block-start: 16px; }
+.reading-paste-form label, .reading-question-form label { font-weight: 600; }
+.reading-input {
+  background: var(--bg);
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  line-height: 1.55;
+  padding: 10px 12px;
+}

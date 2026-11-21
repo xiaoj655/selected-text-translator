@@ -105,11 +105,7 @@ function readText(value, maxLength) {
   return text.length <= maxLength ? text : ''
 }
 
-function parseLesson(json, source) {
-  const rawContent = json?.choices?.[0]?.message?.content
-  const content = Array.isArray(rawContent)
-    ? rawContent.map((part) => typeof part?.text === 'string' ? part.text : '').join('') : rawContent
-  const lesson = JSON.parse(readText(content, 18000))
+function parseLesson(lesson, source) {
   const topic = readText(lesson?.topic, 64)
   const items = lesson?.questions
   if (!topic || !Array.isArray(items) || items.length < 2 || items.length > 3) {
@@ -134,17 +130,27 @@ function parseLesson(json, source) {
   return { id: randomUUID(), sourceId: source.id, topic: source.reviewTopic || topic, questions }
 }
 
-async function requestLesson(fetcher, settings, source) {
-  const request = buildGenericRequest({ model: settings.model, text: '' })
-  request.messages = [
-    { role: 'system', content: TUTOR_PROMPT },
-    { role: 'user', content: JSON.stringify({
-      sourceText: source.text,
-      sourceKind: source.kind,
-      previousSentences: source.recentSentences || [],
-      ...(source.reviewTopic ? { reviewTopic: source.reviewTopic } : {}),
-    }) },
-  ]
+export async function readTutorSettings(storage) {
+  const saved = await storage.sync.get([
+    STORAGE_KEYS.BASE_URL, STORAGE_KEYS.API_KEY, STORAGE_KEYS.MODEL, READING_STORAGE_KEYS.LEARNING_MODEL,
+  ])
+  const apiKey = String(saved[STORAGE_KEYS.API_KEY] || '').trim()
+  const model = getLearningModel(saved[STORAGE_KEYS.MODEL], saved[READING_STORAGE_KEYS.LEARNING_MODEL])
+  if (!apiKey || !model) return null
+  try {
+    const url = new URL(String(saved[STORAGE_KEYS.BASE_URL] || '').trim())
+    if (!['http:', 'https:'].includes(url.protocol)) return null
+    url.pathname = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '') + '/chat/completions'
+    url.hash = ''
+    return { apiKey, model, endpoint: url.href }
+  } catch {
+    return null
+  }
+}
+
+export async function requestTutorJson({ fetcher, settings, prompt, data, parse, timeoutMessage, invalidResponseMessage }) {
+  const request = buildGenericRequest({ model: settings.model, text: JSON.stringify(data) })
+  request.messages[0].content = prompt
   const signal = AbortSignal.timeout(25000)
   let response
   try {
@@ -155,7 +161,7 @@ async function requestLesson(fetcher, settings, source) {
       signal,
     })
   } catch {
-    throw new Error(signal.aborted ? '生成练习超时，请重试。' : '无法连接学习模型，请检查网络或模型设置。')
+    throw new Error(signal.aborted ? timeoutMessage : '无法连接学习模型，请检查网络或模型设置。')
   }
   if (!response.ok) {
     if (response.status === 429) throw new Error('学习模型请求过于频繁，请稍后重试。')
@@ -163,10 +169,31 @@ async function requestLesson(fetcher, settings, source) {
     throw new Error(`学习模型请求失败（${response.status}），请重试。`)
   }
   try {
-    return parseLesson(await response.json(), source)
+    const json = await response.json()
+    const rawContent = json?.choices?.[0]?.message?.content
+    const content = Array.isArray(rawContent)
+      ? rawContent.map((part) => typeof part?.text === 'string' ? part.text : '').join('') : rawContent
+    return parse(JSON.parse(readText(content, 18000)))
   } catch {
-    throw new Error(signal.aborted ? '生成练习超时，请重试。' : '学习模型返回的练习不完整或有重复，请重试。')
+    throw new Error(signal.aborted ? timeoutMessage : invalidResponseMessage)
   }
+}
+
+function requestLesson(fetcher, settings, source) {
+  return requestTutorJson({
+    fetcher,
+    settings,
+    prompt: TUTOR_PROMPT,
+    data: {
+      sourceText: source.text,
+      sourceKind: source.kind,
+      previousSentences: source.recentSentences || [],
+      ...(source.reviewTopic ? { reviewTopic: source.reviewTopic } : {}),
+    },
+    parse: (lesson) => parseLesson(lesson, source),
+    timeoutMessage: '生成练习超时，请重试。',
+    invalidResponseMessage: '学习模型返回的练习不完整或有重复，请重试。',
+  })
 }
 
 export function createTutor({ storage, history, fetcher = fetch, now = Date.now }) {
@@ -196,24 +223,6 @@ export function createTutor({ storage, history, fetcher = fetch, now = Date.now 
     return work
   }
 
-  async function getSettings() {
-    const saved = await storage.sync.get([
-      STORAGE_KEYS.BASE_URL, STORAGE_KEYS.API_KEY, STORAGE_KEYS.MODEL, READING_STORAGE_KEYS.LEARNING_MODEL,
-    ])
-    const apiKey = String(saved[STORAGE_KEYS.API_KEY] || '').trim()
-    const model = getLearningModel(saved[STORAGE_KEYS.MODEL], saved[READING_STORAGE_KEYS.LEARNING_MODEL])
-    if (!apiKey || !model) return null
-    try {
-      const url = new URL(String(saved[STORAGE_KEYS.BASE_URL] || '').trim())
-      if (!['http:', 'https:'].includes(url.protocol)) return null
-      url.pathname = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '') + '/chat/completions'
-      url.hash = ''
-      return { apiKey, model, endpoint: url.href }
-    } catch {
-      return null
-    }
-  }
-
   function recordLookup(lookup) {
     return withSources(async (sources) => {
       if (!addLookup(sources, lookup, now())) return false
@@ -223,7 +232,7 @@ export function createTutor({ storage, history, fetcher = fetch, now = Date.now 
   }
 
   async function getPlan() {
-    const [settings, sources] = await Promise.all([getSettings(), withSources((sources) => sources)])
+    const [settings, sources] = await Promise.all([readTutorSettings(storage), withSources((sources) => sources)])
     const clock = now()
     const selected = selectSource(sources, clock)
     const nextReviewAt = sources.filter((source) => source.dueAt > clock)
@@ -247,7 +256,7 @@ export function createTutor({ storage, history, fetcher = fetch, now = Date.now 
     const work = (async () => {
       try {
         const [settings, source] = await Promise.all([
-          getSettings(),
+          readTutorSettings(storage),
           withSources((sources) => sources.find((item) => item.id === sourceId && isDue(item, now()))),
         ])
         if (!settings) throw new Error('请先在设置中配置 API 地址、密钥和通用学习模型。')

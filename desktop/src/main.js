@@ -9,6 +9,8 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { createTutor } from './tutor.js'
+import { discoverReadingArticles } from './reading-sources.js'
+import { createReadingTutor } from './reading-tutor.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
 import { createRequestDebug } from './request-debug.js'
 import { createDesktopUpdater, fetchReleasePage, findDesktopUpdate } from './update.js'
@@ -99,8 +101,44 @@ function installRequestDebugIpc(requestDebug) {
   }
 }
 
+function installReadingIpc(storage, fetcher) {
+  const readingTutor = createReadingTutor({ storage, fetcher })
+  const articles = new Map()
+  const handlers = {
+    async 'stt:reading-discover'(category) {
+      const result = await discoverReadingArticles(category, { fetchImpl: net.fetch })
+      for (const article of result.articles) {
+        articles.delete(article.id)
+        articles.set(article.id, article)
+      }
+      while (articles.size > 150) articles.delete(articles.keys().next().value)
+      return result
+    },
+    'stt:reading-discuss'({ articleId, pastedText, question, history } = {}) {
+      const article = articleId
+        ? articles.get(articleId)
+        : typeof pastedText === 'string' && { title: '自选英文', text: pastedText.slice(0, 12000).trim() }
+      if (!article) throw new Error('这篇文章已不在目录里，请刷新文章列表后再选一次。')
+      return readingTutor.ask({ article, question, history })
+    },
+    'stt:reading-open'(articleId) {
+      const article = articles.get(articleId)
+      if (!article?.url.startsWith('https://')) throw new Error('暂时无法打开原文，请刷新文章列表后重试。')
+      return shell.openExternal(article.url)
+    },
+  }
+  for (const [channel, handle] of Object.entries(handlers)) {
+    ipcMain.handle(channel, (event, input) => {
+      if (!isMainWindowEvent(event)) throw new Error('请在主窗口使用文章带读。')
+      return handle(input)
+    })
+  }
+}
+
 function installIpc(storage, history, requestDebug) {
-  const tutor = createTutor({ storage, history, fetcher: requestDebug.forKind('tutor') })
+  const fetchTutor = requestDebug.forKind('tutor')
+  const tutor = createTutor({ storage, history, fetcher: fetchTutor })
+  installReadingIpc(storage, fetchTutor)
   ipcMain.handle('stt:history-load', () => history.load())
   ipcMain.handle('stt:history-save', (_event, entries) => history.save(entries))
   ipcMain.handle('stt:history-clear', () => history.clear())

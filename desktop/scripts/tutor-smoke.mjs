@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createStorage } from '../src/storage.js'
+import { createReadingTutor } from '../src/reading-tutor.js'
 import { createTutor } from '../src/tutor.js'
 
 const DAY_MS = 86400000
@@ -120,4 +121,68 @@ test('rejects an invalid lesson and its result, and permits a retry', async (t) 
   await assert.rejects(tutor.recordResult({ sourceId: source.id, outcome: 'independent' }), /练习已失效/)
   const lesson = await tutor.startLesson(source.id)
   assert.equal(lesson.questions.length, 2)
+})
+
+test('article reading sends bounded discussion context and only displays verifiable quotations', async (t) => {
+  const { storage } = await createFixture(t)
+  const excerpt = 'Small batch sizes shorten the time it takes to identify a regression.'
+  const baseArticle = {
+    title: 'Small releases, better feedback', source: 'Engineering Blog', url: 'https://example.test/batches',
+    publishedAt: '2026-11-21', excerpt,
+  }
+  const requests = []
+  const tutor = createReadingTutor({ storage, fetcher: async (url, options) => {
+    assert.equal(url, PROVIDER.base_url)
+    const body = JSON.parse(options.body)
+    assert.equal(body.model, PROVIDER.learning_model)
+    assert.match(body.messages[0].content, /Read an English article together/)
+    requests.push(JSON.parse(body.messages[1].content))
+    const quote = requests.length === 1 ? 'shorten the time' : 'The study surveyed 10,000 engineers.'
+    const content = JSON.stringify({
+      reply: '小批发布会缩短定位回归问题所需的时间。', quote,
+      followups: ['为什么会更快？', '为什么会更快？', '有什么代价？', '还能用于哪里？'],
+    })
+    return { ok: true, json: async () => ({ choices: [{ message: { content: [{ text: content }] } }] }) }
+  } })
+
+  const opening = await tutor.ask({ article: { ...baseArticle, text: excerpt } })
+  assert.deepEqual(opening, {
+    reply: '小批发布会缩短定位回归问题所需的时间。', quote: 'shorten the time',
+    followups: ['为什么会更快？', '有什么代价？'],
+  })
+  assert.deepEqual(requests[0], {
+    article: { title: baseArticle.title, source: baseArticle.source, url: baseArticle.url,
+      publishedAt: baseArticle.publishedAt, text: excerpt, kind: 'feed_excerpt' },
+    history: [], question: '',
+  })
+
+  const userText = 'The team chose fast feedback over full test coverage.'
+  const followup = await tutor.ask({
+    article: { text: userText.padEnd(12000, 'x') + ' omitted', excerpt },
+    history: [...Array.from({ length: 9 }, () => ({ role: 'assistant', text: 'a'.repeat(4000) })),
+      { role: 'system', text: 'This should remain outside the discussion context.' }],
+    question: '  这里有什么取舍？  ',
+  })
+  assert.equal(followup.quote, '')
+  assert.ok(requests[1].article.text.startsWith(userText))
+  assert.equal(requests[1].article.text.length, 12000)
+  assert.equal(requests[1].article.kind, 'pasted_text')
+  assert.equal(requests[1].history.length, 7)
+  assert.ok(requests[1].history.every((turn) => turn.role === 'assistant' && turn.text.length === 3000))
+  assert.equal(requests[1].question, '这里有什么取舍？')
+})
+
+test('article reading validates configuration and surfaces malformed model replies', async () => {
+  const article = { text: 'Feedback arrived too late to prevent the error.' }
+  const missingSettings = createReadingTutor({
+    storage: { sync: { get: async () => ({}) } },
+    fetcher: () => assert.fail('Unconfigured reading must not make a network request.'),
+  })
+  await assert.rejects(missingSettings.ask({ article }), /请先在设置中配置/)
+  await assert.rejects(missingSettings.ask({ article, question: 'a'.repeat(2501) }), /2500 个字符/)
+  const malformed = createReadingTutor({
+    storage: { sync: { get: async () => PROVIDER } },
+    fetcher: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"quote":"OK"}' } }] }) }),
+  })
+  await assert.rejects(malformed.ask({ article }), /带读内容不完整/)
 })
