@@ -1,4 +1,5 @@
 import { button, coachErrorText, createReviewWorkspace, el, englishText } from './tutor.js'
+import { createReadingLookup } from './reading-lookup.js'
 
 export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }) {
   const frame = el('div', 'tutor-frame')
@@ -12,7 +13,8 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
   reviewPanel.id = 'tutor-review-panel'
   reviewPanel.hidden = true
 
-  const reading = createReadingWorkspace({ rootEl: readingPanel, api: readingApi, onOpenSettings })
+  const reading = createReadingWorkspace({ rootEl: readingPanel, api: readingApi, onOpenSettings,
+    onLookup: (lookup) => api.recordLookup(lookup) })
   const review = createReviewWorkspace({ rootEl: reviewPanel, api, onOpenSettings })
   const readingButton = button('Article reading', 'tutor-reading-mode', () => setMode(false))
   const reviewButton = button('Review', 'tutor-review-mode', () => setMode(true))
@@ -26,6 +28,7 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
 
   function setMode(showReview) {
     if (reviewPanel.hidden === !showReview) return
+    reading.close()
     readingPanel.hidden = showReview
     reviewPanel.hidden = !showReview
     readingButton.setAttribute('aria-pressed', String(!showReview))
@@ -43,6 +46,7 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
     refresh() {
       if (!reviewPanel.hidden) review.refresh()
     },
+    close() { reading.close() },
   }
 }
 
@@ -65,7 +69,8 @@ function attribution({ source, publishedAt }) {
   return meta
 }
 
-function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
+function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
+  const lookup = createReadingLookup({ rootEl, onOpenSettings, onLookup })
   const index = el('div')
   const header = el('header', 'reading-header')
   const heading = el('h3', 'reading-heading', 'Choose an article')
@@ -147,6 +152,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   function showPanel(panel) {
+    lookup.close()
     activePanel?.remove()
     activePanel = panel
     index.hidden = Boolean(panel)
@@ -212,12 +218,17 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
     if (excerpt) {
       const limit = 620
       const preview = excerpt.length > limit ? `${excerpt.slice(0, limit).trimEnd()}…` : excerpt
-      panel.append(englishText('p', 'reading-preview', preview))
+      const previewEl = englishText('p', 'reading-preview', preview)
+      lookup.bindMaterial(previewEl, article)
+      panel.append(previewEl)
       const moreText = article.text?.length > excerpt.length ? article.text : excerpt
       if (moreText.length > preview.length) {
         const details = el('details', 'reading-material')
+        const material = englishText('p', 'reading-preview', moreText)
+        lookup.bindMaterial(material, article)
         details.append(el('summary', '', pastedText ? 'Read the full text' : 'Read more from the feed'),
-          englishText('p', 'reading-preview', moreText))
+          material)
+        details.addEventListener('toggle', () => { if (!details.open) lookup.close() })
         panel.append(details)
       }
     } else {
@@ -333,6 +344,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   return {
+    close() { lookup.close() },
     open() {
       const target = activePanel?.querySelector('h3, textarea') || heading
       target.focus()

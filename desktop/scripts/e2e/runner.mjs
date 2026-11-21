@@ -12,6 +12,7 @@ import { verifyResultMenu } from './result-menu.mjs'
 import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
 import { verifyCloudSpeech } from './cloud-speech.mjs'
 import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
+import { verifyReadingLookup } from './reading-lookup.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -307,6 +308,7 @@ export async function runE2E(mode = 'core') {
       await verifyCloudSpeech({ app, page: mainPage, check })
       await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
+      await verifyReadingLookup({ app, page: mainPage, mock, check, shot, readingFeeds })
     }
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {

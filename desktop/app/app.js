@@ -1,5 +1,6 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
+import { renderLexical, renderGuide, renderTranslation, revealedHints, hintNode } from './translation-result.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './reading.js'
 import { bindUpdateMenu } from './update-menu.js'
@@ -562,6 +563,7 @@ function switchWorkspace(workspace) {
     return
   }
   closeTransientPanels()
+  tutor.close()
   hideSelectionToolbar()
   hideNotice()
   clearTimeout(state.liveTimer)
@@ -1423,63 +1425,6 @@ function renderEmpty() {
   return box
 }
 
-function renderLexical(entry) {
-  const lexical = entry.lexical
-  if (!lexical) return null
-  const box = el('div', 'lexical')
-  if (lexical.phonetic) {
-    const row = el('div', 'lexical-row')
-    row.append(el('span', 'lexical-label', 'Pronunciation'))
-    row.append(el('span', 'phonetic-badge', lexical.phonetic))
-    box.append(row)
-  }
-  if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
-    const section = el('div', 'lexical-section')
-    section.append(el('div', 'lexical-section-title', 'Definitions'))
-    const list = el('ul', 'definitions')
-    for (const definition of lexical.definitions) {
-      const item = el('li', 'sense')
-      if (definition.pos) item.append(el('span', 'pos-chip', definition.pos))
-      item.append(el('span', 'sense-meaning', definition.meaning || ''))
-      if (definition.example) {
-        const example = el('div', 'sense-example')
-        example.append(el('span', 'example-source', definition.example.source))
-        example.append(el('span', 'example-arrow', '→'))
-        example.append(el('span', 'example-target', definition.example.target))
-        item.append(example)
-      }
-      list.append(item)
-    }
-    section.append(list)
-    box.append(section)
-  }
-  if (lexical.contextual_analysis) {
-    const note = el('div', 'lexical-context')
-    note.append(el('span', 'lexical-label', 'Context'))
-    note.append(el('span', '', lexical.contextual_analysis))
-    box.append(note)
-  }
-  return box.childElementCount ? box : null
-}
-
-function lexicalRow(label, value) {
-  const row = el('div', 'lexical-row')
-  row.append(el('span', 'lexical-label', label), el('span', '', value))
-  return row
-}
-
-function revealedHints(entry, hints) {
-  const n = Number(entry.hintCount)
-  return Math.max(1, Math.min(Number.isFinite(n) ? n : 1, hints.length))
-}
-
-function hintNode(hint, index, isNew) {
-  const node = el('div', isNew ? 'hint is-new' : 'hint')
-  node.append(el('span', 'hint-step', String(index + 1)))
-  node.append(el('span', 'hint-text', hint))
-  return node
-}
-
 function revealNextHint(entry) {
   const guide = entry.guide
   if (!guide || !Array.isArray(guide.hints)) return
@@ -1500,65 +1445,6 @@ function revealNextHint(entry) {
   else more.remove()
   persistHistory()
   updateScrollFab()
-}
-
-function renderGuide(entry) {
-  const guide = entry.guide
-  if (!guide) return null
-  const box = document.createDocumentFragment()
-  const tools = el('div', 'guide-tools')
-  if (guide.phonetic) box.append(lexicalRow('Pronunciation', guide.phonetic))
-  if (Array.isArray(guide.hints) && guide.hints.length) {
-    const hints = el('div', 'hints')
-    hints.dataset.hints = 'true'
-    const revealed = revealedHints(entry, guide.hints)
-    guide.hints.slice(0, revealed).forEach((hint, index) => hints.append(hintNode(hint, index)))
-    box.append(hints)
-    if (revealed < guide.hints.length) {
-      const more = el('button', '', `Next hint (${guide.hints.length - revealed} left)`)
-      more.type = 'button'
-      more.dataset.hintMore = 'true'
-      more.addEventListener('click', () => revealNextHint(entry))
-      tools.append(more)
-    }
-  }
-  const answer = guide.answer
-  if (answer) {
-    const reveal = el('button', '', entry.answerRevealed ? 'Hide answer' : 'Reveal answer')
-    reveal.type = 'button'
-    reveal.addEventListener('click', () => {
-      entry.answerRevealed = !entry.answerRevealed
-      persistHistory()
-      renderEntry(entry)
-    })
-    tools.append(reveal)
-  }
-  if (tools.childElementCount) box.append(tools)
-  if (answer && entry.answerRevealed) {
-    const panel = el('div', 'answer')
-    if (answer.meaning) {
-      const p = el('p')
-      p.append(el('strong', '', 'Meaning:'), ` ${answer.meaning}`)
-      panel.append(p)
-    }
-    if (answer.explanation) {
-      const p = el('p')
-      p.append(el('strong', '', 'Explanation:'), ` ${answer.explanation}`)
-      panel.append(p)
-    }
-    if (answer.example) {
-      const p = el('p')
-      p.append(el('strong', '', 'Example:'), ` ${answer.example}`)
-      panel.append(p)
-    }
-    if (answer.usage) {
-      const p = el('p')
-      p.append(el('strong', '', 'Usage:'), ` ${answer.usage}`)
-      panel.append(p)
-    }
-    box.append(panel)
-  }
-  return box
 }
 
 function renderResult(entry) {
@@ -1589,7 +1475,14 @@ function renderResult(entry) {
   }
   if (entry.mode === 'guide') {
     if (entry.guide) {
-      const guide = renderGuide(entry)
+      const guide = renderGuide(entry, {
+        onRevealHint: revealNextHint,
+        onToggleAnswer: () => {
+          entry.answerRevealed = !entry.answerRevealed
+          persistHistory()
+          renderEntry(entry)
+        },
+      })
       if (guide) result.append(guide)
       else result.textContent = 'No guidance was generated. Try again.'
     } else {
@@ -1602,16 +1495,7 @@ function renderResult(entry) {
     result.textContent = 'Waiting for translation…'
     return result
   }
-  const answer = el('div', 'translation-answer')
-  answer.append(languageText('span', 'translation-text', entry.translatedText))
-  if (entry.status === 'streaming') answer.append(el('span', 'caret'))
-  result.append(answer)
-  const lexical = renderLexical(entry)
-  if (lexical) {
-    const details = el('details', 'lexical-details')
-    details.append(el('summary', '', 'Dictionary details'), lexical)
-    result.append(details)
-  }
+  result.append(renderTranslation(entry, { languageText }))
   return result
 }
 

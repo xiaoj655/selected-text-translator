@@ -7,6 +7,7 @@ import { createStorage } from '../src/storage.js'
 import { installMainChrome } from '../src/chrome-shim-main.js'
 import { createCapture } from '../src/capture.js'
 import { shouldShowMainWindow } from '../src/hotkey-route.js'
+import { verifyTranslationRequestScopes } from './translation-scope-smoke.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
@@ -123,5 +124,7 @@ assert.equal(shouldShowMainWindow({ text: '' }, false), true)
 assert.equal(shouldShowMainWindow({ text: '   ' }, false), true)
 assert.equal(shouldShowMainWindow({}, false), true)
 
+await verifyTranslationRequestScopes()
+
 rmSync(userDataDir, { recursive: true, force: true })
-console.log('[smoke] ok - storage, chrome shim, background message chain, capture fallback')
+console.log('[smoke] ok - storage, chrome shim, background message chain, capture fallback, article request isolation')

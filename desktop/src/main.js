@@ -5,6 +5,7 @@ import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, safeSto
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
+import { routeDesktopMessageSender } from './message-sender.js'
 import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
@@ -148,7 +149,8 @@ function installIpc(storage, history, requestDebug) {
   ipcMain.handle('stt:tutor-lesson', (_event, sourceId) => tutor.startLesson(sourceId))
   ipcMain.handle('stt:tutor-lookup', (_event, lookup) => tutor.recordLookup(lookup))
   ipcMain.handle('stt:tutor-result', (_event, result) => tutor.recordResult(result))
-  ipcMain.handle('stt:message', (event, message) => dispatch(message, windows.senderFor(event.sender)))
+  ipcMain.handle('stt:message', (event, message) => dispatch(message,
+    routeDesktopMessageSender(message, windows.senderFor(event.sender), isMainWindowEvent(event))))
   ipcMain.handle('stt:storage', (_event, request) => {
     const store = request?.area === 'local' ? storage.local : storage.sync
     if (request?.op === 'set') return store.set(request.items)

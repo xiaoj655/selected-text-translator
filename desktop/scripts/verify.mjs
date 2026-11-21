@@ -31,6 +31,7 @@ execFileSync(process.execPath, [
 ], { stdio: 'pipe' })
 
 const appSource = readFileSync(join(root, 'app', 'app.js'), 'utf8')
+const resultComponentSource = readFileSync(join(root, 'app', 'translation-result.js'), 'utf8')
 const htmlSource = readFileSync(join(root, 'app', 'index.html'), 'utf8')
 const mainSource = readFileSync(join(root, 'src', 'main.js'), 'utf8')
 assert.match(htmlSource, /id="input"/u, 'composer input is required')
@@ -168,7 +169,7 @@ assert.match(appSource, /function setMode[\s\S]{0,600}retranslateCurrent/u,
   'switching mode must re-translate the current input so the result is not stale')
 assert.match(htmlSource, /id="input"[^>]*placeholder="[^"]*paste/iu, 'composer must present paste as the main entry')
 assert.match(appCss, /\.empty-examples\s*\{/u, 'empty state examples need layout styles')
-assert.match(appSource, /guide-tools/u, 'guide actions need grouped controls')
+assert.match(resultComponentSource, /guide-tools/u, 'guide actions need grouped controls')
 
 assert.match(htmlSource, /id="btn-help"/u, 'help button must exist')
 assert.match(htmlSource, /id="help-overlay"/u, 'shortcut help overlay must exist')
@@ -234,8 +235,8 @@ assert.match(appCss, /\.entry-card\s*\{[^}]*border-top:\s*1px solid var\(--borde
 assert.match(appCss, /\.export-menu/u, 'export menu must be styled')
 assert.match(appCss, /\.result-label/u, 'result label must be styled')
 assert.match(appSource, /translation-answer/u, 'translate results need a prominent answer treatment')
-assert.match(appSource, /pos-chip/u, 'dictionary senses need part-of-speech chips')
-assert.match(appSource, /sense-example/u, 'dictionary senses need example lines')
+assert.match(resultComponentSource, /pos-chip/u, 'dictionary senses need part-of-speech chips')
+assert.match(resultComponentSource, /sense-example/u, 'dictionary senses need example lines')
 assert.match(appCss, /\.translation-answer/u, 'answer treatment must be styled')
 assert.match(appCss, /\.pos-chip/u, 'part-of-speech chips must be styled')
 assert.match(appSource, /action-save/u, 'saving to the expression book must be a first-class result action')
@@ -243,7 +244,7 @@ assert.match(appSource, /data-saveButton|dataset\.saveButton/u, 'save action nee
 assert.match(appCss, /\.actions button\.action-save/u, 'save action must be styled')
 assert.match(appSource, /entry-card--guide/u, 'guide cards need a distinct learning style')
 assert.doesNotMatch(appSource, /guide-intro/u, 'the vague guide-intro sentence must not be shown')
-assert.match(appSource, /hint-step/u, 'guide hints need numbered step markers')
+assert.match(resultComponentSource, /hint-step/u, 'guide hints need numbered step markers')
 assert.match(appCss, /\.entry-card--guide/u, 'guide card style must be defined')
 assert.match(appCss, /\.hint-step/u, 'hint step markers must be styled')
 
@@ -273,7 +274,7 @@ assert.match(appSource, /function startCompanionEntry/u, 'translate and guide mo
 assert.match(appSource, /dataset\.companionMode/u, 'companion action must target the opposite mode')
 assert.match(appSource, /menuAdd\([\s\S]{0,240}'action-companion'/u,
   'companion action must be tucked into the more menu to keep the result toolbar compact')
-assert.match(appSource, /lexical-details/u, 'dictionary details must be progressively disclosed')
+assert.match(resultComponentSource, /lexical-details/u, 'dictionary details must be progressively disclosed')
 assert.match(appCss, /\.lexical-details\s*>\s*summary/u, 'dictionary disclosure summary must be styled')
 
 assert.match(htmlSource, /id="opt-target-language"/u, 'target language selector is required')
@@ -475,7 +476,7 @@ assert.match(appSource, /STOP_SPEECH/u, 'new submissions must stop stale speech'
 
 assert.match(appSource, /function revealNextHint/u, 'progressive hints must reveal in place')
 assert.match(appSource, /data-hint-more/u, 'progressive hints need an in-place reveal control')
-assert.match(appSource, /hints\.dataset\.hints/u, 'hints container must be patchable in place')
+assert.match(resultComponentSource, /hints\.dataset\.hints/u, 'hints container must be patchable in place')
 assert.doesNotMatch(appSource, /hint is-hidden/u, 'no fake hidden placeholder rows may be rendered')
 assert.match(appCss, /@keyframes hint-in/u, 'newly revealed hints must animate in')
 assert.match(appCss, /data-hint-more/u, 'reveal control gets a lighter M3 treatment')

@@ -176,6 +176,50 @@
 }
 .reading-material summary { width: fit-content; padding: 5px 0; cursor: pointer; color: var(--text-2); }
 .reading-material .reading-preview { margin-block-start: 8px; }
+.reading-preview[data-reading-selectable] { cursor: text; }
+::highlight(reading-lookup-selection) { background: var(--accent-soft); color: var(--text); }
+
+.reading-lookup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(540px, calc(100dvh - 24px));
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 10px 36px rgb(0 0 0 / .14);
+  overflow: hidden;
+}
+.reading-lookup:popover-open { display: flex; flex-direction: column; gap: 12px; }
+.reading-lookup-header { display: flex; align-items: start; gap: 12px; }
+.reading-lookup-text {
+  flex: 1;
+  min-width: 0;
+  max-height: 76px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: calc(var(--fs-result) + 1px);
+  line-height: 1.45;
+}
+.reading-lookup-close { border: 0; background: transparent; min-width: 28px; min-height: 28px; padding: 0; font-size: 22px; }
+.reading-lookup-modes { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; }
+.reading-lookup-modes button { background: transparent; border-color: transparent; }
+.reading-lookup-modes button[aria-pressed="true"] { background: var(--surface); border-color: var(--border-strong); font-weight: 600; }
+.reading-lookup-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.reading-lookup .result { padding: 0; font-size: var(--fs-result); line-height: var(--lh-result); overflow-wrap: anywhere; }
+.reading-lookup .translation-answer { margin: 0; padding: 0; border: 0; background: transparent; }
+.reading-lookup .guide-tools { flex-wrap: wrap; }
+.reading-lookup .answer { margin-block-end: 0; }
+.reading-lookup .lexical-details { margin-block-end: 0; }
+.reading-lookup .lexical-label { width: auto; }
+.reading-lookup-feedback { margin: 10px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.reading-lookup-feedback:empty { display: none; }
+.reading-lookup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0; padding-block-start: 10px; border-block-start: 1px solid var(--border); }
+.reading-lookup-actions button { font-size: 13px; padding: 6px 9px; min-height: 32px; }
 
 .reading-thread { margin-block-start: 22px; }
 .reading-thread:empty { margin: 0; }
