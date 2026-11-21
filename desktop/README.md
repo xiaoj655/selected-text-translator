@@ -40,7 +40,7 @@ English Coach使用已配置的通用学习模型。翻译模型为通用模型�
 ## 结构
 
 - `scripts/sync-src.mjs` 把 `../src/` 复制到 `vendor/`，在 `npm start`、`npm run verify` 和 `npm run dist` 之前自动执行。
-- `assets/` 存放桌面图标的 SVG 源文件和 PNG 资源。应用图标导出为 512 × 512，macOS 菜单栏模板分别导出为 18 × 18 和 36 × 36。
+- `assets/` 存放桌面图标的 SVG 源文件和图像资源。窗口与托盘运行时读取 PNG，Windows 程序和安装包使用多尺寸 ICO。应用 PNG 为 512 × 512，macOS 菜单栏模板分别为 18 × 18 和 36 × 36。
 - `scripts/verify.mjs`:语法检查 + `smoke` + 关键不变量断言;`npm run verify` 还会接着运行 Electron E2E,作为集成验收入口。
 - `scripts/smoke.mjs`:纯 Node 验证存储、双层 `chrome` shim 和 `background.js` 消息链。
 - `src/`:Electron 主进程、消息路由、`chrome` 兼容层、TTS、窗口、历史和 English Coach。
@@ -56,6 +56,7 @@ cd desktop
 npm ci
 npm run verify    # 语法 + smoke + 不变量 + 本地模拟 API 的 Electron E2E
 npm run test:e2e -- --input    # 仅检查输入法与发送快捷键
+npm run test:icons           # 用真实 Electron 检查源目录及 ASAR 内的图标
 npm start
 ```
 

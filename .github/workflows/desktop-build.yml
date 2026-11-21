@@ -61,6 +61,10 @@ jobs:
         working-directory: desktop
         run: npm run smoke
 
+      - name: Verify runtime icons from ASAR
+        working-directory: desktop
+        run: npm run test:icons
+
       - name: Build macOS arm64
         if: matrix.name == 'macOS'
         working-directory: desktop

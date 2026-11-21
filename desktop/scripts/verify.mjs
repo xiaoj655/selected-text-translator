@@ -26,6 +26,7 @@ for (const file of files) {
 
 execFileSync(process.execPath, [join(root, 'scripts', 'sync-src.mjs')], { stdio: 'pipe' })
 execFileSync(process.execPath, [join(root, 'scripts', 'smoke.mjs')], { stdio: 'pipe' })
+execFileSync(process.execPath, [join(root, 'scripts', 'verify-icons.mjs')], { stdio: 'pipe' })
 execFileSync(process.execPath, [
   '--test', join(root, 'scripts', 'tutor-smoke.mjs'), join(root, 'scripts', 'reading-sources.test.mjs'),
 ], { stdio: 'pipe' })
@@ -89,8 +90,6 @@ assert.doesNotMatch(preloadSource, /contextBridge/u, 'preload must run in the ma
 assert.match(preloadSource, /remove\(keys\)/u, 'storage shim must expose remove for draft cleanup')
 assert.match(mainSource, /op === 'remove'/u, 'main must handle storage remove operations')
 assert.doesNotMatch(windowsSource, /contextIsolation: true/u, 'preload needs the main world')
-assert.match(windowsSource, /process\.platform === 'win32' \? 'icon\.ico' : 'icon\.png'/u,
-  'Windows windows must load the ICO application icon')
 assert.ok(existsSync(join(root, 'app', 'app.css')), 'stylesheet is required')
 assert.ok(existsSync(join(root, 'src', 'history.js')), 'history persistence is required')
 assert.match(mainSource, /createHistory/u, 'history must be wired into the main process')

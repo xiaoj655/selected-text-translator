@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BrowserWindow, Menu, Tray, globalShortcut, nativeImage, screen } from 'electron'
+import { BrowserWindow, Menu, Tray, globalShortcut, screen } from 'electron'
+import { loadDesktopIcons } from './icons.js'
 
 const AUX_FILES = {
   settings: 'popup.html',
@@ -26,7 +27,7 @@ function clamp(value, min, max) {
 export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
   const assetsDir = join(desktopDir, 'assets')
-  const appIcon = nativeImage.createFromPath(join(assetsDir, process.platform === 'win32' ? 'icon.ico' : 'icon.png'))
+  const { appIcon, trayIcon } = loadDesktopIcons(assetsDir)
   const vendorDir = join(desktopDir, 'vendor', 'src')
   const preloadPath = join(desktopDir, 'src', 'preload.cjs')
   const boundsFile = join(userDataDir, 'window-bounds.json')
@@ -322,10 +323,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   }
 
   function createTray({ onQuit, onOpenLog }) {
-    const image = process.platform === 'darwin'
-      ? nativeImage.createFromPath(join(assetsDir, 'trayTemplate.png'))
-      : appIcon.resize({ width: 32, height: 32 })
-    tray = new Tray(image)
+    tray = new Tray(trayIcon)
     const openMainWindow = () => void showMainWindow()
     if (process.platform !== 'darwin') tray.on('click', openMainWindow)
 
