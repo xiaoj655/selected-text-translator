@@ -23,14 +23,10 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
-function createWindow(options) {
-  const win = new BrowserWindow(options)
-  if (process.platform === 'win32' || process.platform === 'linux') win.removeMenu()
-  return win
-}
-
 export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
+  const assetsDir = join(desktopDir, 'assets')
+  const appIcon = nativeImage.createFromPath(join(assetsDir, 'icon.png'))
   const vendorDir = join(desktopDir, 'vendor', 'src')
   const preloadPath = join(desktopDir, 'src', 'preload.cjs')
   const boundsFile = join(userDataDir, 'window-bounds.json')
@@ -44,6 +40,12 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let alwaysOnTop = false
   let windowBackground = '#ffffff'
   let tray = null
+
+  function createWindow(options) {
+    const win = new BrowserWindow({ ...options, icon: appIcon })
+    if (process.platform === 'win32' || process.platform === 'linux') win.removeMenu()
+    return win
+  }
 
   function loadBounds() {
     try {
@@ -320,9 +322,9 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   }
 
   function createTray({ onQuit, onOpenLog }) {
-    let image = nativeImage.createFromPath(join(desktopDir, 'vendor', 'assets', 'icon128.png'))
-    if (image.isEmpty()) image = nativeImage.createEmpty()
-    if (process.platform === 'darwin' && !image.isEmpty()) image = image.resize({ width: 18, height: 18 })
+    const image = process.platform === 'darwin'
+      ? nativeImage.createFromPath(join(assetsDir, 'trayTemplate.png'))
+      : appIcon.resize({ width: 32, height: 32 })
     tray = new Tray(image)
     const openMainWindow = () => void showMainWindow()
     if (process.platform !== 'darwin') tray.on('click', openMainWindow)

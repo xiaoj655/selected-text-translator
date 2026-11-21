@@ -54,17 +54,7 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
   flex: none;
 }
 .top-identity, .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-mark {
-  width: 29px;
-  height: 29px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--primary);
-  color: var(--on-primary);
-  flex: none;
-}
-.brand-mark svg { width: 17px; height: 17px; }
+.brand-mark { flex: none; }
 .brand h1 { font-size: 14px; font-weight: 650; margin: 0; white-space: nowrap; }
 .workspace-nav { display: flex; gap: 4px; }
 .workspace-nav button {

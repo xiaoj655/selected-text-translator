@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.66",
+  "version": "0.9.67",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
@@ -32,11 +32,13 @@
   "build": {
     "appId": "io.github.xiaoj655.selected-text-translator",
     "productName": "Selected Text Translator",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },
     "files": [
       "package.json",
+      "assets/*.png",
       "src/**/*",
       "app/**/*",
       "vendor/**/*"

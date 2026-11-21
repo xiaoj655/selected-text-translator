@@ -37,7 +37,8 @@ AI 老师使用已配置的通用学习模型。翻译模型为通用模型时�
 
 ## 结构
 
-- `scripts/sync-src.mjs`:把 `../src/` 与图标复制到 `vendor/`(生成物,不进 git)。`npm start` / `npm run verify` / `npm run dist` 之前自动执行。
+- `scripts/sync-src.mjs` 把 `../src/` 复制到 `vendor/`，在 `npm start`、`npm run verify` 和 `npm run dist` 之前自动执行。
+- `assets/` 存放桌面图标的 SVG 源文件和 PNG 资源。应用图标导出为 512 × 512，macOS 菜单栏模板分别导出为 18 × 18 和 36 × 36。
 - `scripts/verify.mjs`:语法检查 + `smoke` + 关键不变量断言;`npm run verify` 还会接着运行 Electron E2E,作为集成验收入口。
 - `scripts/smoke.mjs`:纯 Node 验证存储、双层 `chrome` shim 和 `background.js` 消息链。
 - `src/`:Electron 主进程、消息路由、`chrome` 兼容层、TTS、窗口、历史和 AI 老师。
