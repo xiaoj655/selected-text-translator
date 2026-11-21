@@ -151,9 +151,19 @@ function startReviewSession() {
   renderReview()
 }
 
-function createEmptyState(title, text, symbol = 'Aa') {
+function createEmptyState(title, text, symbol = '') {
   const emptyEl = createEl('div', 'empty-state')
-  emptyEl.append(createEl('div', 'empty-symbol', symbol), createEl('h2', '', title), createEl('p', '', text))
+  const symbolEl = createEl('div', 'empty-symbol', symbol)
+  if (!symbol) {
+    const iconEl = createEl('img')
+    iconEl.src = '../assets/icon.svg'
+    iconEl.width = 40
+    iconEl.height = 40
+    iconEl.alt = ''
+    symbolEl.appendChild(iconEl)
+  }
+  symbolEl.setAttribute('aria-hidden', 'true')
+  emptyEl.append(symbolEl, createEl('h2', '', title), createEl('p', '', text))
   return emptyEl
 }
 
@@ -169,7 +179,7 @@ function renderList() {
   }
   listEl.replaceChildren()
   if (!entries.length) {
-    listEl.appendChild(createEmptyState(query ? '还没有找到这个词。' : '从一次阅读里的心动开始。',
+    listEl.appendChild(createEmptyState(query ? '没有找到相关收藏' : '还没有收藏',
       query ? '换一个单词、表达或原句试试。' : '在阅读卡片中保存词与表达，它们会带着语境留在这里。'))
   }
   for (const entry of visibleEntries) {
@@ -186,7 +196,7 @@ function renderList() {
 function createContext(entry, previousState = null) {
   const view = getContextView(entry)
   if (!view.text) {
-    return createEl('p', 'entry-context', 'No surrounding sentence was saved with this selection.')
+    return createEl('p', 'entry-context', '此收藏未保存原句。')
   }
   const contextEl = createEl('div', 'context-block')
   contextEl.appendChild(createContextText(view.segments))
@@ -235,14 +245,14 @@ function scrollContextTarget(contextEl) {
 }
 
 function appendAnswer(containerEl, entry) {
-  containerEl.append(createEl('span', 'answer-label', 'WHAT IT MEANS HERE'),
+  containerEl.append(createEl('span', 'answer-label', '释义'),
     createEl('p', 'entry-meaning', entry.meaning))
   if (entry.explanation) containerEl.appendChild(createEl('p', 'entry-explanation', entry.explanation))
   if (entry.usage) {
-    containerEl.append(createEl('span', 'answer-label', 'A WAY TO USE IT'), createEl('p', 'entry-usage', entry.usage))
+    containerEl.append(createEl('span', 'answer-label', '用法'), createEl('p', 'entry-usage', entry.usage))
   }
   if (entry.example) {
-    containerEl.append(createEl('span', 'answer-label', 'MAKE IT YOURS'), createEl('p', 'entry-example', entry.example))
+    containerEl.append(createEl('span', 'answer-label', '例句'), createEl('p', 'entry-example', entry.example))
     const text = getEntrySpeechTargets(entry).example
     if (text) containerEl.appendChild(createSpeechButton(entry, 'example', text, '读例句'))
   }
@@ -334,7 +344,7 @@ function createEditorField(field) {
 function createEntryEditor() {
   const formEl = createEl('form', 'entry-editor')
   formEl.setAttribute('aria-label', '修订学习内容')
-  formEl.append(createEl('h3', '', '让这份理解更贴近你。'),
+  formEl.append(createEl('h3', '', '修订内容'),
     createEl('p', 'editor-help', '只修改学习内容，原文、来源和复习进度会保留。'),
     createEl('p', 'editor-help editor-draft-help', '草稿仅保留在当前页面，刷新或关闭前请保存或复制。'))
   const advancedEl = createEl('details', 'editor-advanced')
@@ -532,7 +542,7 @@ function createEntryCard(entry) {
   const bodyEl = createEl('div', 'entry-body')
   if (entry.phonetic) bodyEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
   bodyEl.appendChild(createSpeechControls(entry))
-  bodyEl.append(createEl('span', 'context-label', 'WHERE YOU MET IT'), createContext(entry))
+  bodyEl.append(createEl('span', 'context-label', '原句'), createContext(entry))
   const isEditing = state.draft?.id === entry.id
   if (isEditing) bodyEl.appendChild(state.editorEl)
   else appendAnswer(bodyEl, entry)
@@ -548,7 +558,7 @@ function createEntryCard(entry) {
       sourceEl.appendChild(linkEl)
     }
   } catch { }
-  const removeEl = createButton('移除', () => void removeEntry(entry.id, removeEl), 'secondary')
+  const removeEl = createButton('移除', () => void removeEntry(entry.id, removeEl), 'secondary entry-remove')
   removeEl.setAttribute('aria-label', `移除 ${entry.text}`)
   removeEl.disabled = isEditing
   if (isEditing) removeEl.title = '请先保存或取消这条表达的修订。'
@@ -639,7 +649,7 @@ function renderReview() {
   reviewCardEl.replaceChildren()
   if (!entry) {
     const hasReviewed = state.reviewQueue.length > 0
-    const emptyEl = createEmptyState(hasReviewed ? '今天的这一小步，完成了。' : '现在没有到期的表达。',
+    const emptyEl = createEmptyState(hasReviewed ? '本轮复习完成' : '暂无到期复习',
       hasReviewed ? '还不熟的表达会稍后再出现，记住的会隔几天再与你见面。'
         : '新收藏的词与表达从明天开始复习。现在继续读点喜欢的内容吧。', '✓')
     if (getDueEntries(state.entries, Date.now()).length) {
@@ -657,7 +667,7 @@ function renderReview() {
   cardEl.appendChild(wordEl)
   if (entry.phonetic) cardEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
   cardEl.appendChild(createSpeechControls(entry))
-  cardEl.append(createEl('span', 'context-label', 'REMEMBER THE MOMENT'), createContext(entry, previousState))
+  cardEl.append(createEl('span', 'context-label', '原句'), createContext(entry, previousState))
   if (!state.isRevealed) {
     cardEl.appendChild(createButton('想到了，揭晓释义', revealReviewAnswer, 'review-reveal'))
   } else {

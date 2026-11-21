@@ -169,7 +169,7 @@ test('popup blur auto-saves changed valid provider settings', async () => {
       });
       assert.equal(storage[STORAGE_KEYS.MODEL], 'qwen-mt-plus');
       assert.equal(statusEl.textContent, 'Settings auto-saved.');
-      assert.equal(statusEl.style.color, '#17663e');
+      assert.equal(statusEl.style.color, 'var(--success)');
     }
   );
 });
@@ -206,7 +206,7 @@ test('popup blur with missing required fields shows validation status and skips 
 
       assert.equal(calls.set.length, 0);
       assert.equal(statusEl.textContent, 'Fill all fields to auto-save.');
-      assert.equal(statusEl.style.color, '#c43f2f');
+      assert.equal(statusEl.style.color, 'var(--danger)');
     }
   );
 });
@@ -225,7 +225,7 @@ test('popup submit keeps manual save path working', async () => {
       assert.equal(event.defaultPrevented, true);
       assert.equal(calls.set.length, 1);
       assert.equal(statusEl.textContent, 'Settings saved.');
-      assert.equal(statusEl.style.color, '#17663e');
+      assert.equal(statusEl.style.color, 'var(--success)');
     }
   );
 });

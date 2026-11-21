@@ -43,7 +43,7 @@ async function init() {
     await loadSettings();
     readingControls = await createReadingControls();
   } catch {
-    setStatus('Unable to load settings. Please reopen this page.', '#c43f2f');
+    setStatus('Unable to load settings. Please reopen this page.', 'var(--danger)');
   }
   bindConnectionControls();
   form.addEventListener('submit', onSubmit);
@@ -89,7 +89,7 @@ async function onSubmit(event) {
     });
 
     if (!result.ok) {
-      setStatus('All fields are required.', '#c43f2f');
+      setStatus('All fields are required.', 'var(--danger)');
       return;
     }
 
@@ -101,9 +101,9 @@ async function onSubmit(event) {
       [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: debugLoggingInput.checked
     });
 
-    setStatus('Settings saved.', '#17663e');
+    setStatus('Settings saved.', 'var(--success)');
   } catch {
-    setStatus('Unable to save settings. Please try again.', '#c43f2f');
+    setStatus('Unable to save settings. Please try again.', 'var(--danger)');
   }
 }
 
@@ -113,9 +113,9 @@ async function onDisableLogs() {
     await chrome.storage.sync.set({
       [STORAGE_KEYS.DEBUG_LOGGING_ENABLED]: false
     });
-    setStatus('Debug logging disabled.', '#17663e');
+    setStatus('Debug logging disabled.', 'var(--success)');
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -129,7 +129,7 @@ async function loadBlacklist() {
     blacklistPatterns = await readDisabledUrlPatterns();
     renderBlacklist();
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -235,7 +235,7 @@ async function saveEdit(index, newPattern) {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -247,7 +247,7 @@ async function deletePattern(index) {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -270,7 +270,7 @@ async function onBlacklistAdd() {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 

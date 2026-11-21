@@ -45,13 +45,13 @@ async function waitForCardFocus(page, selector) {
 }
 
 async function assertSentenceCard(page, fixture, { isRevealed = false, hintCount = 1 } = {}) {
-  assert.equal(await page.locator('.stt-guide-heading .stt-section-label').textContent(), 'FOLLOW THE SENTENCE')
+  assert.equal(await page.locator('.stt-guide-heading .stt-section-label').textContent(), '理解这句话')
   assert.equal(await page.locator('.stt-hint').count(), hintCount)
   assert.equal(await page.locator('.stt-hint p').first().textContent(), fixture.guide.hints[0])
   assert.equal(await page.locator('.stt-answer').count(), isRevealed ? 1 : 0)
   assert.equal(await page.locator('.stt-example, .stt-usage, .stt-phonetic').count(), 0)
   assert.equal(await page.getByRole('button', { name: '查看音标', exact: true }).count(), 0)
-  assert.doesNotMatch(await page.locator('.stt-card').textContent(), /ANOTHER WAY TO USE IT/)
+  assert.doesNotMatch(await page.locator('.stt-card').textContent(), /例句/)
   if (isRevealed) {
     assert.equal(await page.locator('.stt-meaning').textContent(), fixture.guide.answer.meaning)
     assert.equal(await page.locator('.stt-sentence-explanation > summary').textContent(), '为什么这样理解')
@@ -106,6 +106,8 @@ async function revealAndInspectExplanation(page, fixture, requests) {
 }
 
 async function saveSentence(page, worker, fixture) {
+  await page.keyboard.press('Tab')
+  await waitForCardFocus(page, '.stt-copy')
   await page.keyboard.press('Tab')
   await waitForCardFocus(page, '.stt-save')
   await page.keyboard.press('Enter')

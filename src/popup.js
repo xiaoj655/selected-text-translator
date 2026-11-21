@@ -15,8 +15,8 @@ const enableCurrentBtn = document.getElementById('enable-current');
 const pageStatusEl = document.getElementById('page-status');
 const disableButtonsEl = document.getElementById('disable-buttons');
 const enableButtonEl = document.getElementById('enable-button');
-const STATUS_COLOR_SUCCESS = '#17663e';
-const STATUS_COLOR_ERROR = '#c43f2f';
+const STATUS_COLOR_SUCCESS = 'var(--success)';
+const STATUS_COLOR_ERROR = 'var(--danger)';
 
 let lastSavedSettings = null;
 let persistQueue = Promise.resolve();
@@ -119,7 +119,7 @@ async function onDisableCurrent() {
     const pattern = `=${currentTabUrl || getOriginPathname()}`;
     await addToBlacklist(pattern);
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -128,7 +128,7 @@ async function onDisableCurrentSubpath() {
     const pattern = getOriginPathname();
     await addToBlacklist(pattern);
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 
@@ -151,7 +151,7 @@ async function onEnableCurrent() {
       setStatus('Failed to enable.', STATUS_COLOR_ERROR);
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus('操作失败，请重试。', 'var(--danger)');
   }
 }
 

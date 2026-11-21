@@ -4,47 +4,51 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Selected · 阅读助手</title>
+    <link rel="icon" href="../assets/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body class="popup">
-    <header class="brand">
-      <span class="brand-mark" aria-hidden="true">Aa</span>
-      <div><div class="brand-name">Selected<span style="color: #8aab80">.</span></div><div class="brand-note">A little closer to understanding</div></div>
+    <header class="popup-header">
+      <div class="brand">
+        <img class="brand-mark" src="../assets/icon.svg" alt="" width="32" height="32" />
+        <div><div class="brand-name">Selected</div><div class="brand-note">阅读助手</div></div>
+      </div>
+      <button id="open-settings" type="button" class="text-button">设置</button>
     </header>
-    <p class="intro">读懂一个词，也读懂它所在的世界。</p>
     <form id="popup-settings-form">
-      <section class="panel" style="margin-top: 0">
-        <div class="panel-heading"><h2>阅读偏好</h2><span class="step">READ YOUR WAY</span></div>
-        <label class="field">划词后的默认模式
-          <select id="reading_mode"><option value="translate">直接翻译</option><option value="guide">英文引导 · 逐层提示</option></select>
-          <span class="help">也可以在阅读卡片中切换，自动记住选择。</span>
+      <section class="panel reading-panel">
+        <div class="panel-heading"><h2>阅读偏好</h2><span class="help">自动保存</span></div>
+        <label class="field" for="reading_mode">划词后的默认模式
+          <select id="reading_mode" name="reading_mode"><option value="translate">直接翻译</option><option value="guide">英文引导 · 逐层提示</option></select>
         </label>
-        <div class="row">
-          <label class="field" style="flex: 2">朗读音色<select id="speech_voice"><option value="">自动选择</option></select></label>
-          <label class="field">语速<select id="speech_rate"><option value="0.75">慢速</option><option value="0.9" selected>舒缓</option><option value="1">正常</option><option value="1.2">稍快</option></select></label>
+        <div class="row voice-row">
+          <label class="field voice-field" for="speech_voice">朗读音色<select id="speech_voice" name="speech_voice"><option value="">自动选择</option></select></label>
+          <label class="field rate-field" for="speech_rate">语速<select id="speech_rate" name="speech_rate"><option value="0.75">慢速</option><option value="0.9" selected>舒缓</option><option value="1">正常</option><option value="1.2">稍快</option></select></label>
         </div>
-        <button id="preview-speech" type="button" class="secondary" style="width: 100%">▷ 试听声音</button>
+        <button id="preview-speech" type="button" class="secondary">试听声音</button>
         <p id="speech-status" class="status help" role="status" aria-live="polite"></p>
       </section>
       <details id="provider-details" class="panel">
-        <summary class="provider-summary">连接模型 <span class="step">YOUR PROVIDER</span></summary>
-        <label class="field">API 地址<input id="base_url" name="base_url" type="url" placeholder="https://api.example.com/v1" required /></label>
-        <label class="field">API Key<input id="api_key" name="api_key" type="password" autocomplete="off" placeholder="仅用于你选择的服务" required /></label>
-        <button id="discover-models" type="button" class="secondary">检测连接并获取模型</button><p id="connection-status" class="status help" role="status" aria-live="polite"></p><datalist id="provider-models"></datalist><datalist id="learning-models"></datalist>
-        <label class="field">翻译模型<input id="model" list="provider-models" name="model" type="text" placeholder="qwen-mt-flash" required /></label>
-        <label class="field">学习模型 <span class="help">音标与英文引导使用</span><input id="learning_model" list="learning-models" type="text" placeholder="填写可用的通用模型名称" /><span class="help">与翻译共用 API 地址和密钥。翻译模型为通用模型时可留空。</span></label>
+        <summary class="provider-summary">连接模型</summary>
+        <label class="field" for="base_url">API 地址<input id="base_url" name="base_url" type="url" placeholder="https://api.example.com/v1" autocapitalize="none" autocorrect="off" spellcheck="false" required /></label>
+        <label class="field" for="api_key">API Key<input id="api_key" name="api_key" type="password" autocomplete="off" placeholder="填写服务商提供的密钥" autocapitalize="none" autocorrect="off" spellcheck="false" required /></label>
+        <button id="discover-models" type="button" class="secondary">检测连接并获取模型</button>
+        <p id="connection-status" class="status help" role="status" aria-live="polite"></p>
+        <datalist id="provider-models"></datalist><datalist id="learning-models"></datalist>
+        <label class="field" for="model">翻译模型<input id="model" list="provider-models" name="model" type="text" placeholder="qwen-mt-flash" autocapitalize="none" autocorrect="off" spellcheck="false" required /></label>
+        <label class="field" for="learning_model">学习模型<input id="learning_model" name="learning_model" list="learning-models" type="text" placeholder="可用的通用模型名称" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="learning-model-help" /><span id="learning-model-help" class="help">音标与引导使用，共用地址和密钥。翻译已使用通用模型时可留空。</span></label>
         <button type="submit" class="save">保存设置</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </details>
     </form>
-    <section class="panel">
-      <div class="panel-heading" style="margin-bottom: 0"><h2>当前网页</h2><div id="page-status" class="page-status hidden"><span class="page-status-dot"></span><span class="page-status-text">读取中</span></div></div>
+    <section class="panel current-page-panel">
+      <div class="panel-heading"><h2>当前网页</h2><div id="page-status" class="page-status hidden"><span class="page-status-dot"></span><span class="page-status-text">读取中</span></div></div>
       <p id="current-url" class="blacklist-current">读取中…</p>
       <div id="disable-buttons" class="blacklist-buttons"><button id="disable-current" type="button" class="secondary">在此页停用</button><button id="disable-current-subpath" type="button" class="secondary">此页及子路径停用</button></div>
       <div id="enable-button" class="blacklist-buttons" style="display: none"><button id="enable-current" type="button" class="secondary">重新启用</button></div>
     </section>
-    <button id="open-library" type="button" class="secondary" style="width: 100%; margin-top: 14px">我的表达本 · 到期复习 ↗</button>
-    <footer class="footer"><span>Alt + Shift + E 打开选区</span><button id="open-settings" type="button" class="text-button">全部设置 ↗</button></footer>
+    <button id="open-library" type="button" class="secondary library-link"><span>我的表达本</span><span class="help">收藏与复习 →</span></button>
+    <footer class="footer popup-footer"><span><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd> 打开选区</span></footer>
     <script src="popup.js" type="module"></script>
   </body>
 </html>

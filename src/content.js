@@ -110,7 +110,9 @@
     }
 
     const selection = window.getSelection();
-    if (selection?.anchorNode && state.cardEl?.contains(selection.anchorNode)) return;
+    const selectionAnchor = selection?.getComposedRanges?.({ shadowRoots: [state.uiRoot] })[0]?.startContainer
+      || state.uiRoot.getSelection?.()?.anchorNode || selection?.anchorNode;
+    if (selectionAnchor && state.cardEl?.contains(selectionAnchor)) return;
     if (!selection || selection.rangeCount === 0) {
       clearActiveSelection('selection_empty');
       return;
@@ -212,12 +214,17 @@
     const trigger = document.createElement('button');
     trigger.className = 'stt-trigger';
     trigger.type = 'button';
-    trigger.textContent = 'Aa';
+    const icon = document.createElement('img');
+    icon.src = chrome.runtime.getURL('assets/icon.svg');
+    icon.alt = '';
+    icon.width = TRIGGER_SIZE_PX;
+    icon.height = TRIGGER_SIZE_PX;
+    trigger.appendChild(icon);
     trigger.setAttribute('aria-label', 'Open reading assistant');
     trigger.setAttribute('aria-haspopup', 'dialog')
     trigger.setAttribute('aria-controls', 'stt-reading-card')
     trigger.setAttribute('aria-expanded', 'false')
-    trigger.title = 'Translate or explore this selection';
+    trigger.title = '翻译或理解选中文字';
 
     trigger.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -700,8 +707,8 @@
       return
     }
     const cardEl = renderFrame()
-    cardEl.appendChild(createEl('div', 'stt-section-label', 'TRANSLATION'))
     const translationEl = createEl('div', 'stt-card-block stt-card-block--translation', translatedText)
+    translationEl.id = 'stt-copy-result'
     cardEl.appendChild(translationEl)
     const lexicalBlock = buildLexicalBlock(sourceText, lexicalDetails)
     if (lexicalBlock) cardEl.appendChild(lexicalBlock)
@@ -730,7 +737,7 @@
     const isSentence = guide.guideType === 'sentence'
     if (isSentence) cardEl.querySelector('.stt-source-text').classList.add('stt-source-text--passage')
     const headingEl = createEl('div', 'stt-guide-heading')
-    headingEl.append(createEl('span', 'stt-section-label', isSentence ? 'FOLLOW THE SENTENCE' : 'READ BETWEEN THE LINES'),
+    headingEl.append(createEl('span', 'stt-section-label', isSentence ? '理解这句话' : '理解这个表达'),
       createEl('span', 'stt-progress', `${selection.hintCount} / ${guide.hints.length}`))
     cardEl.appendChild(headingEl)
     const hintsEl = createEl('div', 'stt-hints')
@@ -758,7 +765,7 @@
         const answerEl = state.cardEl.querySelector('.stt-answer')
         answerEl?.focus({ preventScroll: true })
         answerEl?.scrollIntoView({ block: 'nearest' })
-      }, 'stt-text-button stt-reveal', 'reveal')
+      }, `${selection.hintCount < guide.hints.length ? 'stt-text-button' : 'stt-button'} stt-reveal`, 'reveal')
       actionsEl.appendChild(revealEl)
     }
     cardEl.appendChild(actionsEl)
@@ -784,8 +791,9 @@
     answerEl.tabIndex = -1
     answerEl.dataset.sttFocus = 'answer'
     answerEl.setAttribute('aria-label', 'Revealed answer')
-    answerEl.append(createEl('div', 'stt-section-label', isSentence ? 'PUT IT TOGETHER' : 'NOW IT MAKES SENSE'),
-      createEl('p', 'stt-meaning', guide.answer.meaning))
+    const meaningEl = createEl('p', 'stt-meaning', guide.answer.meaning)
+    meaningEl.id = 'stt-copy-result'
+    answerEl.append(createEl('div', 'stt-section-label', isSentence ? '简单表达' : '在这里的意思'), meaningEl)
     if (isSentence) {
       const selection = state.activeSelection
       const detailsEl = createEl('details', 'stt-sentence-explanation')
@@ -800,7 +808,7 @@
       return answerEl
     }
     answerEl.append(createEl('p', 'stt-explanation', guide.answer.explanation),
-      createEl('div', 'stt-section-label', 'ANOTHER WAY TO USE IT'),
+      createEl('div', 'stt-section-label', '例句'),
       createEl('p', 'stt-example', guide.answer.example))
     if (guide.answer.usage) answerEl.appendChild(createEl('p', 'stt-usage', guide.answer.usage))
     return answerEl
@@ -861,6 +869,16 @@
     const key = JSON.stringify([value.text.toLowerCase(), value.meaning.toLowerCase()])
     const status = state.activeSelection.savedVocabulary[key]
     const actionsEl = createEl('div', 'stt-actions stt-vocabulary-actions')
+    const copyEl = createEl('button', 'stt-text-button stt-copy', '复制')
+    copyEl.type = 'button'
+    copyEl.dataset.sttFocus = 'copy'
+    copyEl.setAttribute('command', '--copy')
+    copyEl.setAttribute('commandfor', 'stt-copy-result')
+    const copyStatusEl = createEl('span', 'stt-copy-status')
+    copyStatusEl.setAttribute('role', 'status')
+    if (!('CommandEvent' in window)) {
+      copyEl.addEventListener('click', () => void copyResult(copyEl, value.meaning))
+    }
     const saveEl = createButton(status === 'saved' ? '✓ 已收藏' : status === 'saving' ? '保存中…' : '＋ 收藏表达',
       () => void saveCurrentVocabulary(value, key), 'stt-save stt-text-button', 'save')
     saveEl.setAttribute('aria-disabled', String(status === 'saving' || status === 'saved'))
@@ -868,13 +886,58 @@
       try { chrome.runtime.sendMessage({ type: 'OPEN_LIBRARY' }, () => { void chrome.runtime.lastError }) }
       catch { }
     }, 'stt-text-button', 'library')
-    actionsEl.append(saveEl, libraryEl)
+    actionsEl.append(copyEl, saveEl, libraryEl)
     cardEl.appendChild(actionsEl)
+    cardEl.appendChild(copyStatusEl)
     if (status === 'error') {
       const messageEl = createEl('div', 'stt-save-status', '未能收藏，请重试。')
       messageEl.setAttribute('role', 'status')
       cardEl.appendChild(messageEl)
     }
+  }
+
+  const copyTimers = new WeakMap()
+
+  async function copyResult(buttonEl, text) {
+    let copied = false
+    try {
+      await navigator.clipboard.writeText(text)
+      copied = true
+    } catch {
+      // Content scripts also run on HTTP pages, where Async Clipboard is unavailable.
+      copied = copyResultOnHttp(text)
+    }
+    if (!buttonEl.isConnected) return
+    clearTimeout(copyTimers.get(buttonEl))
+    buttonEl.textContent = copied ? '已复制' : '重新复制'
+    const statusEl = buttonEl.closest('.stt-card')?.querySelector('.stt-copy-status')
+    if (statusEl) statusEl.textContent = copied ? '已复制到剪贴板' : '复制失败，请选择结果文字手动复制。'
+    copyTimers.set(buttonEl, setTimeout(() => {
+      buttonEl.textContent = '复制'
+      if (statusEl) statusEl.textContent = ''
+    }, 2500))
+  }
+
+  function copyResultOnHttp(text) {
+    const selection = window.getSelection()
+    const shadowSelection = state.uiRoot.getSelection?.()
+    const currentSelection = shadowSelection?.rangeCount ? shadowSelection : selection
+    const ranges = currentSelection ? Array.from({ length: currentSelection.rangeCount }, (_, i) => currentSelection.getRangeAt(i).cloneRange()) : []
+    const focusedEl = state.uiRoot.activeElement || document.activeElement
+    const field = createEl('textarea', 'stt-copy-field')
+    field.value = text
+    field.readOnly = true
+    state.uiRoot.appendChild(field)
+    field.select()
+    let copied = false
+    try { copied = document.execCommand('copy') } catch { }
+    finally {
+      field.remove()
+      selection?.removeAllRanges()
+      for (const range of ranges) selection.addRange(range)
+      focusedEl?.focus({ preventScroll: true })
+    }
+    return copied
   }
 
   async function saveCurrentVocabulary(value, key) {
@@ -1167,7 +1230,7 @@
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-label', 'Reading assistant');
     card.addEventListener('mousedown', (event) => {
-      event.preventDefault();
+      if (event.target.closest('button, summary, .stt-card-resize-handle')) event.preventDefault();
       event.stopPropagation();
     });
 
@@ -1502,94 +1565,117 @@
     const hostEl = document.createElement('div')
     hostEl.id = 'selected-reading-assistant'
     state.uiRoot = hostEl.attachShadow({ mode: 'open' })
+    state.uiRoot.addEventListener('command', (event) => {
+      if (event.command === '--copy') void copyResult(event.source, event.target.textContent)
+    }, true)
     const styleEl = document.createElement('style')
     styleEl.textContent = `
-      :host { all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; }
+      :host { all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none;
+        color-scheme: light dark;
+        --stt-bg: light-dark(#fff, #212121); --stt-surface: light-dark(#f7f7f6, #2b2b2b);
+        --stt-hover: light-dark(#efefee, #353535); --stt-text: light-dark(#20201f, #f3f3f2);
+        --stt-secondary: light-dark(#595957, #c4c4c2); --stt-muted: light-dark(#6e6e6b, #a4a4a2);
+        --stt-line: light-dark(#e6e6e5, #3d3d3b); --stt-danger: light-dark(#b32828, #f4948f);
+        --stt-primary: light-dark(#20201f, #f3f3f2); --stt-on-primary: light-dark(#fff, #212121); }
       *, *::before, *::after { box-sizing: border-box; }
-      button { font: inherit; cursor: pointer; border: 0; }
+      button { font: inherit; cursor: pointer; border: 0; transition: background-color 140ms, color 140ms; }
       button:disabled { cursor: wait; opacity: .45; }
       button:focus-visible, summary:focus-visible, .stt-answer:focus-visible {
-        outline: 2px solid #1d6b53; outline-offset: 3px; }
-      button[aria-disabled=true] { cursor: default; opacity: .7; }
-      .stt-trigger { position: fixed; pointer-events: auto; display: grid; place-items: center;
-        width: 28px; height: 28px; border-radius: 9px 9px 9px 2px; background: #1d6b53; color: #f6f3da;
-        font: 16px Georgia, serif; box-shadow: 0 3px 12px #143e3429; padding: 0; }
-      .stt-trigger:hover { background: #15573f; transform: translateY(-1px); }
+        outline: 2px solid var(--stt-primary); outline-offset: 2px; }
+      button[aria-disabled=true] { cursor: default; opacity: .6; }
+      .stt-trigger { position: fixed; pointer-events: auto; display: block; width: 28px; height: 28px;
+        padding: 0; background: transparent; border-radius: 8px; box-shadow: 0 2px 8px rgb(0 0 0 / 18%); }
+      .stt-trigger img { display: block; width: 28px; height: 28px; pointer-events: none; }
+      .stt-trigger:hover { box-shadow: 0 3px 12px rgb(0 0 0 / 28%); }
       .stt-card { position: fixed; pointer-events: auto; width: ${DEFAULT_CARD_WIDTH_PX}px;
         min-height: ${MIN_CARD_HEIGHT_PX}px; max-height: calc(100vh - ${VIEWPORT_MARGIN_PX * 2}px);
-        border: 1px solid #dde5dc; border-radius: 16px; background: #fffefa; color: #263b30;
-        box-shadow: 0 12px 44px #1a342324, 0 2px 8px #1a342310;
-        font: 14px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        border: 1px solid var(--stt-line); border-radius: 16px; background: var(--stt-bg); color: var(--stt-text);
+        box-shadow: 0 8px 32px rgb(0 0 0 / 16%), 0 2px 6px rgb(0 0 0 / 6%);
+        font: 14px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
         text-align: left; letter-spacing: normal; white-space: pre-wrap; word-break: break-word;
-        box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
-        scrollbar-color: #ccd7cc transparent; }
-      .stt-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0;
-        white-space: normal; }
-      .stt-tabs { display: flex; gap: 3px; padding: 3px; background: #edf1e9; border-radius: 9px; }
-      .stt-tab { padding: 5px 12px; background: transparent; color: #788375; border-radius: 7px; font-size: 12px; }
-      .stt-tab[aria-pressed=true] { background: #fffefa; color: #1d6b53; box-shadow: 0 1px 4px #263b3010; font-weight: 600; }
-      .stt-toolbar-actions { display: flex; align-items: center; gap: 6px; margin-left: 6px; flex: 0 0 auto; }
-      .stt-regenerate { display: grid; place-items: center; width: 24px; height: 26px; padding: 0;
-        background: transparent; color: #7a8b76; font-size: 20px; line-height: 1; border-radius: 6px; }
-      .stt-regenerate:hover:enabled { color: #1d6b53; background: #edf1e9; }
-      .stt-close { background: transparent; color: #8a9387; font-size: 23px; padding: 0 3px; line-height: 1; }
-      .stt-card-block { padding: 14px 18px; }
-      .stt-card-block--source { border-bottom: 1px solid #e6ebe1; }
-      .stt-source-text { font: 22px/1.4 Georgia, 'Times New Roman', serif; color: #253c2d; max-height: 140px; overflow-y: auto; }
-      .stt-source-text--passage { font-size: 16px; }
-      .stt-sound-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; white-space: normal; }
-      .stt-speak { padding: 4px 9px; border-radius: 6px; color: #1d6b53; background: #eaf1e7; font-size: 11px; }
-      .stt-phonetic { font: 13px/1.4 'Segoe UI', sans-serif; color: #7b8678; }
-      .stt-speech-status { color: #a46738; font-size: 11px; margin-top: 4px; }
+        box-sizing: border-box; overflow-y: auto; overflow-x: hidden; }
+      .stt-toolbar { display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 12px 0; white-space: normal; gap: 4px; }
+      .stt-tabs { display: flex; gap: 2px; padding: 3px; background: var(--stt-surface); border-radius: 10px; }
+      .stt-tab { min-height: 30px; padding: 4px 10px; background: transparent; color: var(--stt-muted);
+        border-radius: 8px; font-size: 12px; }
+      .stt-tab:hover { background: var(--stt-hover); color: var(--stt-text); }
+      .stt-tab[aria-pressed=true] { background: var(--stt-bg); color: var(--stt-text); font-weight: 600;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+      .stt-toolbar-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+      .stt-regenerate, .stt-close { display: grid; place-items: center; width: 28px; height: 30px;
+        padding: 0; background: transparent; color: var(--stt-muted); font-size: 20px; line-height: 1; border-radius: 8px; }
+      .stt-close { font-size: 23px; }
+      .stt-regenerate:hover, .stt-close:hover { color: var(--stt-text); background: var(--stt-hover); }
+      .stt-card-block { padding: 16px 18px; }
+      .stt-card-block--source { padding-bottom: 14px; }
+      .stt-source-text { font-size: 21px; line-height: 1.4; font-weight: 550; color: var(--stt-text);
+        max-height: 140px; overflow-y: auto; }
+      .stt-source-text--passage { font-size: 15px; font-weight: 400; line-height: 1.7; }
+      .stt-sound-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; white-space: normal; }
+      .stt-speak { padding: 4px 7px; min-height: 28px; border-radius: 7px; color: var(--stt-secondary);
+        background: transparent; font-size: 12px; }
+      .stt-speak:hover { background: var(--stt-hover); color: var(--stt-text); }
+      .stt-speak[aria-pressed=true] { background: var(--stt-hover); color: var(--stt-text); }
+      .stt-phonetic { font-size: 12px; color: var(--stt-muted); }
+      .stt-speech-status { color: var(--stt-danger); font-size: 12px; margin-top: 4px; }
       .stt-speech-status:empty { display: none; }
       .stt-refresh-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-        padding: 10px 18px 0; color: #94613c; font-size: 11px; white-space: normal; }
-      .stt-section-label { color: #8b9684; font-size: 9px; letter-spacing: 1.6px; line-height: 1.5;
-        padding: 15px 18px 0; font-weight: 600; white-space: normal; }
-      .stt-card-block--translation { padding-top: 8px; color: #384b3c; }
+        padding: 0 18px 10px; color: var(--stt-secondary); font-size: 12px; white-space: normal; }
+      .stt-section-label { color: var(--stt-muted); font-size: 12px; line-height: 1.5;
+        padding: 0 18px; font-weight: 500; white-space: normal; }
+      .stt-card-block--translation { margin: 0 18px; padding: 14px 0 18px; border-top: 1px solid var(--stt-line);
+        color: var(--stt-text); font-size: 16px; line-height: 1.75; }
       .stt-guide-heading { display: flex; align-items: baseline; justify-content: space-between; padding-right: 18px; }
-      .stt-progress { color: #8a9881; font-size: 10px; }
-      .stt-hints { padding: 4px 18px 0; }
+      .stt-progress { color: var(--stt-muted); font-size: 12px; }
+      .stt-hints { padding: 0 18px; }
       .stt-hint { display: flex; gap: 10px; align-items: flex-start; padding-top: 12px; }
-      .stt-hint-number { flex: 0 0 20px; height: 20px; display: grid; place-items: center; background: #eef2e5;
-        border-radius: 50%; color: #648257; font-size: 10px; margin-top: 2px; }
-      .stt-hint p { margin: 0; font-size: 13px; }
-      .stt-actions { display: flex; align-items: center; gap: 16px; padding: 16px 18px; white-space: normal; }
-      .stt-button { border-radius: 8px; padding: 8px 12px; background: #1d6b53; color: #fff; font-size: 12px; }
-      .stt-button:hover { background: #15573f; }
-      .stt-text-button { padding: 0; background: transparent; color: #63816b; font-size: 11px; }
-      .stt-text-button:hover { color: #1d6b53; text-decoration: underline; }
-      .stt-answer { background: #f1f5ec; padding: 0 18px 16px; outline: none; border-top: 1px solid #e4ebdb; }
-      .stt-answer .stt-section-label { padding-left: 0; padding-right: 0; }
-      .stt-answer p { margin: 8px 0 0; font-size: 13px; }
-      .stt-meaning { font-weight: 600; }
-      .stt-explanation { color: #65735e; }
-      .stt-usage { color: #4a7455; font-size: 12px; border-left: 2px solid #a3bea0; padding-left: 10px; }
-      .stt-example { font-family: Georgia, serif; font-style: italic; }
-      .stt-sentence-explanation { margin-top: 10px; color: #586b50; font-size: 12px; }
-      .stt-sentence-explanation summary { cursor: pointer; min-height: 24px; line-height: 24px; }
+      .stt-hint-number { flex: 0 0 14px; color: var(--stt-muted); font-size: 12px; line-height: 23px; }
+      .stt-hint p { margin: 0; font-size: 14px; }
+      .stt-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 16px 18px; white-space: normal; }
+      .stt-button { min-height: 34px; border-radius: 9px; padding: 7px 12px; background: var(--stt-primary);
+        color: var(--stt-on-primary); font-size: 12px; font-weight: 550; }
+      .stt-button:hover { opacity: .85; }
+      .stt-text-button { min-height: 28px; min-width: 24px; padding: 4px 7px; border-radius: 7px;
+        background: transparent; color: var(--stt-secondary); font-size: 12px; }
+      .stt-text-button:hover { color: var(--stt-text); background: var(--stt-hover); }
+      .stt-answer { margin: 0 18px; padding: 14px 0; border-top: 1px solid var(--stt-line); }
+      .stt-answer .stt-section-label { padding: 0; }
+      .stt-answer p { margin: 8px 0 0; font-size: 14px; }
+      .stt-meaning { font-weight: 550; }
+      .stt-explanation { color: var(--stt-secondary); }
+      .stt-usage { color: var(--stt-secondary); border-left: 2px solid var(--stt-line); padding-left: 10px; }
+      .stt-example { color: var(--stt-secondary); }
+      .stt-answer .stt-section-label:not(:first-child) { margin-top: 16px; }
+      .stt-sentence-explanation { margin-top: 12px; color: var(--stt-secondary); font-size: 12px; }
+      .stt-sentence-explanation summary { cursor: pointer; min-height: 28px; line-height: 28px; }
       .stt-sentence-explanation .stt-explanation { margin-bottom: 0; }
-      .stt-context { border-top: 1px solid #e8ede2; padding: 10px 18px; color: #86907d; font-size: 11px; }
+      .stt-context { border-top: 1px solid var(--stt-line); padding: 12px 18px; color: var(--stt-muted); font-size: 12px; }
       .stt-context summary { cursor: pointer; }
-      .stt-context p { max-height: 150px; overflow: auto; margin: 8px 0 0; color: #586b50; }
-      .stt-context-target { background: #dfedce; color: #29432e; font-weight: 600; padding: 0 2px;
+      .stt-context p { max-height: 150px; overflow: auto; margin: 10px 0 0; color: var(--stt-secondary); font-size: 13px; }
+      .stt-context-target { background: var(--stt-hover); color: var(--stt-text); font-weight: 600; padding: 0 2px;
         border-radius: 3px; box-decoration-break: clone; }
-      .stt-vocabulary-actions { border-top: 1px solid #e8ede2; padding-top: 10px; padding-bottom: 10px; }
-      .stt-save-status { color: #94613c; padding: 0 18px 10px; font-size: 11px; }
-      .stt-error { color: #94613c; font-size: 12px; padding-bottom: 0; }
-      .stt-loading { color: #87927d; font-size: 12px; }
-      .stt-card-block--lexical { border-top: 1px solid #e6ebe1; background: #f8faf4; font-size: 12px; }
-      .stt-lexical-row { display: flex; align-items: flex-start; gap: 6px; margin-top: 7px; }
+      .stt-vocabulary-actions { border-top: 1px solid var(--stt-line); padding: 8px 12px; gap: 4px; }
+      .stt-vocabulary-actions > :last-child { margin-left: auto; }
+      .stt-save-status, .stt-copy-status { color: var(--stt-secondary); padding: 0 18px;
+        font-size: 12px; white-space: normal; }
+      .stt-copy-status:not(:empty) { padding-bottom: 10px; }
+      .stt-copy-field { position: fixed; left: 0; top: 0; opacity: 0; pointer-events: none; }
+      .stt-error { color: var(--stt-danger); font-size: 13px; padding-bottom: 0; }
+      .stt-loading { color: var(--stt-muted); font-size: 13px; }
+      .stt-card-block--lexical { margin: 0 18px; padding: 0 0 16px; color: var(--stt-secondary); font-size: 13px; }
+      .stt-lexical-row { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; }
       .stt-lexical-row:first-child { margin-top: 0; }
-      .stt-lexical-label { font-weight: 600; color: #748369; }
+      .stt-lexical-label { font-weight: 550; color: var(--stt-muted); }
       .stt-lexical-value { flex: 1; }
       .stt-lexical-row--definitions { display: block; }
-      .stt-definition-list { margin: 5px 0 0; padding-left: 18px; }
-      .stt-definition-item { margin-top: 5px; }
+      .stt-definition-list { margin: 6px 0 0; padding-left: 18px; }
+      .stt-definition-item { margin-top: 6px; }
       .stt-card-resize-handle { position: absolute; top: 45px; right: 0; width: 8px; height: calc(100% - 45px);
         cursor: ew-resize; touch-action: none; }
-      .stt-card-resize-handle:hover { background: #1d6b530b; }
+      .stt-card-resize-handle:hover { background: var(--stt-hover); }
       .stt-card.stt-resizing, .stt-card.stt-resizing * { cursor: ew-resize !important; user-select: none !important; }
+      @media (prefers-reduced-motion: reduce) { button { transition: none; } }
     `
     state.uiRoot.appendChild(styleEl)
     document.documentElement.appendChild(hostEl)

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Selected Text Translator",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Read with context: translate, listen, and discover meaning through gentle English hints.",
   "permissions": [
     "storage",
@@ -17,7 +17,13 @@
   "options_page": "src/options.html",
   "action": {
     "default_title": "Selected Text Translator",
-    "default_popup": "src/popup.html"
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
   },
   "content_scripts": [
     {
@@ -31,8 +37,17 @@
     }
   ],
   "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
     "128": "assets/icon128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/icon.svg"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "commands": {
     "open-reading-assistant": {
       "suggested_key": {

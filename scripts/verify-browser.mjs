@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { verifyCardKeyboard } from './verify-card-keyboard.mjs'
+import { verifyCopyResult } from './verify-copy-result.mjs'
 import { SENTENCE_GUIDANCE_FIXTURES, verifySentenceGuidance } from './verify-sentence-guidance.mjs'
 import { normalizeVocabularyEntry } from '../src/vocabulary-store.js'
 
@@ -248,8 +249,8 @@ try {
   await page.locator('.stt-next-hint').click()
   assert.equal(await page.locator('.stt-hint').count(), 2)
   assert.equal(requests.length, 1)
-  await page.screenshot({ path: join(artifactPath, 'reading-guide.png') })
-  await page.locator('.stt-card').screenshot({ path: join(artifactPath, 'reading-card.png') })
+  await page.screenshot({ animations: 'disabled', path: join(artifactPath, 'reading-guide.png') })
+  await page.locator('.stt-card').screenshot({ animations: 'disabled', path: join(artifactPath, 'reading-card.png') })
   const originalWidth = (await page.locator('.stt-card').boundingBox()).width
   const handle = await page.locator('.stt-card-resize-handle').boundingBox()
   await page.mouse.move(handle.x + 3, handle.y + 12)
@@ -501,7 +502,10 @@ try {
   assert.equal(await worker.evaluate(() => speechCalls.at(-1).text), 'The band will record a new record tomorrow.')
   await library.locator('.entry-card [data-speech-target="context"]').click()
   await library.locator('.entry-card [data-speech-target="context"][aria-pressed="false"]').waitFor()
-  await library.screenshot({ path: join(artifactPath, 'library.png'), fullPage: true })
+  await library.screenshot({ animations: 'disabled', path: join(artifactPath, 'library.png'), fullPage: true })
+  await library.emulateMedia({ colorScheme: 'dark' })
+  await library.screenshot({ animations: 'disabled', path: join(artifactPath, 'library-dark.png'), fullPage: true })
+  await library.emulateMedia({ colorScheme: 'light' })
   await library.locator('#review-tab').click()
   assert.equal(await library.locator('.review-reveal').count(), 0)
   await worker.evaluate(async () => {
@@ -527,7 +531,7 @@ try {
   assert.equal(await worker.evaluate(() => speechCalls.at(-1).text), 'Their new record comes out next week.')
   await worker.evaluate(() => finishSpeech())
   await library.locator('.review-answer [data-speech-target="example"][aria-pressed="false"]').waitFor()
-  await library.screenshot({ path: join(artifactPath, 'review.png'), fullPage: true })
+  await library.screenshot({ animations: 'disabled', path: join(artifactPath, 'review.png'), fullPage: true })
   await library.locator('.review-answer').focus()
   await library.keyboard.press('2')
   await library.waitForFunction(() => document.getElementById('review-card').textContent.includes('完成'))
@@ -605,7 +609,10 @@ try {
   await settings.getByRole('button', { name: '保存设置', exact: true }).click()
   await settings.waitForFunction(() => document.getElementById('status').textContent.includes('saved'))
   assert.equal(await worker.evaluate(async () => (await chrome.storage.sync.get('speech_voice')).speech_voice), 'Test English')
-  await settings.screenshot({ path: join(artifactPath, 'settings.png'), fullPage: true })
+  await settings.screenshot({ animations: 'disabled', path: join(artifactPath, 'settings.png'), fullPage: true })
+  await settings.emulateMedia({ colorScheme: 'dark' })
+  await settings.screenshot({ animations: 'disabled', path: join(artifactPath, 'settings-dark.png'), fullPage: true })
+  await settings.emulateMedia({ colorScheme: 'light' })
   await settings.setViewportSize({ width: 420, height: 900 })
   assert.equal(await settings.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   startPhase('popup')
@@ -617,7 +624,10 @@ try {
   await popup.reload()
   await popup.waitForFunction(() => document.getElementById('model').value === 'qwen-mt-flash')
   await popup.waitForFunction(() => document.getElementById('current-url').textContent.startsWith('http://'))
-  await popup.screenshot({ path: join(artifactPath, 'popup.png'), fullPage: true })
+  await popup.screenshot({ animations: 'disabled', path: join(artifactPath, 'popup.png'), fullPage: true })
+  await popup.emulateMedia({ colorScheme: 'dark' })
+  await popup.screenshot({ animations: 'disabled', path: join(artifactPath, 'popup-dark.png'), fullPage: true })
+  await popup.emulateMedia({ colorScheme: 'light' })
   await popup.locator('#disable-current').click()
   await popup.waitForFunction(() => document.getElementById('page-status').classList.contains('disabled'))
   await page.locator('.stt-trigger').waitFor({ state: 'detached' })
@@ -639,8 +649,10 @@ try {
   await verifyCardKeyboard({ worker, context, origin, selectText, requests, errors, holdGuideResponse })
   startPhase('sentence-card')
   await verifySentenceGuidance({ worker, context, origin, selectText, requests, errors, holdGuideResponse, artifactPath })
+  startPhase('copy-result')
+  await verifyCopyResult({ worker, context, extensionId, origin, selectText, errors, artifactPath })
   assert.deepEqual(errors, [])
-  console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, word and sentence guide progression, hidden answers, sentence explanation disclosure and short-clause recognition, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
+  console.log(`Browser checks passed: contextual translation in qwen-mt and generic models, word and sentence guide progression, hidden answers, sentence explanation disclosure and short-clause recognition, exact occurrence highlights and focused/full context, context-aware caching, regeneration/retry without losing old results, copying translation/revealed meaning with clipboard fallback/failure retry/late completion isolation, light/dark previews, phonetics, speech dispatch, keyboard, scrolling, settings, responsive layout, resizing, failure recovery, cancellation, URL rules, selection offsets, cross-tab isolation, vocabulary editing/draft preservation/field-level concurrency/audio/keyboard/undo/save/review/export/import, legacy large backup recovery, and model discovery.\nPreviews: ${artifactPath}`)
 } catch (error) {
   hasVerificationError = true
   reportPhaseTimings('failed')
