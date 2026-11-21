@@ -73,10 +73,42 @@ jobs:
         working-directory: desktop
         run: npm run dist -- --mac --arm64
 
-      - name: Build Windows
+      - name: Build Windows installer
         if: matrix.name == 'Windows'
         working-directory: desktop
-        run: npm run dist -- --win
+        run: npm run dist -- --win nsis --x64 --publish never
+
+      - name: Build Windows ZIP
+        if: matrix.name == 'Windows'
+        working-directory: desktop
+        run: npm run dist -- --win zip --x64 --publish never -c.directories.output=dist/portable
+
+      - name: Verify Windows update artifacts
+        if: matrix.name == 'Windows'
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $installer = Get-Item "dist/Selected.Text.Translator.Setup.$version.exe"
+          Get-Item "$($installer.FullName).blockmap", dist/win-unpacked/resources/app-update.yml | Out-Null
+          $sha512 = (Get-FileHash $installer.FullName -Algorithm SHA512).Hash
+          $checksum = [Convert]::ToBase64String([Convert]::FromHexString($sha512))
+          $manifest = Get-Content dist/latest.yml
+          if ($manifest -cnotcontains "version: $version" -or
+              $manifest -cnotcontains "path: $($installer.Name)" -or
+              $manifest -cnotcontains "sha512: $checksum") {
+            throw 'latest.yml must describe the packaged Windows installer.'
+          }
+          $portable = Get-Item dist/portable/*-win.zip
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($portable.FullName)
+          try {
+            if ($archive.Entries.Name -contains 'app-update.yml') {
+              throw 'The Windows ZIP must not contain updater configuration.'
+            }
+          } finally {
+            $archive.Dispose()
+          }
+          Move-Item $portable.FullName -Destination dist
 
       - name: Build Linux
         if: matrix.name == 'Linux'
@@ -92,6 +124,8 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.zip
             desktop/dist/*.AppImage
+            desktop/dist/latest.yml
+            desktop/dist/*.exe.blockmap
           if-no-files-found: error
           retention-days: 30
 
@@ -125,7 +159,7 @@ jobs:
         run: |
           node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
           cd dist
-          sha256sum *.dmg *.exe *.zip *.AppImage > SHA256SUMS.txt
+          sha256sum *.dmg *.exe *.zip *.AppImage *.exe.blockmap latest.yml > SHA256SUMS.txt
 
       - name: Publish release
         env:
@@ -136,9 +170,10 @@ jobs:
         run: |
           sha256sum --check SHA256SUMS.txt
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" *.dmg *.exe *.zip *.AppImage SHA256SUMS.txt --clobber
+            gh release upload "$RELEASE_TAG" *.dmg *.exe *.zip *.AppImage *.exe.blockmap SHA256SUMS.txt --clobber
+            gh release upload "$RELEASE_TAG" latest.yml --clobber
           else
-            gh release create "$RELEASE_TAG" *.dmg *.exe *.zip *.AppImage SHA256SUMS.txt \
+            gh release create "$RELEASE_TAG" *.dmg *.exe *.zip *.AppImage *.exe.blockmap latest.yml SHA256SUMS.txt \
               --title "桌面端 ${RELEASE_TAG#desktop-v}" \
               --notes-file ../release-notes.md \
               --verify-tag

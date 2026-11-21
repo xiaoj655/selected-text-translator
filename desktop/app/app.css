@@ -118,6 +118,15 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .top-actions button:hover,
 .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: transparent; }
 .top-actions button.is-active { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+#btn-more { position: relative; }
+#btn-more.has-update::after {
+  content: '';
+  position: absolute;
+  top: 5px; right: 5px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 .top-actions svg, .icon-btn svg { width: 17px; height: 17px; }
 .top-actions .lbl { font-size: 12px; }
 
@@ -141,8 +150,16 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
   border-radius: var(--r-sm);
 }
 .export-menu button:hover, .more-menu button:hover { background: var(--surface-2); border-color: transparent; }
-.more-menu .release-menu-item { justify-content: space-between; border-top: 1px solid var(--border); margin-top: 4px; }
-.release-menu-item small { color: var(--text-2); font-size: 11px; }
+.more-menu :is(.release-menu-item, .update-menu-item) {
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.more-menu .update-menu-item[hidden] { display: none; }
+.more-menu .update-menu-item:not([hidden]) + .release-menu-item { border-top: 0; margin-top: 0; }
+.more-menu .update-menu-item[aria-disabled="true"] { cursor: default; }
+.more-menu .update-menu-item[aria-disabled="true"]:hover { background: transparent; }
+.more-menu :is(.release-menu-item, .update-menu-item) small { color: var(--text-2); font-size: 11px; }
 .export-menu svg, .more-menu svg { width: 18px; height: 18px; color: var(--text-2); flex: none; }
 .export-menu strong, .export-menu small { display: block; }
 .export-menu strong { font-size: 13px; font-weight: 600; }

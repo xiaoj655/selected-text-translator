@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.62",
+  "version": "0.9.63",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
@@ -21,6 +21,9 @@
     "predist": "node scripts/sync-src.mjs",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.12"
   },
   "devDependencies": {
     "electron": "^45.3.2",
@@ -49,11 +52,15 @@
     },
     "win": {
       "target": [
-        "nsis",
-        "zip"
-      ]
+        "nsis"
+      ],
+      "publish": {
+        "provider": "generic",
+        "url": "https://github.com/xiaoj655/selected-text-translator/releases/download/desktop-v${version}/"
+      }
     },
     "nsis": {
+      "artifactName": "Selected.Text.Translator.Setup.${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },

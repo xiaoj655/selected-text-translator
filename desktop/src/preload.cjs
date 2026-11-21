@@ -132,6 +132,18 @@ window.sttDesktop = {
   openReleases() {
     return ipcRenderer.invoke('stt:open-releases')
   },
+  getUpdateStatus() {
+    return ipcRenderer.invoke('stt:update-status')
+  },
+  checkForUpdates() {
+    return ipcRenderer.invoke('stt:update-check')
+  },
+  installUpdate() {
+    return ipcRenderer.invoke('stt:update-install')
+  },
+  onUpdateState(callback) {
+    ipcRenderer.on('stt:update-state', (_event, state) => callback(state))
+  },
   tutor: {
     getPlan: () => ipcRenderer.invoke('stt:tutor-plan'),
     startLesson: (sourceId) => ipcRenderer.invoke('stt:tutor-lesson', sourceId),

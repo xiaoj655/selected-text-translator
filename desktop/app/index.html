@@ -35,6 +35,7 @@
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
         </button>
       </div>
+      <div class="sr-only" id="result-announcer" role="status" aria-live="polite" aria-atomic="true"></div>
     </header>
 
     <div class="export-menu" id="export-menu" role="menu" aria-label="导出对话" hidden>
@@ -70,6 +71,11 @@
       </button>
       <button type="button" id="btn-help" class="help-trigger" role="menuitem" aria-keyshortcuts="Control+/ Meta+/">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>键盘快捷键
+      </button>
+      <button type="button" id="btn-update" class="update-menu-item" role="menuitem"
+        aria-labelledby="update-action" aria-describedby="update-detail" hidden>
+        <span id="update-action">检查更新</span>
+        <small id="update-detail"></small>
       </button>
       <button type="button" id="btn-releases" class="release-menu-item" role="menuitem">
         <span>软件版本 <strong id="installed-version">读取中</strong></span>
@@ -266,7 +272,6 @@
             </div>
           </div>
           <div class="status-line">
-            <div class="sr-only" id="result-announcer" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="statusbar" id="statusbar" role="status" aria-live="polite" aria-atomic="true">就绪</div>
             <button type="button" id="btn-study-progress" class="study-progress-chip" title="打开表达本查看学习进度">
               <span id="study-progress-text">今日待复习 0 · 学习中 0 · 已掌握 0</span>

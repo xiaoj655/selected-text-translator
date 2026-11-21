@@ -2,6 +2,7 @@ import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './tutor.js'
+import { bindUpdateMenu } from './update-menu.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
@@ -520,8 +521,12 @@ function toggleExportMenu() {
 }
 
 function closeMoreMenu() {
-  $('more-menu').hidden = true
-  $('btn-more').setAttribute('aria-expanded', 'false')
+  const menuEl = $('more-menu')
+  const triggerEl = $('btn-more')
+  const hasFocus = menuEl.contains(document.activeElement)
+  menuEl.hidden = true
+  triggerEl.setAttribute('aria-expanded', 'false')
+  if (hasFocus) triggerEl.focus()
 }
 
 function toggleMoreMenu() {
@@ -625,6 +630,16 @@ function persistHistory() {
   persistTimer = setTimeout(() => {
     void window.sttDesktop.saveHistory(state.entries)
   }, 300)
+}
+
+async function saveBeforeUpdate() {
+  clearTimeout(persistTimer)
+  clearTimeout(state.draftTimer)
+  const [isHistorySaved] = await Promise.all([
+    window.sttDesktop.saveHistory(state.entries),
+    chrome.storage.local.set({ desktop_input_draft: $('input').value }),
+  ])
+  if (!isHistorySaved) throw new Error('保存翻译历史失败。')
 }
 
 let pendingArchiveImport = null
@@ -2211,7 +2226,7 @@ function bind() {
     toggleMoreMenu()
   })
   $('more-menu').addEventListener('click', (event) => {
-    if (event.target.closest('button')) closeMoreMenu()
+    if (event.target.closest('button:not(#btn-update)')) closeMoreMenu()
   })
   document.addEventListener('click', (event) => {
     if ($('more-menu').hidden) return
@@ -2537,6 +2552,12 @@ async function init() {
   render()
   $('input').focus()
   if (!state.configured && !state.entries.length) openSettings()
+  bindUpdateMenu({
+    api: window.sttDesktop,
+    announce: announceResult,
+    beforeInstall: saveBeforeUpdate,
+    onSaveError: (message) => showNotice(message, 'error', null, true),
+  })
 }
 
 void init()

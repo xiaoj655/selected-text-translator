@@ -24,6 +24,8 @@ AI 老师使用已配置的通用学习模型。翻译模型为通用模型时�
 
 在右上角「更多」可以看当前软件版本并打开 GitHub 发布页，也可打开表达本或日志。
 
+从 0.9.63 起，Windows `.exe` 安装版会在后台检查和下载更新，也可以在「更多」里手动检查。下载完成后在同一菜单点「重启并更新」。0.9.62 及更早版本需要手动覆盖安装一次，Windows 便携 ZIP 可在发布页下载新版。
+
 | 位置 | 操作 |
 | --- | --- |
 | 翻译输入框 | `Ctrl/⌘+V` 粘贴并翻译 |
@@ -65,6 +67,7 @@ cd desktop
 npm run dist:dir        # 只产出解包目录,最快
 npm run dist -- --mac
 npm run dist -- --win
+npm run dist -- --win zip -c.directories.output=dist/portable  # Windows 便携版
 npm run dist -- --linux
 ```
 

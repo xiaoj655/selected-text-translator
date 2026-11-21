@@ -1,7 +1,7 @@
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
@@ -9,11 +9,14 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { createTutor } from './tutor.js'
+import { createDesktopUpdater, fetchReleasePage, findDesktopUpdate } from './update.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = join(here, '..')
 const vendorDir = join(desktopDir, 'vendor', 'src')
+const MAIN_WINDOW_URL = pathToFileURL(join(desktopDir, 'app', 'index.html')).href
 const RELEASES_URL = 'https://github.com/xiaoj655/selected-text-translator/releases'
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 let logFile = ''
 let windows
@@ -38,6 +41,41 @@ function logger(event, detail) {
     // logging must never break the app
   }
   console.log('[desktop]', event, short)
+}
+
+async function setupDesktopUpdater() {
+  if (process.platform !== 'win32' || !app.isPackaged) return null
+  if (!existsSync(join(process.resourcesPath, 'app-update.yml'))) return null
+  try {
+    const { default: { NsisUpdater } } = await import('electron-updater')
+    return createDesktopUpdater({
+      updater: new NsisUpdater(),
+      findRelease: () => findDesktopUpdate((page) => fetchReleasePage(net.fetch, page)),
+      sendState: (state) => windows.sendToMainWindow('stt:update-state', state),
+      logger,
+    })
+  } catch (error) {
+    logger('update-init-failed', error)
+    return null
+  }
+}
+
+function installUpdateIpc(updates) {
+  const handlers = {
+    'stt:update-status': () => updates.getState(),
+    'stt:update-check': () => updates.check(),
+    'stt:update-install': () => updates.install(),
+  }
+  for (const [channel, handle] of Object.entries(handlers)) {
+    ipcMain.handle(channel, (event) => {
+      const frame = event.senderFrame
+      const isMainWindow = windows.senderFor(event.sender).documentId === 'main'
+      if (!updates || !isMainWindow || frame?.parent !== null || frame?.url !== MAIN_WINDOW_URL) {
+        return { status: 'unsupported' }
+      }
+      return handle()
+    })
+  }
 }
 
 function installIpc(storage, history) {
@@ -168,6 +206,8 @@ async function bootstrap() {
   const shim = installMainChrome({ storage, windows, tts, logger })
   dispatch = shim.dispatch
   installIpc(storage, history)
+  const updates = await setupDesktopUpdater()
+  installUpdateIpc(updates)
 
   await import(pathToFileURL(join(vendorDir, 'background.js')).href)
   logger('background module loaded')
@@ -180,6 +220,11 @@ async function bootstrap() {
   })
   await windows.showMainWindow()
   logger('ready', process.platform)
+  if (updates) {
+    const checkForUpdates = () => void updates.check()
+    setTimeout(checkForUpdates, 3000).unref()
+    setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS).unref()
+  }
 }
 
 function showExistingWindow() {
