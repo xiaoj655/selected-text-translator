@@ -4,7 +4,7 @@
 
 ## 当前基线与迭代方向
 
-截至 2026-11-21，当前桌面分支版本为 **v0.9.63**。早期路线见下方里程碑，逐版变更见 [桌面更新记录](../desktop/CHANGELOG.md)。
+截至 2026-11-21，当前桌面分支版本为 **v0.9.64**。早期路线见下方里程碑，逐版变更见 [桌面更新记录](../desktop/CHANGELOG.md)。
 
 - **翻译工作台**启动即打开，默认粘贴即翻译。下一次粘贴替换原文并发起新查询。「直接翻译」和「引导理解」在工作台内切换。全局热键取词暂停。
 - **AI 老师**从日常英文短语和句子查询中选题。每组围绕一个阅读难点，在新句里练短语含义或句子关系，结合答题和提示使用情况安排复练。
@@ -21,13 +21,13 @@
 
 - **我(agent)**:写代码、单测、构建脚本、验证脚本、文档;更新本文件;把大任务拆成可独立验收的小步。
 - **你**:在 macOS / Windows 实机上按下方清单手动验证,回传现象、日志、截图;阶段 4 提供 Apple Developer 账号与代码签名证书。
-- **安装包获取**:`.github/workflows/desktop-build.yml` 配置为 `desktop` 分支相关代码 push、`desktop-v*` 标签或手动触发时构建;在成功运行的 **Artifacts** 里下载 `selected-text-translator-macOS` / `selected-text-translator-Windows` / `selected-text-translator-Linux`。macOS 有 x64 与 arm64 两个 dmg,按机器架构选(x64 的文件名不带 `-x64` 后缀)。标签构建通过后创建 GitHub Release;版本号或本地检查通过不代表安装包已发布。
+- **安装包获取**。推送 `desktop` 分支相关代码、推送 `desktop-v*` 标签或手动触发后，在成功运行的 **Artifacts** 里下载 `selected-text-translator-macOS`（Apple Silicon arm64）或 `selected-text-translator-Windows`（x64 安装包与便携 ZIP）。标签构建通过后创建 GitHub Release。
 - **凭据**:API Key、证书、账号一律走环境变量或仓库外私有配置;不要发给我,不要出现在截图、日志、测试报告、提交里(沿用 AGENTS.md 约定)。
 
 ## 环境与验证边界
 
 - 本轮核对的本地环境:Ubuntu / Node 22.22.1 / npm 9.2.0;现有 Electron E2E 使用 Playwright 与 Xvfb,可验证模拟输入和渲染行为。
-- **没有 macOS / Windows 交互环境可提供**,CI 配置使用 GitHub 托管的 `macos-latest` / `windows-latest` / `ubuntu-latest` runner 产出安装包;过往构建结果见下方历史记录,不代替当前版本验收。
+- CI 使用 GitHub 托管的 `macos-latest` 和 `windows-latest` runner 产出安装包。安装和系统交互仍需在实机验收。
 - 用户无法方便提供目标平台环境,**实机交互测试全部由用户手动执行**,我按回传迭代。
 - Linux 内可自动操作受控测试页面与 Electron 窗口;目标平台的系统授权弹窗、跨应用选词、原生输入法和真实音色仍由你验证。
 - 真实 API 凭据仅在获准的验证中使用,从环境变量或仓库外私有配置读取,不进仓库、提交、日志或截图;临时凭据文件用完删除。

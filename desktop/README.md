@@ -24,7 +24,7 @@ AI 老师使用已配置的通用学习模型。翻译模型为通用模型时�
 
 在右上角「更多」可以看当前软件版本并打开 GitHub 发布页，也可打开表达本或日志。
 
-从 0.9.63 起，Windows `.exe` 安装版会在后台检查和下载更新，也可以在「更多」里手动检查。下载完成后在同一菜单点「重启并更新」。0.9.62 及更早版本需要手动覆盖安装一次，Windows 便携 ZIP 可在发布页下载新版。
+从 0.9.64 起，Windows `.exe` 安装版会在后台检查和下载更新，也可以在「更多」里手动检查。下载完成后在同一菜单点「重启并更新」。0.9.62 及更早版本需要手动覆盖安装一次，Windows 便携 ZIP 可在发布页下载新版。
 
 | 位置 | 操作 |
 | --- | --- |
@@ -40,7 +40,7 @@ AI 老师使用已配置的通用学习模型。翻译模型为通用模型时�
 - `scripts/smoke.mjs`:纯 Node 验证存储、双层 `chrome` shim 和 `background.js` 消息链。
 - `src/`:Electron 主进程、消息路由、`chrome` 兼容层、TTS、窗口、历史和 AI 老师。
 - `app/`:主窗口工作台和 AI 老师界面。
-- `.github/workflows/desktop-build.yml`:在 macOS(x64 + arm64)/ Windows / Linux runner 上产出安装包;推送 `desktop-v*` 标签(须与 `package.json` 版本一致)时自动以 `desktop/CHANGELOG.md` 对应版本的说明创建 GitHub Release,附全部安装包与 SHA256 校验和。
+- `.github/workflows/desktop-build.yml` 负责构建 macOS arm64 和 Windows x64 安装包。推送与 `package.json` 版本一致的 `desktop-v*` 标签时，流水线从 `desktop/CHANGELOG.md` 提取发布说明，创建带安装包和 SHA256 校验和的 GitHub Release。
 
 `src/` 下除 `main.js` / `windows.js` / `preload.cjs` 外都不 import Electron,便于在纯 Node 下测试。
 
@@ -67,17 +67,14 @@ cd desktop
 npm run dist:dir        # 只产出解包目录,最快
 npm run dist -- --mac
 npm run dist -- --win
-npm run dist -- --win zip -c.directories.output=dist/portable  # Windows 便携版
+npm run dist -- --win zip '-c.directories.output=dist/portable'  # Windows 便携版
 npm run dist -- --linux
 ```
 
-产物在 `desktop/dist/`(已 gitignore)。CI 在 `desktop` 分支相关代码 push、`desktop-v*` 标签或手动 `workflow_dispatch` 时,用 `macos-latest` / `windows-latest` / `ubuntu-latest` 分别产出安装包并上传 Artifact:
+本地构建产物位于 `desktop/dist/`。推送 `desktop` 分支相关代码、推送 `desktop-v*` 标签或手动触发后，可在 Actions 运行页的 Artifacts 下载以下文件：
 
-- macOS:`Selected Text Translator-<版本>.dmg`(Intel / x64)与 `...-arm64.dmg`(Apple Silicon),以及对应的 zip;
-- Windows:`Selected Text Translator Setup <版本>.exe`(x64)与 win zip。
-- Linux:AppImage。
-
-在 Actions 运行页的 Artifacts 里下载,实机测试时按机器架构选对应 dmg。
+- macOS Apple Silicon（arm64）的 DMG 和 ZIP。
+- Windows x64 的 `Selected.Text.Translator.Setup.<版本>.exe` 安装包和便携 ZIP。
 
 **当前产物未签名**:`mac.identity` 为 `null`,Windows 未提供代码签名证书。macOS 首次打开需在「系统设置 → 隐私与安全性」中允许,Windows 可能出现 SmartScreen 提示。若要签名与公证,在仓库 Secrets 中配置 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`,并移除 `mac.identity` 配置。
 
