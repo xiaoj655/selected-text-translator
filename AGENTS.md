@@ -1,122 +1,20 @@
-# AGENTS.md - Chrome Translate Extension
+# AGENTS.md
 
-## Project Overview
+## 交付
 
-This is a Chrome extension (Manifest V3) that provides selected text translation using language models. It consists of:
+- 桌面端直接提交并推送到 `desktop`，浏览器插件直接提交并推送到 `main`。
+- 所有提交的作者和提交者均为 `Codex <codex@openai.com>`，使用仓库级 Git 配置。
+- 桌面端每轮有用户可感知的代码改动时，同步版本和变更日志，随 `desktop` 推送 `desktop-v<version>`。插件发版用与 `manifest.json` 一致的 `v<version>`。
+- 推送成功后报告提交和发布标签（如有），CI 异步运行。
 
-- **src/content.js**: Content script handling text selection, trigger UI, and translation card rendering
-- **src/background.js**: Service worker handling API communication and streaming responses
-- **src/translation-contracts.js**: Translation request/response contracts and utilities
-- **src/provider-settings.js**: Provider settings management
-- **tests/**: Node.js test files using built-in `node:test` runner
+## 验证
 
-## Build/Lint/Test Commands
+- 每轮用现有入口做必要的针对性验证。纯文档检查 diff 和链接。涉及共用代码、多个主流程或高风险改动时，按影响范围扩大验证。同一项检查只在相关改动后重跑。
+- 插件使用 `node --test tests/<file>.test.js` 或 `npm run test:browser`。CI 负责全量回归和打包。需要本地打包时用 `npm run package:extension`。
+- 桌面端使用 `npm run smoke --prefix desktop` 或 `npm run test:e2e --prefix desktop`，输入和布局可分别用 `-- --input`、`-- --layout` 单独检查。`npm run verify --prefix desktop` 已包含 smoke 和 Electron E2E，留给需要完整回归的改动。
+- 有视觉改动时检查一张代表性截图，按需补充受影响的状态。真实 API 测试须先获得授权，凭据只从环境变量或仓库外配置读取。提交、日志和截图须脱敏。
 
-```bash
-# Run all tests
-npm test
+## 界面
 
-# Run a single test file
-node --test tests/translation-contracts.test.js
-
-# Run a single test (use --test-name-pattern)
-node --test --test-name-pattern="getTargetLanguage" tests/translation-contracts.test.js
-```
-
-This is a Chrome extension—no build step required. Load the repository root (containing `manifest.json`) via Chrome's developer mode.
-
-## Code Style Guidelines
-
-### General
-
-- No comments in code unless explaining complex logic (per project convention)
-- Keep functions focused and small (under ~100 lines preferred)
-- Use early returns to reduce nesting
-
-### Imports and Modules
-
-- Use ES modules (`import`/`export`)
-- Explicit `.js` extension in import paths: `import { foo } from './foo.js'`
-- Use `node:` prefix for Node.js built-ins: `import { readFileSync } from 'node:fs'`
-- Group imports: external packages first, then internal modules
-
-### Formatting
-
-- 2-space indentation
-- No semicolons at statement ends
-- Single quotes for strings
-- Trailing commas in multiline object/array literals
-- Maximum line length ~120 characters
-- No unnecessary whitespace at line ends
-
-### Naming Conventions
-
-- **Constants**: `UPPER_SNAKE_CASE` (e.g., `TRANSLATION_MESSAGE_TYPES`, `STORAGE_KEYS`)
-- **Functions/variables**: `camelCase` (e.g., `normalizeProviderSettings`, `debugLog`)
-- **Boolean variables**: Prefix with `is`, `has`, `should`, or `can` (e.g., `isQwenMtModel`, `hasContent`)
-- **DOM element variables**: Suffix with `El` (e.g., `triggerEl`, `cardEl`)
-- **Private module state**: Use closure pattern without `_` prefix convention
-
-### Types and Values
-
-- No TypeScript—plain JavaScript only
-- Use `typeof` checks for type narrowing
-- `String(value || '')` for string coercion
-- `Array.isArray()` for array checks
-- `Object.freeze()` for truly constant objects
-
-### Error Handling
-
-- Always use `try/catch` around async operations
-- Create specific error messages: `throw new Error('Descriptive message.')`
-- Use `normalizeErrorMessage()` pattern to sanitize caught errors
-- Empty catch blocks must have `catch { }` (no comment needed)
-- Return normalized results rather than throwing for expected error cases
-
-### Logging and Debugging
-
-- Use `debugLog(event, fields)` for structured debug output (JSON object)
-- Debug logs guarded by `debugLoggingEnabled` flag
-- Use `LOG_PREFIX` constant for log namespace: `'[selected-text-translation]'`
-- Never log sensitive data (API keys, full request bodies)
-- Use `createSelectedTextDiagnostics()` to sanitize text for logging
-
-### Chrome Extension Patterns
-
-- Message types use `UPPER_SNAKE_CASE` strings: `'START_TRANSLATION'`
-- Event statuses use kebab-case: `'started'`, `'stream'`, `'success'`, `'error'`
-- Always check `chrome.runtime.lastError` in callback-based APIs
-- Use `chrome.storage.sync` for settings persistence
-- Content script runs at `document_idle`
-
-### Testing Patterns
-
-- Use `node:test` and `node:assert/strict`
-- Import source modules directly: `import { foo } from '../src/foo.js'`
-- For source-inspection tests, use `readFileSync(new URL('../src/foo.js', import.meta.url), 'utf8')`
-- Use `assert.match()` for regex validation of source code
-- Use `assert.deepEqual()` for object/array equality
-- Use `assert.equal()` for scalar equality
-
-### Content Script Patterns (content.js)
-
-- Wrap all code in IIFE: `(() => { ... })()` to avoid global pollution
-- Use `state` object to hold all module state
-- Use `queueMicrotask` for debounced selection scanning
-- Event listeners use `capture: true` (third argument) for document-level events
-- Use `clamp()` helper for boundary calculations
-- DOM creation uses `document.createElement()` + `className` + `appendChild`
-- CSS injected via `<style>` element with `style.textContent`
-
-## Iteration Workflow
-
-- Work in small, useful slices: fix one user-visible problem, verify it, then expand scope.
-- Reuse `scripts/verify-browser.mjs`; do not rebuild the browser harness or reinstall existing tools each iteration.
-- During implementation, run focused behavior tests. Run the full suite and browser flow at integration checkpoints.
-- Delegate independent work with narrow file ownership and only the context it needs. Inspect the integrated result.
-- Real API tests are opt-in (`test:live`, `test:live:browser`) and may incur provider charges.
-- Read test credentials from environment variables or a private configuration file outside the repository.
-- Never include credentials in screenshots, test reports, fixtures, commits, or extension archives.
-- Package with `npm run package:extension`; keep generated archives and previews in ignored `dist/`.
-
-- Card tests should target `.entry-card > summary`; nested context and editor details have their own summaries.
+- 参考 OpenAI 产品的整体风格。突出正文和主操作，统一字号、间距和组件，使用中性色和少量强调色。省去装饰性渐变、徽章、嵌套卡片和重复文案。
+- 沿用现有 JavaScript 风格，复用已有逻辑和组件。桌面端的产品路径见 `desktop` 分支的 `docs/desktop-roadmap.md`。
