@@ -1,11 +1,11 @@
 export const ACTION_LABELS = Object.freeze({
-  copyResult: '复制结果',
-  copySource: '复制原文',
-  speak: '▷ 朗读原文',
-  stopSpeak: '■ 停止朗读',
-  cancel: '取消请求',
-  regenerate: '重新生成',
-  copyDone: '✓ 已复制',
+  copyResult: 'Copy result',
+  copySource: 'Copy source text',
+  speak: '▷ Read aloud',
+  stopSpeak: '■ Stop reading',
+  cancel: 'Cancel request',
+  regenerate: 'Regenerate',
+  copyDone: '✓ Copied',
 })
 
 const COPY_DONE_CLASS = 'is-done'

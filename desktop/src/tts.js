@@ -133,8 +133,8 @@ export function createTts({
 
     const apiKey = dashScopeSpeechKey(settings)
     let fallbackMessage = ''
-    if (!apiKey) fallbackMessage = '请在朗读设置填写百炼 API Key。正在使用系统语音。'
-    else if (text.length > CLOUD_SPEECH_MAX_LENGTH) fallbackMessage = '这段文字超过 600 字符，正在使用系统语音。'
+    if (!apiKey) fallbackMessage = 'Add a DashScope API key in Speech settings. Using a system voice for now.'
+    else if (text.length > CLOUD_SPEECH_MAX_LENGTH) fallbackMessage = 'Using a system voice for text over 600 characters.'
     else {
       const signal = task.controller.signal
       let hasStarted = false
@@ -161,7 +161,7 @@ export function createTts({
           finish(task, 'error')
           return
         }
-        fallbackMessage = '阿里云朗读暂时不可用，正在使用系统语音。'
+        fallbackMessage = 'Cloud speech is unavailable. Using a system voice for now.'
       }
     }
     task.onEvent({ type: 'fallback', message: fallbackMessage })

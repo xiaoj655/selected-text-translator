@@ -1,18 +1,18 @@
 const UPDATE_LABELS = {
-  idle: '检查更新',
-  checking: '正在检查更新…',
-  'up-to-date': '检查更新',
-  downloading: '正在下载更新…',
-  ready: '重启并更新',
-  installing: '正在重启…',
-  error: '重试更新',
+  idle: 'Check for updates',
+  checking: 'Checking for updates…',
+  'up-to-date': 'Check for updates',
+  downloading: 'Downloading update…',
+  ready: 'Restart and update',
+  installing: 'Restarting…',
+  error: 'Retry update',
 }
 
 const BUSY_STATES = new Set(['checking', 'downloading', 'installing'])
 
 function detailText({ status, version, percent }) {
-  if (status === 'up-to-date') return '已是最新版'
-  if (status === 'error') return '更新失败'
+  if (status === 'up-to-date') return 'Up to date'
+  if (status === 'error') return 'Update failed'
   if (status === 'ready' && version) return `v${version}`
   if (status === 'downloading' && Number.isFinite(percent)) {
     return `${Math.floor(Math.min(100, Math.max(0, percent)))}%`
@@ -46,12 +46,12 @@ export function bindUpdateMenu({ api, announce, beforeInstall, onSaveError }) {
     buttonEl.setAttribute('aria-disabled', String(isBusy))
     if (isReady !== (previous === 'ready')) {
       triggerEl.classList.toggle('has-update', isReady)
-      triggerEl.setAttribute('aria-label', isReady ? '更多操作，有更新可安装' : '更多操作')
-      triggerEl.title = isReady ? '更多 · 有更新可安装' : '更多'
+      triggerEl.setAttribute('aria-label', isReady ? 'More actions, update available' : 'More actions')
+      triggerEl.title = isReady ? 'More actions · Update available' : 'More actions'
     }
     if (status === previous || isBusy) return
     if (shouldAnnounce && isReady) {
-      announce(version ? `更新 v${version} 已下载，可以重启安装。` : '更新已下载，可以重启安装。')
+      announce(version ? `Update v${version} is ready. Restart to install it.` : 'Update ready. Restart to install it.')
     }
     if (shouldAnnounce && isUserAction && detail && !isReady) announce(detail)
     isUserAction = false
@@ -87,7 +87,7 @@ export function bindUpdateMenu({ api, announce, beforeInstall, onSaveError }) {
       await beforeInstall()
     } catch {
       render(ready, false)
-      const message = '保存草稿或学习记录失败，请重试更新。'
+      const message = 'Could not save your draft or study history. Try updating again.'
       onSaveError(message)
       announce(message)
       return

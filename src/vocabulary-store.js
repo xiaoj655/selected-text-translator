@@ -1,3 +1,4 @@
+import { uiText } from './ui-language.js'
 const VOCABULARY_STORAGE_KEY = 'vocabulary_entries'
 const MAX_ENTRIES = 2000
 const MAX_STORAGE_BYTES = 4 * 1024 * 1024
@@ -199,9 +200,9 @@ export function updateVocabulary(id, changes, expected) {
   return enqueueMutation(async () => {
     const entries = await readEntries()
     const index = entries.findIndex((entry) => entry.id === id)
-    if (index === -1) return { ok: false, code: 'entry-missing', message: '这条表达已被移除，请同步列表。' }
+    if (index === -1) return { ok: false, code: 'entry-missing', message: uiText('这条表达已被移除，请同步列表。', 'This entry was removed. Refresh the list.') }
     const current = entries[index]
-    const invalid = { ok: false, code: 'invalid-entry', message: '请填写有效的释义，并检查修订内容的长度。' }
+    const invalid = { ok: false, code: 'invalid-entry', message: uiText('请填写有效的释义，并检查修订内容的长度。', 'Enter a meaning and check the length of your edits.') }
     if (!changes || typeof changes !== 'object' || Array.isArray(changes)
       || !expected || typeof expected !== 'object' || Array.isArray(expected)) return invalid
     const keys = Object.keys(changes)
@@ -214,14 +215,14 @@ export function updateVocabulary(id, changes, expected) {
     const changedKeys = keys.filter((key) => normalized[key] !== current[key])
     const conflicts = changedKeys.filter((key) => current[key] !== expected[key])
     if (conflicts.length) {
-      return { ok: false, code: 'entry-changed', message: '这些内容已在另一处更新，草稿尚未覆盖最新内容。',
+      return { ok: false, code: 'entry-changed', message: uiText('这些内容已在另一处更新，草稿尚未覆盖最新内容。', 'This entry changed elsewhere. Your draft is still here.'),
         entry: current, conflictingFields: conflicts }
     }
     if (!changedKeys.length) return { ok: true, entry: current }
     const entry = { ...current, ...normalized, updatedAt: Math.max(Date.now(), current.updatedAt) }
     const key = getEntryKey(entry)
     if (entries.some((other, otherIndex) => otherIndex !== index && getEntryKey(other) === key)) {
-      return { ok: false, code: 'duplicate-entry', message: '已有相同词义的收藏，未合并或覆盖任何复习进度。' }
+      return { ok: false, code: 'duplicate-entry', message: uiText('已有相同词义的收藏，未合并或覆盖任何复习进度。', 'An entry with this meaning already exists. Review progress is preserved.') }
     }
     entries[index] = entry
     await writeEntries(entries)

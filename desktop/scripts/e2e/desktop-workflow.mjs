@@ -4,19 +4,19 @@ const SOURCE = 'The supplier put off the launch because the packaging was delaye
 const QUESTIONS = [
   {
     sentence: 'Maya put off the call until Friday.',
-    prompt: 'Maya 对通话作了什么安排？',
-    choices: ['取消了通话', '把通话推迟到周五'],
+    prompt: 'What did Maya do about the call?',
+    choices: ['She canceled it.', 'She postponed it until Friday.'],
     correctIndex: 1,
-    hint: '连起来读 put off the call，再看 until Friday。',
-    explanation: 'Put off 表示推迟；until Friday 给出了新的时间。',
+    hint: 'Read “put off the call” together, then look at “until Friday.”',
+    explanation: '“Put off” means to postpone. “Until Friday” gives the new time.',
   },
   {
     sentence: 'We had to put off the picnic when it began raining.',
-    prompt: '下雨后，野餐怎么安排？',
-    choices: ['推迟野餐', '冒雨继续野餐'],
+    prompt: 'What happened to the picnic when it started raining?',
+    choices: ['It was postponed.', 'It went ahead in the rain.'],
     correctIndex: 0,
-    hint: '找到 put off 后面的活动。',
-    explanation: 'Put off the picnic 表示推迟野餐。',
+    hint: 'Look for the activity named after “put off.”',
+    explanation: '“Put off the picnic” means to have the picnic at a later time.',
   },
 ]
 
@@ -28,7 +28,7 @@ async function paste(page, text) {
   await page.waitForFunction((source) => {
     const entry = document.querySelector('.entry:last-child')
     return Boolean(entry?.querySelector('.bubble')?.textContent.includes(source)
-      && /完成|翻译记忆/u.test(document.getElementById('statusbar').textContent))
+      && /^(Done|From translation memory)/u.test(document.getElementById('statusbar').textContent))
   }, text)
 }
 
@@ -56,7 +56,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     assert.equal(metadata.hotkey, false)
     await page.locator('#btn-more').click()
     assert.equal(await page.locator('#installed-version').textContent(), `v${metadata.version}`)
-    assert.match(await page.locator('#btn-releases').textContent(), /查看发布版本/u)
+    assert.match(await page.locator('#btn-releases').textContent(), /View releases/u)
     await page.locator('#btn-more').click()
   })
 
@@ -77,14 +77,14 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
   })
 
   await check('request debug: opt in, inspect the outbound payload, copy, clear and disable', async () => {
-    const debug = page.getByRole('dialog', { name: '请求调试' })
-    const record = debug.getByRole('checkbox', { name: '记录请求' })
+    const debug = page.getByRole('dialog', { name: 'Request Debugger' })
+    const record = debug.getByRole('checkbox', { name: 'Record requests' })
     const open = async () => {
       await page.locator('#btn-more').click()
-      await page.getByRole('menuitem', { name: '请求调试' }).click()
+      await page.getByRole('menuitem', { name: 'Request Debugger' }).click()
       await page.waitForFunction(() => !document.getElementById('debug-enabled').disabled)
     }
-    const close = () => debug.getByRole('button', { name: '关闭请求调试' }).click()
+    const close = () => debug.getByRole('button', { name: 'Close request debugger' }).click()
     let outbound
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       outbound = body
@@ -96,7 +96,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       assert.equal(await record.isChecked(), false)
       assert.equal(await debug.locator('.debug-row').count(), 0)
       await record.check()
-      await debug.getByText('正在记录请求。').waitFor()
+      await debug.getByText('Recording requests.').waitFor()
       await page.keyboard.press('Escape')
       await debug.waitFor({ state: 'hidden' })
       assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-more')
@@ -107,24 +107,24 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       await open()
       assert.equal(await debug.locator('.debug-row').count(), 1)
       assert.match(await debug.locator('#debug-url').textContent(), /^POST http:\/\/127\.0\.0\.1:\d+\/v1\/chat\/completions$/u)
-      assert.match(await debug.locator('#debug-meta').textContent(), /翻译 · HTTP 200/u)
+      assert.match(await debug.locator('#debug-meta').textContent(), /Translation · HTTP 200/u)
       assert.deepEqual(JSON.parse(await debug.locator('#debug-body').textContent()), outbound)
-      await debug.getByText('请求头', { exact: true }).click()
+      await debug.getByText('Request headers', { exact: true }).click()
       assert.match(await debug.locator('#debug-headers').textContent(), /content-type: application\/json/iu)
       assert.doesNotMatch(await debug.locator('#debug-headers').textContent(), /e2e-mock-key/u)
       await shot?.(page, 'main-request-debug')
 
-      await debug.getByRole('button', { name: '复制当前请求' }).click()
-      await debug.getByText('已复制当前请求。').waitFor()
+      await debug.getByRole('button', { name: 'Copy selected request' }).click()
+      await debug.getByText('Request copied.').waitFor()
       const clipboard = await page.evaluate(() => window.sttDesktop.readClipboard())
       assert.deepEqual(JSON.parse(clipboard).body, outbound)
       assert.doesNotMatch(clipboard, /e2e-mock-key/u)
 
-      await debug.getByRole('button', { name: '清空', exact: true }).click()
-      await debug.getByText('已清空请求。').waitFor()
+      await debug.getByRole('button', { name: 'Clear', exact: true }).click()
+      await debug.getByText('Request log cleared.').waitFor()
       assert.equal(await debug.locator('.debug-row').count(), 0)
       await record.uncheck()
-      await debug.getByText('已关闭记录并清空列表。').waitFor()
+      await debug.getByText('Recording is off. The request log was cleared.').waitFor()
     } finally {
       mock.resetHandler()
       await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(false))
@@ -133,7 +133,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     }
   })
 
-  await check('AI teacher: derives a lesson from a real lookup, preserves answers and schedules review', async () => {
+  await check('English Coach: derives a lesson from a real lookup, preserves answers and schedules review', async () => {
     let lessonRequests = 0
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       if (!body.messages?.[0]?.content?.includes('Create an English reading comprehension lesson')) {
@@ -144,7 +144,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       assert.equal(input.sourceText, SOURCE)
       assert.equal(input.sourceKind, 'sentence')
       lessonRequests++
-      const content = JSON.stringify({ topic: '理解推迟安排', questions: QUESTIONS })
+      const content = JSON.stringify({ topic: 'Putting off plans', questions: QUESTIONS })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ choices: [{ message: { content } }] }))
     })
@@ -154,7 +154,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       await page.locator('#btn-tutor-workspace').click()
       await page.locator('#tutor-review-mode').click()
       await page.locator('#tutor-start').waitFor({ state: 'visible' })
-      assert.match(await page.locator('#tutor-workspace').textContent(), /来自查词记录/u)
+      assert.match(await page.locator('#tutor-workspace').textContent(), /From your translation history/u)
       assert.equal(await page.locator('#translation-workspace').isVisible(), false)
       assert.equal(lessonRequests, 0)
       await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(true))
@@ -168,7 +168,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       await shot?.(page, 'main-tutor-exercise')
       await page.locator('#tutor-hint').click()
       await page.locator('.tutor-choice').nth(1).click()
-      assert.match(await page.locator('#tutor-feedback').textContent(), /答对了/u)
+      assert.equal(await page.locator('#tutor-feedback').textContent(), 'Correct')
       await page.locator('#btn-translate-workspace').click()
       assert.equal(await page.locator('#input').inputValue(), SOURCE)
       await page.locator('#btn-tutor-workspace').click()
@@ -177,9 +177,9 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       await page.locator('.tutor-choice').first().click()
       await page.locator('#tutor-next').click()
       await page.locator('#tutor-continue').waitFor({ state: 'visible' })
-      assert.match(await page.locator('#tutor-workspace').textContent(), /经过提示或订正/u)
+      assert.match(await page.locator('#tutor-workspace').textContent(), /after a hint or correction/u)
       await page.locator('#tutor-continue').click()
-      await page.getByText('暂时没有待练习的内容').waitFor({ state: 'visible' })
+      await page.getByText('You’re all caught up').waitFor({ state: 'visible' })
       assert.equal(lessonRequests, 1)
     } finally {
       await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(false))

@@ -200,7 +200,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       alwaysOnTop: true,
       show: false,
       backgroundColor: '#00000000',
-      title: '划词翻译',
+      title: 'Selection Translation',
       webPreferences: {
         preload: preloadPath,
         contextIsolation: false,
@@ -307,7 +307,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     const win = createWindow({
       width: key === 'library' ? 960 : 500,
       height: key === 'library' ? 720 : 660,
-      title: key === 'library' ? '我的表达本' : key === 'options' ? '高级设置' : '设置',
+      title: key === 'library' ? 'Vocabulary' : key === 'options' ? 'Advanced Settings' : 'Settings',
       webPreferences: {
         preload: preloadPath,
         contextIsolation: false,
@@ -331,15 +331,15 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
 
     tray.setToolTip('Selected Text Translator')
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: '打开主窗口', click: openMainWindow },
+      { label: 'Open Main Window', click: openMainWindow },
       { type: 'separator' },
-      { label: '设置', click: () => open('settings') },
-      { label: '高级设置', click: () => open('options') },
-      { label: '我的表达本', click: () => open('library') },
+      { label: 'Settings', click: () => open('settings') },
+      { label: 'Advanced Settings', click: () => open('options') },
+      { label: 'Vocabulary', click: () => open('library') },
       { type: 'separator' },
-      { label: '打开日志', click: onOpenLog },
+      { label: 'Open Log', click: onOpenLog },
       { type: 'separator' },
-      { label: '退出', click: onQuit },
+      { label: 'Quit', click: onQuit },
     ]))
   }
 

@@ -1,4 +1,4 @@
-import { readTutorSettings, requestTutorJson } from './tutor.js'
+import { coachError, readTutorSettings, requestTutorJson } from './tutor.js'
 
 const READING_PROMPT = [
   'Read an English article together with the reader. Be a curious, well-informed reading partner.',
@@ -7,7 +7,8 @@ const READING_PROMPT = [
   'On both opening and follow-up turns, move the discussion forward with a specific implication, author’s argument or assumption,',
   'concrete trade-off, or detail worth noticing, as appropriate to the available text. Avoid quizzes, scores, and generic vocabulary lists.',
   'If the reader asks about English, explain the wording or structure in context, connecting it to the author’s idea.',
-  'Use Simplified Chinese unless the reader wants to discuss in English. Preserve the original English when quoting.',
+  'Write replies and suggested follow-up questions in clear, accessible English even if the reader asks in another language.',
+  'Preserve the original English when quoting.',
   'Base claims about the article on the supplied text. Distinguish the author’s claims from your inference or general background.',
   'No access to the web or omitted parts of the article is available. When the excerpt leaves something unclear, explicitly say so instead of inventing details.',
   'When a short source phrase or sentence genuinely helps, put it in quote as a single verbatim substring from article.text,',
@@ -15,7 +16,7 @@ const READING_PROMPT = [
   'Keep reply to a few concise plain-text paragraphs. Offer up to two optional followups phrased as short questions the reader might ask.',
   'Return a single JSON object and no markdown: {"reply":"...","quote":"...","followups":["..."]}.',
 ].join(' ')
-const INVALID_RESPONSE = '学习模型返回的带读内容不完整，请重试。'
+const INVALID_RESPONSE = 'The learning model returned an incomplete reply. Try again.'
 const MAX_ARTICLE_LENGTH = 12000
 const MAX_QUESTION_LENGTH = 2500
 const MAX_HISTORY_TURNS = 8
@@ -27,7 +28,7 @@ function boundedText(value, maxLength) {
 
 function articleContext(article) {
   const text = boundedText(article?.text, MAX_ARTICLE_LENGTH) || boundedText(article?.excerpt, MAX_ARTICLE_LENGTH)
-  if (!text) throw new Error('这篇文章没有可带读的英文，请换一篇或粘贴原文。')
+  if (!text) throw coachError('This article has no text to read. Try another article or paste a passage.')
   const url = boundedText(article.url, 1600)
   let kind = 'pasted_text'
   if (url) kind = article.hasFullText === true ? 'feed_article' : 'feed_excerpt'
@@ -69,17 +70,17 @@ export function createReadingTutor({ storage, fetcher = fetch }) {
   async function ask({ article, question = '', history = [] } = {}) {
     const context = articleContext(article)
     if (typeof question !== 'string' || question.trim().length > MAX_QUESTION_LENGTH) {
-      throw new Error('每次提问最多 2500 个字符。')
+      throw coachError('Keep your question to 2,500 characters or fewer.')
     }
     const settings = await readTutorSettings(storage)
-    if (!settings) throw new Error('请先在设置中配置 API 地址、密钥和通用学习模型。')
+    if (!settings) throw coachError('Add an API URL, API key, and learning model in Settings.')
     return requestTutorJson({
       fetcher,
       settings,
       prompt: READING_PROMPT,
       data: { article: context, history: recentHistory(history), question: question.trim() },
       parse: (result) => parseReply(result, context.text),
-      timeoutMessage: '生成带读回复超时，请重试。',
+      timeoutMessage: 'The reply took too long. Try again.',
       invalidResponseMessage: INVALID_RESPONSE,
     })
   }

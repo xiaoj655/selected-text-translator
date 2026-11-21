@@ -15,10 +15,10 @@ const IDEAS = {
   text: 'An architecture decision record can make trade-offs visible to people joining a project. It ages well when it names the assumptions behind the decision and sets a date for revisiting them.',
 }
 const PASTED_TEXT = 'A slow database query can hide behind a fast cache. When the cache expires, requests arrive together and the same query can overwhelm the database.'
-const INTRO = '这篇报道把电池供应链拆成了开采、精炼和制造三个阶段。原文里最值得看的是精炼这一步，因为扩大采矿也可能解决不了精炼产能不足。'
-const QUESTION = '文中为什么说矿够挖也会缺电池材料？'
-const EXPLANATION = '矿石需要经过精炼才能用在电池里。这里的 even when 引出一个条件，即使矿石供应充足，精炼厂处理不过来，成品材料还是会短缺。'
-const PASTE_REPLY = '这段讲的是缓存失效时，大量请求同时落到数据库上的问题。'
+const INTRO = 'The article follows battery materials from mining to refining and manufacturing. Refining is the step to watch: mining more material will not help if refineries cannot process it quickly enough.'
+const QUESTION = 'Why can battery materials run short even if mines produce enough?'
+const EXPLANATION = 'The minerals have to be refined before they can go into batteries. “Even when” shows that the shortage can happen despite a good supply from mines, because refineries can only process so much.'
+const PASTE_REPLY = 'When the cache expires, all those requests reach the database at once. That is how one otherwise hidden slow query can become a bottleneck.'
 
 function rss({ title, text, url, publishedAt }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -73,7 +73,7 @@ export async function installReadingFeeds(app) {
 }
 
 export async function verifyReadingWorkflow({ page, mock, check, shot, readingFeeds }) {
-  await check('AI teacher: discover current articles, read and ask a follow-up', async () => {
+  await check('English Coach: discover current articles, read and ask a follow-up', async () => {
     const inputs = []
     let releaseFollowup
     const followupGate = new Promise((resolve) => { releaseFollowup = resolve })
@@ -107,7 +107,7 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       await page.locator('#reading-category-ideas').click()
       await articles.getByRole('button', { name: IDEAS.title, exact: false }).first().waitFor()
       const missingFeed = READING_SOURCES.ideas[1].name
-      const partialStatus = page.getByText(`暂时无法读取 ${missingFeed}。`, { exact: true })
+      const partialStatus = page.getByText(`Couldn’t load ${missingFeed}.`, { exact: true })
       await partialStatus.waitFor()
       await page.locator('#reading-refresh').click()
       await articles.getByRole('button', { name: new RegExp(`${IDEAS.title}: a second perspective`, 'u') }).waitFor()
@@ -134,7 +134,7 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
 
       await page.locator('#reading-question').fill(QUESTION)
       await page.locator('#reading-send').click()
-      await page.getByText('老师正在阅读…', { exact: true }).waitFor()
+      await page.getByText('English Coach is reading…', { exact: true }).waitFor()
       await page.locator('#reading-back').click()
       await selectArticle(NEWS.title)
       releaseFollowup()

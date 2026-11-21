@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; style-src 'self'; script-src 'self'; img-src 'self' data:;">
@@ -14,93 +14,93 @@
   <div class="app">
     <header class="topbar">
       <div class="top-identity">
-        <button id="btn-history" class="history-trigger icon-btn" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏" aria-haspopup="dialog" aria-controls="sidebar" aria-keyshortcuts="Control+H Meta+H">
+        <button id="btn-history" class="history-trigger icon-btn" type="button" title="Translation history · Ctrl/⌘+H" aria-label="Translation history" aria-haspopup="dialog" aria-controls="sidebar" aria-keyshortcuts="Control+H Meta+H">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1"/></svg>
         </button>
         <div class="brand">
           <img class="brand-mark" src="../assets/icon.png" width="29" height="29" alt="">
-          <h1>文本翻译</h1>
+          <h1>Translator</h1>
         </div>
       </div>
-      <nav class="workspace-nav" aria-label="工作区">
-        <button id="btn-translate-workspace" type="button" aria-controls="translation-workspace" aria-pressed="true">翻译工作台</button>
-        <button id="btn-tutor-workspace" type="button" aria-controls="tutor-workspace" aria-pressed="false">AI 老师</button>
+      <nav class="workspace-nav" aria-label="Workspaces">
+        <button id="btn-translate-workspace" type="button" aria-controls="translation-workspace" aria-pressed="true">Translate</button>
+        <button id="btn-tutor-workspace" type="button" aria-controls="tutor-workspace" aria-pressed="false">English Coach</button>
       </nav>
       <div class="top-actions">
-        <button id="btn-export" type="button" title="导出学习记录 · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false" aria-label="导出对话" aria-keyshortcuts="Control+E Meta+E">
+        <button id="btn-export" type="button" title="Export study records · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false" aria-label="Export study records" aria-keyshortcuts="Control+E Meta+E">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
         </button>
-        <button id="btn-settings" type="button" title="设置" aria-label="模型设置" aria-haspopup="dialog" aria-controls="settings-panel">
+        <button id="btn-settings" type="button" title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-panel">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
         </button>
-        <button id="btn-more" type="button" title="更多" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作">
+        <button id="btn-more" type="button" title="More actions" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
         </button>
       </div>
       <div class="sr-only" id="result-announcer" role="status" aria-live="polite" aria-atomic="true"></div>
     </header>
 
-    <div class="export-menu" id="export-menu" role="menu" aria-label="导出对话" hidden>
-      <div class="export-head">导出学习记录</div>
+    <div class="export-menu" id="export-menu" role="menu" aria-label="Export study records" hidden>
+      <div class="export-head">Export study records</div>
       <button type="button" data-export="md" role="menuitem">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
-        <span><strong>Markdown (.md)</strong><small>含原文、译文与词典解析,适合笔记</small></span>
+        <span><strong>Markdown (.md)</strong><small>Source text, translations, and dictionary notes</small></span>
       </button>
       <button type="button" data-export="json" role="menuitem">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
-        <span><strong>JSON (.json)</strong><small>结构化数据,便于二次处理</small></span>
+        <span><strong>JSON (.json)</strong><small>Structured data for reuse</small></span>
       </button>
       <button type="button" data-export="anki" role="menuitem">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v6"/></svg>
-        <span><strong>Anki 记忆卡 (.txt)</strong><small>原文 ⇥ 译文,可直接导入 Anki</small></span>
+        <span><strong>Anki flashcards (.txt)</strong><small>Import source texts and translations into Anki</small></span>
       </button>
       <button type="button" data-export="copy" role="menuitem">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span><strong>复制为 Markdown</strong><small>直接写入系统剪贴板</small></span>
+        <span><strong>Copy as Markdown</strong><small>Copy to your clipboard</small></span>
       </button>
-      <p class="export-note" id="export-note">共 0 条记录</p>
+      <p class="export-note" id="export-note">0 records</p>
     </div>
 
-    <div class="more-menu" id="more-menu" role="menu" aria-label="更多操作" hidden>
+    <div class="more-menu" id="more-menu" role="menu" aria-label="More actions" hidden>
       <button type="button" id="btn-library" role="menuitem">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>我的表达本
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Vocabulary
       </button>
       <button type="button" id="btn-clear" role="menuitem">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>清空翻译历史
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>Clear translation history
       </button>
-      <button type="button" id="btn-log" role="menuitem" aria-label="打开日志文件">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>打开日志
+      <button type="button" id="btn-log" role="menuitem" aria-label="Open log file">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>Open log file
       </button>
       <button type="button" id="open-debug" role="menuitem" aria-haspopup="dialog" aria-controls="request-debug">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18"/></svg>请求调试
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18"/></svg>Request Debugger
       </button>
       <button type="button" id="btn-help" class="help-trigger" role="menuitem" aria-keyshortcuts="Control+/ Meta+/">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>键盘快捷键
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>Keyboard shortcuts
       </button>
       <button type="button" id="btn-update" class="update-menu-item" role="menuitem"
         aria-labelledby="update-action" aria-describedby="update-detail" hidden>
-        <span id="update-action">检查更新</span>
+        <span id="update-action">Check for updates</span>
         <small id="update-detail"></small>
       </button>
       <button type="button" id="btn-releases" class="release-menu-item" role="menuitem">
-        <span>软件版本 <strong id="installed-version">读取中</strong></span>
-        <small>查看发布版本 ↗</small>
+        <span>App version <strong id="installed-version">Loading…</strong></span>
+        <small>View releases ↗</small>
       </button>
     </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
-    <aside class="sidebar" id="sidebar" role="dialog" aria-modal="true" aria-label="历史记录" hidden>
+    <aside class="sidebar" id="sidebar" role="dialog" aria-modal="true" aria-label="Translation history" hidden>
       <div class="sidebar-head">
-        <h2>翻译历史</h2>
-        <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭" aria-label="关闭历史侧栏">
+        <h2>Translation history</h2>
+        <button id="btn-close-sidebar" class="icon-btn" type="button" title="Close" aria-label="Close history">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
       <div class="sidebar-search">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="history-search" type="search" spellcheck="false" autocomplete="off" placeholder="搜索原文或译文" aria-label="搜索原文或译文">
+        <input id="history-search" type="search" spellcheck="false" autocomplete="off" placeholder="Search source text or translations" aria-label="Search source text or translations">
       </div>
-      <div class="sidebar-meta" id="history-count">共 0 条</div>
+      <div class="sidebar-meta" id="history-count">0 records</div>
       <div class="sidebar-list" id="history-list"></div>
     </aside>
 
@@ -109,148 +109,148 @@
     <div class="settings-backdrop" id="settings-backdrop" hidden></div>
     <section class="drawer" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
       <div class="drawer-head">
-        <h2 id="settings-title">设置</h2>
-        <button id="btn-close-settings" class="icon-btn" type="button" title="关闭" aria-label="关闭设置">
+        <h2 id="settings-title">Settings</h2>
+        <button id="btn-close-settings" class="icon-btn" type="button" title="Close" aria-label="Close settings">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
-      <nav class="settings-nav" aria-label="设置分类">
-        <a href="#settings-model-heading">模型</a>
-        <a href="#settings-general-heading">通用</a>
-        <a href="#speech-settings-heading">朗读</a>
-        <a href="#settings-glossary-heading">术语表</a>
-        <a href="#settings-archive-heading">学习档案</a>
-        <a href="#settings-appearance-heading">外观</a>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a href="#settings-model-heading">Models</a>
+        <a href="#settings-general-heading">General</a>
+        <a href="#speech-settings-heading">Speech</a>
+        <a href="#settings-glossary-heading">Glossary</a>
+        <a href="#settings-archive-heading">Study archive</a>
+        <a href="#settings-appearance-heading">Appearance</a>
       </nav>
       <div class="drawer-body">
         <form class="drawer-section" id="model-settings-form" method="post" novalidate aria-labelledby="settings-model-heading">
-          <h3 id="settings-model-heading" tabindex="-1">模型连接</h3>
+          <h3 id="settings-model-heading" tabindex="-1">Model connection</h3>
           <div class="settings-field">
-            <label for="cfg-base-url">API 地址</label>
+            <label for="cfg-base-url">API URL</label>
             <input id="cfg-base-url" name="base_url" type="url" required spellcheck="false" autocapitalize="none" placeholder="https://…/compatible-mode/v1" aria-describedby="cfg-base-url-error">
             <p class="field-error" id="cfg-base-url-error" hidden></p>
           </div>
           <div class="settings-field">
-            <label for="cfg-api-key">API Key</label>
+            <label for="cfg-api-key">API key</label>
             <div class="settings-key">
               <input id="cfg-api-key" name="api_key" type="password" required autocomplete="new-password" spellcheck="false" autocapitalize="none" placeholder="sk-…" aria-describedby="cfg-api-key-error">
-              <button class="field-toggle icon-btn" id="btn-toggle-key" type="button" title="显示密钥" aria-label="显示密钥" aria-pressed="false" aria-controls="cfg-api-key">
+              <button class="field-toggle icon-btn" id="btn-toggle-key" type="button" title="Show API key" aria-label="Show API key" aria-pressed="false" aria-controls="cfg-api-key">
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
             <p class="field-error" id="cfg-api-key-error" hidden></p>
           </div>
           <div class="settings-field">
-            <label for="cfg-model">翻译模型</label>
-            <input id="cfg-model" name="model" list="model-list" required spellcheck="false" autocapitalize="none" placeholder="例如 qwen-flash" aria-describedby="cfg-model-error">
+            <label for="cfg-model">Translation model</label>
+            <input id="cfg-model" name="model" list="model-list" required spellcheck="false" autocapitalize="none" placeholder="e.g. qwen-flash" aria-describedby="cfg-model-error">
             <p class="field-error" id="cfg-model-error" hidden></p>
           </div>
           <div class="settings-field">
-            <label for="cfg-learning">学习模型 <span>（可选）</span></label>
+            <label for="cfg-learning">Learning model <span>(optional)</span></label>
             <input id="cfg-learning" name="learning_model" list="model-list" spellcheck="false" autocapitalize="none" aria-describedby="learning-model-tip">
-            <p class="drawer-tip" id="learning-model-tip">用于引导理解、AI 老师和音标。</p>
+            <p class="drawer-tip" id="learning-model-tip">Used for Guided Reading, English Coach, and phonetic transcriptions.</p>
           </div>
           <datalist id="model-list"></datalist>
           <div class="drawer-actions">
-            <button id="btn-discover" type="button">检测连接</button>
-            <button id="btn-save-settings" class="primary" type="submit">保存模型</button>
+            <button id="btn-discover" type="button">Test connection</button>
+            <button id="btn-save-settings" class="primary" type="submit">Save model settings</button>
           </div>
           <p class="drawer-status" id="settings-status" role="status"></p>
         </form>
         <div class="drawer-section">
-          <h3 id="settings-general-heading" tabindex="-1">通用</h3>
+          <h3 id="settings-general-heading" tabindex="-1">General</h3>
           <div class="drawer-flags">
-            <label class="mini-toggle" for="opt-always-on-top">窗口置顶<input type="checkbox" id="opt-always-on-top"></label>
-            <label class="mini-toggle" for="opt-login-item">开机自启<input type="checkbox" id="opt-login-item"></label>
-            <label class="mini-toggle" for="opt-live-translate">输入后自动翻译<input type="checkbox" id="opt-live-translate"></label>
-            <label class="mini-toggle" for="opt-paste">粘贴后自动翻译<input type="checkbox" id="opt-paste" checked></label>
-            <label class="mini-toggle" for="opt-enter">Enter 发送<input type="checkbox" id="opt-enter"></label>
+            <label class="mini-toggle" for="opt-always-on-top">Keep window on top<input type="checkbox" id="opt-always-on-top"></label>
+            <label class="mini-toggle" for="opt-login-item">Launch at login<input type="checkbox" id="opt-login-item"></label>
+            <label class="mini-toggle" for="opt-live-translate">Translate as you type<input type="checkbox" id="opt-live-translate"></label>
+            <label class="mini-toggle" for="opt-paste">Translate on paste<input type="checkbox" id="opt-paste" checked></label>
+            <label class="mini-toggle" for="opt-enter">Submit with Enter<input type="checkbox" id="opt-enter"></label>
           </div>
-          <label class="settings-row" for="opt-target-language">目标语言<select id="opt-target-language">
-            <option value="auto">自动(按原文语言)</option>
-            <option value="Chinese">简体中文</option>
-            <option value="English">英语</option>
-            <option value="Japanese">日语</option>
-            <option value="Korean">韩语</option>
-            <option value="French">法语</option>
-            <option value="German">德语</option>
-            <option value="Spanish">西班牙语</option>
+          <label class="settings-row" for="opt-target-language">Target language<select id="opt-target-language">
+            <option value="auto">Automatic</option>
+            <option value="Chinese">Simplified Chinese</option>
+            <option value="English">English</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Korean">Korean</option>
+            <option value="French">French</option>
+            <option value="German">German</option>
+            <option value="Spanish">Spanish</option>
           </select></label>
         </div>
         <form class="drawer-section" id="speech-settings-form" method="post" aria-labelledby="speech-settings-heading">
-          <h3 id="speech-settings-heading" tabindex="-1">朗读</h3>
+          <h3 id="speech-settings-heading" tabindex="-1">Speech</h3>
           <label class="mini-toggle" for="opt-cloud-speech">
-            使用阿里云朗读英文
+            Read English aloud with Alibaba Cloud
             <input type="checkbox" id="opt-cloud-speech" name="cloud_speech" aria-describedby="cloud-speech-tip">
           </label>
-          <p class="drawer-tip" id="cloud-speech-tip">点击朗读时会把当前英文发送给阿里云百炼，按调用量计费。</p>
+          <p class="drawer-tip" id="cloud-speech-tip">Playing English audio sends the text to Alibaba Cloud Model Studio. Usage charges apply.</p>
           <div class="settings-field">
-            <label for="cfg-cloud-speech-key">百炼北京 API Key <span>（可选）</span></label>
+            <label for="cfg-cloud-speech-key">Model Studio (Beijing) API key <span>(optional)</span></label>
             <input id="cfg-cloud-speech-key" name="speech_api_key" type="password" autocomplete="new-password"
               autocapitalize="none" spellcheck="false" aria-describedby="cloud-speech-key-tip">
-            <p class="drawer-tip" id="cloud-speech-key-tip">留空时复用已保存的百炼北京翻译密钥。</p>
+            <p class="drawer-tip" id="cloud-speech-key-tip">Leave blank to use your saved Model Studio (Beijing) translation key.</p>
           </div>
-          <label class="speech-rate-field settings-row" for="cfg-speech-rate">朗读语速
+          <label class="speech-rate-field settings-row" for="cfg-speech-rate">Playback speed
             <input id="cfg-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9">
             <span class="speech-rate-value" id="speech-rate-value" aria-hidden="true">0.9×</span>
           </label>
           <div class="drawer-actions">
-            <button id="btn-save-speech" type="submit">保存朗读设置</button>
-            <button id="btn-preview-speech" type="button" aria-pressed="false">试听英文</button>
+            <button id="btn-save-speech" type="submit">Save speech settings</button>
+            <button id="btn-preview-speech" type="button" aria-pressed="false">Preview voice</button>
           </div>
           <p class="drawer-status" id="speech-settings-status" role="status"></p>
         </form>
         <div class="drawer-section">
-          <h3 id="settings-glossary-heading" tabindex="-1">术语表</h3>
-          <p class="drawer-tip">为通用模型指定固定译法，让译文用词一致。</p>
+          <h3 id="settings-glossary-heading" tabindex="-1">Glossary</h3>
+          <p class="drawer-tip">Set preferred translations to keep terminology consistent.</p>
           <div class="glossary-add-row">
             <div class="settings-field">
-              <label for="glossary-source">原文术语</label>
-              <input id="glossary-source" type="text" maxlength="80" placeholder="例如 Apple">
+              <label for="glossary-source">Source term</label>
+              <input id="glossary-source" type="text" maxlength="80" placeholder="e.g. ordinateur">
             </div>
             <div class="settings-field">
-              <label for="glossary-target">固定译法</label>
-              <input id="glossary-target" type="text" maxlength="80" placeholder="例如 苹果公司">
+              <label for="glossary-target">Preferred translation</label>
+              <input id="glossary-target" type="text" maxlength="80" placeholder="e.g. computer">
             </div>
-            <button id="glossary-add" class="secondary" type="button">添加</button>
+            <button id="glossary-add" class="secondary" type="button">Add</button>
           </div>
           <div id="glossary-list" class="glossary-list"></div>
           <p id="glossary-status" class="drawer-status" role="status"></p>
         </div>
         <div class="drawer-section">
-          <h3 id="settings-archive-heading" tabindex="-1">学习档案</h3>
-          <p class="drawer-tip">在设备间迁移收藏、学习进度和翻译记录。模型配置和密钥留在本机。</p>
+          <h3 id="settings-archive-heading" tabindex="-1">Study archive</h3>
+          <p class="drawer-tip">Move saved expressions, study progress, and translation history between devices. Model settings and API keys stay on this device.</p>
           <div class="drawer-actions">
-            <button id="btn-archive-export" type="button">导出完整档案</button>
-            <button id="btn-archive-import" type="button">导入完整档案</button>
+            <button id="btn-archive-export" type="button">Export archive</button>
+            <button id="btn-archive-import" type="button">Import archive</button>
           </div>
           <input id="archive-file" type="file" accept="application/json,.json" hidden>
           <p class="drawer-status" id="archive-status" role="status"></p>
           <div class="archive-conflict" id="archive-conflict" hidden>
             <p id="archive-conflict-text" role="alert"></p>
             <div class="drawer-actions">
-              <button id="archive-conflict-keep" type="button">保留现有,仅导入新增</button>
-              <button id="archive-conflict-cancel" type="button">取消导入</button>
+              <button id="archive-conflict-keep" type="button">Import new entries only</button>
+              <button id="archive-conflict-cancel" type="button">Cancel import</button>
             </div>
           </div>
         </div>
         <div class="drawer-section">
-          <h3 id="settings-appearance-heading" tabindex="-1">外观</h3>
+          <h3 id="settings-appearance-heading" tabindex="-1">Appearance</h3>
           <div class="drawer-appearance">
-            <label class="settings-row" for="opt-theme">主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
-            <label class="settings-row" for="opt-font">字号<select id="opt-font"><option value="normal">标准</option><option value="small">紧凑</option><option value="large">大</option></select></label>
+            <label class="settings-row" for="opt-theme">Theme<select id="opt-theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+            <label class="settings-row" for="opt-font">Text size<select id="opt-font"><option value="normal">Default</option><option value="small">Small</option><option value="large">Large</option></select></label>
             <div class="accent-field settings-row">
-              <span class="accent-label">强调色</span>
-              <div class="accent-picker" id="opt-accent" role="group" aria-label="强调色">
-                <button class="accent-swatch" type="button" data-accent="neutral" title="中性" aria-label="中性"></button>
-                <button class="accent-swatch" type="button" data-accent="indigo" title="靛蓝" aria-label="靛蓝"></button>
-                <button class="accent-swatch" type="button" data-accent="ocean" title="海蓝" aria-label="海蓝"></button>
-                <button class="accent-swatch" type="button" data-accent="emerald" title="翠绿" aria-label="翠绿"></button>
-                <button class="accent-swatch" type="button" data-accent="rose" title="玫红" aria-label="玫红"></button>
-                <button class="accent-swatch" type="button" data-accent="amber" title="琥珀" aria-label="琥珀"></button>
+              <span class="accent-label">Accent color</span>
+              <div class="accent-picker" id="opt-accent" role="group" aria-label="Accent color">
+                <button class="accent-swatch" type="button" data-accent="neutral" title="Neutral" aria-label="Neutral"></button>
+                <button class="accent-swatch" type="button" data-accent="indigo" title="Indigo" aria-label="Indigo"></button>
+                <button class="accent-swatch" type="button" data-accent="ocean" title="Ocean" aria-label="Ocean"></button>
+                <button class="accent-swatch" type="button" data-accent="emerald" title="Emerald" aria-label="Emerald"></button>
+                <button class="accent-swatch" type="button" data-accent="rose" title="Rose" aria-label="Rose"></button>
+                <button class="accent-swatch" type="button" data-accent="amber" title="Amber" aria-label="Amber"></button>
               </div>
             </div>
-            <label class="mini-toggle" for="opt-reduced-motion">减少动效<input type="checkbox" id="opt-reduced-motion"></label>
+            <label class="mini-toggle" for="opt-reduced-motion">Reduce motion<input type="checkbox" id="opt-reduced-motion"></label>
           </div>
         </div>
       </div>
@@ -258,67 +258,67 @@
     </section>
 
     <main class="workspaces">
-      <section id="translation-workspace" class="translation-workspace" aria-label="翻译工作台">
-        <form class="composer" id="translation-form" aria-label="翻译输入">
+      <section id="translation-workspace" class="translation-workspace" aria-label="Translate">
+        <form class="composer" id="translation-form" aria-label="Translation input">
           <div class="composer-box">
             <div class="composer-tools">
-              <div class="modes" id="modes" role="group" aria-label="翻译方式">
-                <button class="mode is-active" data-mode="translate" type="button" aria-pressed="true">直接翻译</button>
-                <button class="mode" data-mode="guide" type="button" aria-pressed="false">引导理解</button>
+              <div class="modes" id="modes" role="group" aria-label="Translation mode">
+                <button class="mode is-active" data-mode="translate" type="button" aria-pressed="true">Translate</button>
+                <button class="mode" data-mode="guide" type="button" aria-pressed="false">Guided Reading</button>
               </div>
               <div class="lang-bar">
-                <select id="lang-source" class="lang-source" aria-label="原文语言">
-                  <option value="auto">自动检测原文</option>
-                  <option value="Chinese">简体中文</option>
-                  <option value="English">英语</option>
-                  <option value="Japanese">日语</option>
-                  <option value="Korean">韩语</option>
-                  <option value="French">法语</option>
-                  <option value="German">德语</option>
-                  <option value="Spanish">西班牙语</option>
+                <select id="lang-source" class="lang-source" aria-label="Source language">
+                  <option value="auto">Detect language</option>
+                  <option value="Chinese">Simplified Chinese</option>
+                  <option value="English">English</option>
+                  <option value="Japanese">Japanese</option>
+                  <option value="Korean">Korean</option>
+                  <option value="French">French</option>
+                  <option value="German">German</option>
+                  <option value="Spanish">Spanish</option>
                 </select>
-                <button id="btn-swap-lang" class="lang-swap icon-btn" type="button" title="互换原文与译文语言" aria-label="互换原文与译文语言">
+                <button id="btn-swap-lang" class="lang-swap icon-btn" type="button" title="Swap source and target languages" aria-label="Swap source and target languages">
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg>
                 </button>
-                <label class="sr-only" for="lang-target">译文语言</label>
+                <label class="sr-only" for="lang-target">Target language</label>
                 <select id="lang-target">
-                  <option value="auto">自动</option>
-                  <option value="Chinese">简体中文</option>
-                  <option value="English">英语</option>
-                  <option value="Japanese">日语</option>
-                  <option value="Korean">韩语</option>
-                  <option value="French">法语</option>
-                  <option value="German">德语</option>
-                  <option value="Spanish">西班牙语</option>
+                  <option value="auto">Auto</option>
+                  <option value="Chinese">Simplified Chinese</option>
+                  <option value="English">English</option>
+                  <option value="Japanese">Japanese</option>
+                  <option value="Korean">Korean</option>
+                  <option value="French">French</option>
+                  <option value="German">German</option>
+                  <option value="Spanish">Spanish</option>
                 </select>
               </div>
             </div>
-            <label class="sr-only" for="input">输入要翻译的内容</label>
-            <textarea id="input" rows="2" placeholder="输入或粘贴要翻译的文字" aria-describedby="composer-hint"></textarea>
+            <label class="sr-only" for="input">Text to translate</label>
+            <textarea id="input" aria-label="Source text" rows="2" placeholder="Type or paste text to translate" aria-describedby="composer-hint"></textarea>
             <div class="composer-actions">
               <div class="composer-left">
-                <button id="btn-paste-translate" type="button" title="读取剪贴板内容并立即翻译">
+                <button id="btn-paste-translate" type="button" title="Translate text from the clipboard">
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/></svg>
-                  粘贴并翻译
+                  Paste and translate
                 </button>
-                <button id="btn-clear-input" type="button" title="清空输入框">清空</button>
-                <span class="composer-hint" id="composer-hint">粘贴即翻译</span>
+                <button id="btn-clear-input" type="button" title="Clear input">Clear</button>
+                <span class="composer-hint" id="composer-hint">Paste to translate</span>
               </div>
               <button id="btn-send" class="primary" type="submit">
-                <span id="send-label">翻译</span> <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+                <span id="send-label">Translate</span> <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
               </button>
             </div>
           </div>
           <div class="status-line">
-            <div class="statusbar" id="statusbar" role="status" aria-live="polite" aria-atomic="true">就绪</div>
-            <span class="char-count" id="char-count">0 字</span>
-            <button type="button" id="btn-study-progress" class="study-progress-chip" title="打开表达本查看学习进度">
-              <span id="study-progress-text">今日待复习 0 · 学习中 0 · 已掌握 0</span>
+            <div class="statusbar" id="statusbar" role="status" aria-live="polite" aria-atomic="true">Ready</div>
+            <span class="char-count" id="char-count">0 characters</span>
+            <button type="button" id="btn-study-progress" class="study-progress-chip" title="Open vocabulary and study progress">
+              <span id="study-progress-text">0 due · 0 learning · 0 mastered</span>
             </button>
           </div>
         </form>
 
-        <section class="stream" id="stream" aria-label="翻译结果"></section>
+        <section class="stream" id="stream" aria-label="Translation results"></section>
       </section>
       <section id="tutor-workspace" hidden aria-labelledby="tutor-title"></section>
     </main>
@@ -326,49 +326,49 @@
     <div class="snackbar" id="snackbar" role="status" aria-live="polite" hidden>
       <span class="snackbar-label" id="snackbar-label"></span>
       <button class="snackbar-action" id="snackbar-action" type="button"></button>
-      <button class="snackbar-close" id="snackbar-close" type="button" title="关闭" aria-label="关闭">
+      <button class="snackbar-close" id="snackbar-close" type="button" title="Close" aria-label="Close">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
 
-    <div class="selection-toolbar" id="selection-toolbar" role="toolbar" aria-label="选中文字操作" hidden>
-      <button type="button" data-sel-action="copy" title="复制选中文字">复制</button>
-      <button type="button" data-sel-action="speak" title="朗读选中文字">朗读</button>
-      <button type="button" data-sel-action="translate" title="翻译选中文字">翻译</button>
-      <button type="button" data-sel-action="save" title="收藏选中文字">收藏</button>
+    <div class="selection-toolbar" id="selection-toolbar" role="toolbar" aria-label="Selected text actions" hidden>
+      <button type="button" data-sel-action="copy" title="Copy selected text">Copy</button>
+      <button type="button" data-sel-action="speak" title="Listen to selected text">Listen</button>
+      <button type="button" data-sel-action="translate" title="Translate selected text">Translate</button>
+      <button type="button" data-sel-action="save" title="Save selected text">Save</button>
     </div>
 
-    <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="回到最新" aria-label="回到最新" hidden>
+    <button class="scroll-fab" id="btn-scroll-bottom" type="button" title="Jump to latest result" aria-label="Jump to latest result" hidden>
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m6 13 6 6 6-6"/></svg>
     </button>
 
     <div class="overlay" id="help-overlay" hidden>
-      <section class="help-pop" role="dialog" aria-modal="true" aria-label="键盘快捷键">
+      <section class="help-pop" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
         <div class="help-head">
-          <h2>键盘快捷键</h2>
-          <button id="btn-close-help" class="icon-btn" type="button" title="关闭" aria-label="关闭帮助">
+          <h2>Keyboard shortcuts</h2>
+          <button id="btn-close-help" class="icon-btn" type="button" title="Close" aria-label="Close shortcuts">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
         <dl class="help-list">
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>V</kbd></dt><dd>在翻译输入框粘贴</dd></div>
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></dt><dd>发送并翻译</dd></div>
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></dt><dd>聚焦输入框</dd></div>
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>H</kbd></dt><dd>打开 / 关闭历史侧栏</dd></div>
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>E</kbd></dt><dd>打开 / 关闭导出菜单</dd></div>
-          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>/</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
-          <div><dt><kbd>?</kbd></dt><dd>打开 / 关闭本帮助</dd></div>
-          <div><dt><kbd>Esc</kbd></dt><dd>隐藏窗口 / 关闭面板</dd></div>
-          <div><dt>点击卡片标题</dt><dd>折叠 / 展开该条结果</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>V</kbd></dt><dd>Paste into the translation box</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></dt><dd>Translate the text</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd></dt><dd>Focus the translation box</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>H</kbd></dt><dd>Toggle translation history</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>E</kbd></dt><dd>Toggle export menu</dd></div>
+          <div><dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>/</kbd></dt><dd>Toggle keyboard shortcuts</dd></div>
+          <div><dt><kbd>?</kbd></dt><dd>Toggle keyboard shortcuts</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Hide window or close panel</dd></div>
+          <div><dt>Click a result heading</dt><dd>Collapse or expand the result</dd></div>
         </dl>
       </section>
     </div>
   </div>
   <dialog id="request-debug" class="request-debug" aria-labelledby="debug-title" closedby="any">
     <header class="debug-header">
-      <h2 id="debug-title">请求调试</h2>
+      <h2 id="debug-title">Request Debugger</h2>
       <form method="dialog">
-        <button class="icon-btn" id="debug-close" type="submit" aria-label="关闭请求调试" title="关闭" autofocus>
+        <button class="icon-btn" id="debug-close" type="submit" aria-label="Close request debugger" title="Close" autofocus>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
       </form>
@@ -376,29 +376,29 @@
     <div class="debug-controls">
       <label class="debug-toggle">
         <input id="debug-enabled" type="checkbox" aria-describedby="debug-tip" disabled>
-        记录请求
+        Record requests
       </label>
       <div class="debug-actions">
-        <button id="debug-clear" type="button" disabled>清空</button>
-        <button id="debug-copy" type="button" disabled>复制当前请求</button>
+        <button id="debug-clear" type="button" disabled>Clear</button>
+        <button id="debug-copy" type="button" disabled>Copy selected request</button>
       </div>
     </div>
-    <p id="debug-tip" class="debug-tip">仅保留本次运行中最近 30 条请求。关闭记录会清空列表。密钥会遮盖，分享前请检查原文和学习内容。</p>
+    <p id="debug-tip" class="debug-tip">The debugger keeps the last 30 requests from this session. Turning off recording clears the list. API keys are hidden. Review source text and study material before sharing.</p>
     <div class="debug-content" id="debug-content" hidden>
-      <div class="debug-list" id="debug-list" role="group" aria-label="最近的请求"></div>
-      <section class="debug-details" aria-label="请求详情" tabindex="0">
+      <div class="debug-list" id="debug-list" role="group" aria-label="Recent requests"></div>
+      <section class="debug-details" aria-label="Request details" tabindex="0">
         <p class="debug-meta" id="debug-meta"></p>
         <p class="debug-url" id="debug-url"></p>
         <details class="debug-headers">
-          <summary>请求头</summary>
+          <summary>Request headers</summary>
           <pre id="debug-headers"></pre>
         </details>
-        <h3>请求体</h3>
+        <h3>Request body</h3>
         <pre id="debug-body"></pre>
-        <p id="debug-truncated" class="debug-tip" hidden>请求体已截断。复制时也仅包含可见部分。</p>
+        <p id="debug-truncated" class="debug-tip" hidden>The request body was shortened. Copying includes only the visible portion.</p>
       </section>
     </div>
-    <p class="debug-empty" id="debug-empty">正在读取记录…</p>
+    <p class="debug-empty" id="debug-empty">Loading requests…</p>
     <div class="debug-feedback" id="debug-feedback" role="status"></div>
   </dialog>
   <script type="module" src="./app.js"></script>

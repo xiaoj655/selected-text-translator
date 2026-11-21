@@ -1,8 +1,9 @@
+import { uiText } from './ui-language.js'
 import { getContextSentence } from './context-sentence.js'
 
 const MAX_SPEECH_LENGTH = 1200
 const FINAL_SPEECH_EVENTS = new Set(['end', 'interrupted', 'cancelled', 'error'])
-const SPEECH_ERROR_MESSAGE = '朗读暂时不可用，请检查系统语音后重试。'
+const SPEECH_ERROR_MESSAGE = uiText('朗读暂时不可用，请检查系统语音后重试。', 'Speech is unavailable. Check your system voices and try again.')
 
 function createUniqueId(prefix) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -26,7 +27,7 @@ export function getEntrySpeechTargets(entry = {}) {
   return {
     word: getSpeechText(entry.text),
     context: canReadContext ? sentence || getSpeechText(context) : '',
-    contextLabel: sentence ? '读原句' : '读语境',
+    contextLabel: sentence ? uiText('读原句', 'Listen to sentence') : uiText('读语境', 'Listen to context'),
     example: getSpeechText(entry.example),
   }
 }
@@ -63,7 +64,7 @@ export function createLibraryAudio({ send, onChange = () => {}, onStatus = () =>
           previous.stopPromise = null
           desiredSpeech = previous
           onChange()
-          onStatus('暂时无法停止朗读，请再点一次停止。', true)
+          onStatus(uiText('暂时无法停止朗读，请再点一次停止。', 'Could not stop playback. Select Stop again.'), true)
           return
         }
         ownedSpeech = null

@@ -1,9 +1,10 @@
+import { uiText } from './ui-language.js'
 export const VOCABULARY_EDIT_FIELDS = Object.freeze([
-  Object.freeze({ key: 'meaning', label: '在这里的意思', maxLength: 2000, rows: 3, isRequired: true }),
-  Object.freeze({ key: 'usage', label: '用法与搭配', maxLength: 500, rows: 2 }),
-  Object.freeze({ key: 'example', label: '例句', maxLength: 1000, rows: 3 }),
-  Object.freeze({ key: 'explanation', label: '补充解释', maxLength: 2500, rows: 3, isAdvanced: true }),
-  Object.freeze({ key: 'phonetic', label: '音标', maxLength: 160, rows: 1, isAdvanced: true }),
+  Object.freeze({ key: 'meaning', label: uiText('在这里的意思', 'Meaning in context'), maxLength: 2000, rows: 3, isRequired: true }),
+  Object.freeze({ key: 'usage', label: uiText('用法与搭配', 'Usage and collocations'), maxLength: 500, rows: 2 }),
+  Object.freeze({ key: 'example', label: uiText('例句', 'Example'), maxLength: 1000, rows: 3 }),
+  Object.freeze({ key: 'explanation', label: uiText('补充解释', 'Explanation'), maxLength: 2500, rows: 3, isAdvanced: true }),
+  Object.freeze({ key: 'phonetic', label: uiText('音标', 'Pronunciation'), maxLength: 160, rows: 1, isAdvanced: true }),
 ])
 
 function getEditableValues(entry) {
@@ -47,15 +48,15 @@ export function syncVocabularyDraft(draft, entry) {
 }
 
 export function getVocabularyDraftUpdate(draft) {
-  if (!draft?.id) return { ok: false, message: '无法识别这条表达，请重新打开表达本。' }
+  if (!draft?.id) return { ok: false, message: uiText('无法识别这条表达，请重新打开表达本。', 'Entry unavailable. Reopen your vocabulary and try again.') }
   const changes = {}
   const expected = {}
   for (const field of VOCABULARY_EDIT_FIELDS) {
     const rawValue = String(draft.values[field.key] || '')
     const value = rawValue.trim()
-    if (field.isRequired && !value) return { ok: false, field: field.key, message: '请保留这条表达的释义。' }
+    if (field.isRequired && !value) return { ok: false, field: field.key, message: uiText('请保留这条表达的释义。', 'Enter a meaning.') }
     if (rawValue.length > field.maxLength) {
-      return { ok: false, field: field.key, message: `${field.label}请控制在 ${field.maxLength} 字以内。` }
+      return { ok: false, field: field.key, message: uiText(`${field.label}请控制在 ${field.maxLength} 字以内。`, `${field.label} must be ${field.maxLength} characters or fewer.`) }
     }
     if (value !== draft.original[field.key]) {
       changes[field.key] = value

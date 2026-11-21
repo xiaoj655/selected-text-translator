@@ -6,7 +6,7 @@ import { bindUpdateMenu } from './update-menu.js'
 import { bindRequestDebug } from './request-debug.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
-import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
+import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
 import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
@@ -18,6 +18,10 @@ import {
 const $ = (id) => document.getElementById(id)
 
 const ACCENTS = ['neutral', 'indigo', 'ocean', 'emerald', 'rose', 'amber']
+const DETECTED_LANGUAGE_TAGS = {
+  chinese: 'zh', english: 'en', japanese: 'ja', korean: 'ko', french: 'fr', german: 'de', spanish: 'es',
+}
+const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
 const SPEECH_PREVIEW_ID = 'speech-preview'
 const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
 
@@ -66,6 +70,14 @@ function el(tag, className, text) {
   return node
 }
 
+function languageText(tag, className, text, language) {
+  const node = el(tag, className, text)
+  const requested = typeof language === 'string' ? language.toLowerCase() : ''
+  const detected = Object.hasOwn(DETECTED_LANGUAGE_TAGS, requested) ? requested : detectSourceLanguage(text)
+  if (detected) node.lang = DETECTED_LANGUAGE_TAGS[detected]
+  return node
+}
+
 function makeId(prefix) {
   state.counter += 1
   return `${prefix}-${Date.now()}-${state.counter}`
@@ -81,7 +93,7 @@ function renderGlossaryList() {
   if (!list) return
   list.replaceChildren()
   if (!state.glossary.length) {
-    list.append(el('p', 'glossary-empty', '还没有术语。添加后,翻译会固定使用这里的译法。'))
+    list.append(el('p', 'glossary-empty', 'No terms yet. Add a term to translate it the same way every time.'))
     return
   }
   state.glossary.forEach((pair, index) => {
@@ -91,14 +103,14 @@ function renderGlossaryList() {
     row.append(el('span', 'glossary-term', pair.target))
     const remove = el('button', 'glossary-remove', '×')
     remove.type = 'button'
-    remove.title = '删除术语'
-    remove.setAttribute('aria-label', `删除术语 ${pair.source}`)
+    remove.title = 'Remove term'
+    remove.setAttribute('aria-label', `Remove term ${pair.source}`)
     remove.dataset.index = String(index)
     remove.addEventListener('click', () => {
       state.glossary.splice(index, 1)
       persistGlossary()
       renderGlossaryList()
-      setStatus('已删除术语')
+      setStatus('Term removed')
     })
     row.append(remove)
     list.append(row)
@@ -108,7 +120,7 @@ function renderGlossaryList() {
 function persistGlossary() {
   state.glossary = sanitizeGlossary(state.glossary)
   const status = $('glossary-status')
-  if (status) status.textContent = `已保存 ${state.glossary.length} 条术语`
+  if (status) status.textContent = `${state.glossary.length} terms saved`
   try {
     void chrome.storage.sync.set({ desktop_glossary: state.glossary })
   } catch { }
@@ -131,9 +143,9 @@ function setTargetLanguage(value, retranslate) {
     const select = $(id)
     if (select) select.value = value
   }
-  const label = value === 'auto' ? '自动(按原文语言判断)' : value
-  if (retranslate) retranslateCurrent(`目标语言已设为 ${label} · 已重新翻译`)
-  else setStatus(`目标语言已设为 ${label}`)
+  const label = $('lang-target').selectedOptions[0]?.textContent || value
+  if (retranslate) retranslateCurrent(`Target language set to ${label}`)
+  else setStatus(`Target language set to ${label}`)
 }
 
 function retranslateCurrent(message) {
@@ -142,26 +154,26 @@ function retranslateCurrent(message) {
     && (state.liveTranslate || state.lastSubmittedText === text)) {
     const lookup = state.lastSubmittedText === text ? state.lastLookup : undefined
     submit({ keepInput: true, lookup })
-    setStatus(message)
+    setStatus(`${message} · Translating again…`)
     return
   }
-  setStatus(message.replace(' · 已重新翻译', ''))
+  setStatus(message)
 }
 
 function setSourceLanguage(value, retranslate) {
   state.sourceLanguage = value
   void chrome.storage.sync.set({ desktop_source_language: value })
   $('lang-source').value = value
-  const label = value === 'auto' ? '自动检测原文' : value
-  if (retranslate) retranslateCurrent(`原文语言已设为 ${label} · 已重新翻译`)
-  else setStatus(`原文语言已设为 ${label}`)
+  const label = value === 'auto' ? 'automatic detection' : ($('lang-source').selectedOptions[0]?.textContent || value)
+  if (retranslate) retranslateCurrent(`Source language set to ${label}`)
+  else setStatus(`Source language set to ${label}`)
 }
 
 function swapLanguages() {
   const detected = detectSourceLanguage($('input').value)
   const plan = planLanguageSwap({ source: state.sourceLanguage, target: state.targetLanguage, detected })
   if (!plan) {
-    setStatus('请先输入内容并设置原文或译文语言,再互换方向')
+    setStatus('Enter text and choose a source or target language before swapping.')
     return
   }
   state.sourceLanguage = plan.source
@@ -173,15 +185,15 @@ function swapLanguages() {
     if (select) select.value = plan.target
   }
   updateComposer()
-  retranslateCurrent(`已互换语言方向 · 已重新翻译`)
+  retranslateCurrent('Languages swapped')
 }
 
 function renderDiagnostics() {
   const lines = [
-    `配置:${state.configured ? '已连接' : '未连接'}`,
-    `模式:${state.mode === 'guide' ? '引导理解' : '翻译'}`,
+    `Model: ${state.configured ? 'Configured' : 'Not configured'}`,
+    `Mode: ${MODE_LABELS[state.mode]}`,
   ]
-  if (state.lastElapsed) lines.push(`上次耗时:${state.lastElapsed} ms`)
+  if (state.lastElapsed) lines.push(`Last response: ${state.lastElapsed} ms`)
   const node = $('diagnostics')
   if (node) node.textContent = lines.join(' · ')
   $('statusbar').title = lines.join('\n')
@@ -193,14 +205,15 @@ function updateComposer() {
   input.style.height = `${Math.min(160, Math.max(38, input.scrollHeight))}px`
   const count = input.value.trim().length
   const countEl = $('char-count')
-  countEl.textContent = `${count} 字`
+  countEl.textContent = `${count} ${count === 1 ? 'character' : 'characters'}`
   countEl.classList.toggle('is-warn', count > 6000)
-  countEl.title = count > 6000 ? '内容较长,可能造成响应变慢或超出模型上下文' : ''
-  const detected = sourceLanguageLabel(detectSourceLanguage(input.value))
+  countEl.title = count > 6000 ? 'Long text can take more time or exceed the model’s context limit.' : ''
   const sourceSelect = $('lang-source')
+  const detected = detectSourceLanguage(input.value)
+  const detectedLabel = detected && sourceSelect?.querySelector(`option[value="${detected[0].toUpperCase()}${detected.slice(1)}"]`)?.textContent
   const autoOption = sourceSelect?.querySelector('option[value="auto"]')
-  if (autoOption) autoOption.textContent = detected ? `自动检测 · 检测为${detected}` : '自动检测原文'
-  $('composer-hint').textContent = state.prefs.pasteAutoSubmit ? '粘贴即翻译' : '粘贴后点击翻译'
+  if (autoOption) autoOption.textContent = detectedLabel ? `Detected: ${detectedLabel}` : 'Detect language'
+  $('composer-hint').textContent = state.prefs.pasteAutoSubmit ? 'Translates on paste' : 'Paste, then submit'
 }
 
 function isTyping(node) {
@@ -304,9 +317,9 @@ function toggleSidebar() {
 }
 
 function historySnippet(entry) {
-  if (entry.status === 'done') return resultText(entry) || (entry.mode === 'guide' ? '引导理解' : '（无结果）')
+  if (entry.status === 'done') return resultText(entry) || (entry.mode === 'guide' ? MODE_LABELS.guide : '(No result)')
   if (entry.error) return entry.error
-  return '处理中…'
+  return 'Processing…'
 }
 
 function renderHistory() {
@@ -318,19 +331,19 @@ function renderHistory() {
   const items = [...state.entries].reverse()
   const matched = items.filter((entry) => {
     if (!query) return true
-    const haystack = `${entry.text} ${historySnippet(entry)} ${entry.mode === 'guide' ? '引导理解' : '翻译'}`.toLowerCase()
+    const haystack = `${entry.text} ${historySnippet(entry)} ${MODE_LABELS[entry.mode] || MODE_LABELS.translate}`.toLowerCase()
     return haystack.includes(query)
   })
   $('history-count').textContent = query
-    ? `共 ${items.length} 条 · 匹配 ${matched.length} 条`
-    : `共 ${items.length} 条`
+    ? `${matched.length} of ${items.length} results`
+    : `${items.length} ${items.length === 1 ? "entry" : "entries"}`
   if (!matched.length) {
     const empty = el('div', 'history-empty')
     const icon = el('div')
     icon.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
     empty.append(icon)
-    empty.append(el('div', '', query ? '没有匹配的记录' : '还没有翻译记录'))
-    empty.append(el('div', '', query ? '换个关键词试试' : '开始翻译后会自动记录在这里'))
+    empty.append(el('div', '', query ? 'No matching entries' : 'No translation history yet'))
+    empty.append(el('div', '', query ? 'Try a different search term.' : 'Your translations will appear here.'))
     list.append(empty)
     return
   }
@@ -340,11 +353,13 @@ function renderHistory() {
     item.dataset.entryId = entry.id
     item.title = entry.text
     const top = el('div', 'hi-top')
-    top.append(el('span', 'hi-tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
-    top.append(el('span', 'hi-time', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
+    top.append(el('span', 'hi-tag', MODE_LABELS[entry.mode] || MODE_LABELS.translate))
+    top.append(el('span', 'hi-time', new Date(entry.createdAt).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit' })))
     item.append(top)
-    item.append(el('div', 'hi-text', entry.text))
-    item.append(el('div', 'hi-result', historySnippet(entry)))
+    item.append(languageText('div', 'hi-text', entry.text, entry.sourceLanguage))
+    const snippet = historySnippet(entry)
+    item.append(entry.status === 'done' && resultText(entry)
+      ? languageText('div', 'hi-result', snippet) : el('div', 'hi-result', snippet))
     list.append(item)
   }
 }
@@ -368,60 +383,60 @@ function formatStamp() {
 }
 
 function entryHeading(entry, index) {
-  const kind = entry.mode === 'guide' ? '引导理解' : '翻译'
-  const time = new Date(entry.createdAt).toLocaleString('zh-CN', { hour12: false })
+  const kind = entry.mode === 'guide' ? MODE_LABELS.guide : 'Translation'
+  const time = new Date(entry.createdAt).toLocaleString('en', { hour12: false })
   return `${index + 1}. ${kind} · ${time}`
 }
 
 function entryToMarkdown(entry, index) {
   const lines = []
   lines.push(`## ${entryHeading(entry, index)}`, '')
-  lines.push('**原文**', '', `> ${String(entry.text || '').replace(/\n/g, '\n> ')}`, '')
+  lines.push('**Source text**', '', `> ${String(entry.text || '').replace(/\n/g, '\n> ')}`, '')
     if (entry.status === 'error') {
-      lines.push('**状态**:失败', '', `> ${entry.error || '未知错误'}`, '')
+      lines.push('**Status:** Failed', '', `> ${entry.error || 'Unknown error'}`, '')
       return
     }
     if (entry.mode === 'guide') {
       const guide = entry.guide
-      if (guide?.phonetic) lines.push(`**音标**:${guide.phonetic}`, '')
+      if (guide?.phonetic) lines.push(`**Pronunciation:** ${guide.phonetic}`, '')
       if (Array.isArray(guide?.hints) && guide.hints.length) {
-        lines.push('**逐步提示**', '')
+        lines.push('**Hints**', '')
         guide.hints.forEach((hint, i) => lines.push(`${i + 1}. ${hint}`))
         lines.push('')
       }
       const answer = guide?.answer
       if (answer) {
-        lines.push('**揭晓答案**', '')
-        if (answer.meaning) lines.push(`- **含义**:${answer.meaning}`)
-        if (answer.explanation) lines.push(`- **解释**:${answer.explanation}`)
-        if (answer.example) lines.push(`- **例句**:${answer.example}`)
-        if (answer.usage) lines.push(`- **用法**:${answer.usage}`)
+        lines.push('**Answer**', '')
+        if (answer.meaning) lines.push(`- **Meaning:** ${answer.meaning}`)
+        if (answer.explanation) lines.push(`- **Explanation:** ${answer.explanation}`)
+        if (answer.example) lines.push(`- **Example:** ${answer.example}`)
+        if (answer.usage) lines.push(`- **Usage:** ${answer.usage}`)
         lines.push('')
       }
       return
     }
-    lines.push('**译文**', '', resultText(entry) || '（无结果）', '')
+    lines.push('**Translation**', '', resultText(entry) || '(No result)', '')
     const lexical = entry.lexical
     if (lexical) {
-      lines.push('**词典解析**', '')
-      if (lexical.phonetic) lines.push(`- **音标**:${lexical.phonetic}`)
+      lines.push('**Dictionary details**', '')
+      if (lexical.phonetic) lines.push(`- **Pronunciation:** ${lexical.phonetic}`)
       if (Array.isArray(lexical.definitions)) {
         lexical.definitions.forEach((item) => {
           const example = item.example?.source
             ? ` → *${item.example.source}${item.example.target ? ' / ' + item.example.target : ''}*`
             : ''
-          lines.push(`- **${item.pos || '释义'}**:${item.meaning || ''}${example}`)
+          lines.push(`- **${item.pos || 'Definition'}:** ${item.meaning || ''}${example}`)
         })
       }
-      if (lexical.contextual_analysis) lines.push(`- **语境分析**:${lexical.contextual_analysis}`)
+      if (lexical.contextual_analysis) lines.push(`- **Context:** ${lexical.contextual_analysis}`)
       lines.push('')
     }
   return lines.join('\n')
 }
 
 function buildMarkdown() {
-  const lines = ['# 划词翻译记录', '']
-  lines.push(`> 导出时间:${new Date().toLocaleString('zh-CN', { hour12: false })} · 共 ${state.entries.length} 条记录`, '')
+  const lines = ['# Selected Text Translator History', '']
+  lines.push(`> Exported: ${new Date().toLocaleString('en', { hour12: false })} · ${state.entries.length} ${state.entries.length === 1 ? "entry" : "entries"}`, '')
   state.entries.forEach((entry, index) => {
     lines.push('---', '', entryToMarkdown(entry, index))
   })
@@ -468,7 +483,7 @@ async function updateStudyProgress() {
     node.textContent = formatStudyProgress(progress)
     node.parentElement.classList.toggle('has-due', progress.due > 0)
   } catch {
-    node.textContent = '学习进度暂不可用'
+    node.textContent = 'Study progress unavailable'
   }
 }
 
@@ -486,7 +501,7 @@ async function maybeShowReviewReminder() {
       await chrome.storage.local.set({ lastReviewReminderDate: getDayKey() })
     } catch { }
     showNotice(reminder.text, 'review', {
-      label: '去复习',
+      label: 'Review vocabulary',
       run: () => window.sttDesktop.openLibrary(),
     }, true)
   } catch { }
@@ -504,8 +519,8 @@ function openExportMenu() {
   menu.hidden = false
   $('btn-export').setAttribute('aria-expanded', 'true')
   $('export-note').textContent = state.entries.length
-    ? `共 ${state.entries.length} 条记录 · 将导出全部学习记录`
-    : '还没有可导出的记录'
+    ? `Export all ${state.entries.length} ${state.entries.length === 1 ? "entry" : "entries"}`
+    : 'No entries to export'
 }
 
 function closeExportMenu() {
@@ -555,7 +570,7 @@ function switchWorkspace(workspace) {
   $('btn-tutor-workspace').setAttribute('aria-pressed', String(isTutor))
   $('translation-workspace').hidden = isTutor
   $('tutor-workspace').hidden = !isTutor
-  document.title = isTutor ? 'AI 老师 · Selected Text Translator' : 'Selected Text Translator'
+  document.title = isTutor ? 'English Coach · Selected Text Translator' : 'Selected Text Translator'
   updateScrollFab()
   if (isTutor) void tutor.open()
   else {
@@ -566,30 +581,30 @@ function switchWorkspace(workspace) {
 
 function runExport(kind) {
   if (!state.entries.length) {
-    setStatus('还没有可导出的记录')
+    setStatus('No entries to export')
     return
   }
   if (kind === 'md') {
-    downloadText(`划词翻译-${formatStamp()}.md`, buildMarkdown(), 'text/markdown')
-    setStatus(`已导出 ${state.entries.length} 条记录为 Markdown`)
+    downloadText(`selected-translations-${formatStamp()}.md`, buildMarkdown(), 'text/markdown')
+    setStatus(`Markdown export complete`)
   } else if (kind === 'json') {
-    downloadText(`划词翻译-${formatStamp()}.json`, buildJson(), 'application/json')
-    setStatus(`已导出 ${state.entries.length} 条记录为 JSON`)
+    downloadText(`selected-translations-${formatStamp()}.json`, buildJson(), 'application/json')
+    setStatus(`JSON export complete`)
   } else if (kind === 'anki') {
     const cell = (value) => String(value || '').replace(/\s+/gu, ' ').trim()
     const rows = state.entries
       .filter((entry) => entry.status === 'done' && entry.text && resultPlainText(entry))
       .map((entry) => `${cell(entry.text)}\t${cell(resultPlainText(entry))}`)
     if (!rows.length) {
-      setStatus('没有可导入 Anki 的双语记录')
+      setStatus('No bilingual entries to export to Anki')
       closeExportMenu()
       return
     }
-    downloadText(`划词翻译-Anki-${formatStamp()}.txt`, rows.join('\n'), 'text/plain')
-    setStatus(`已导出 ${rows.length} 条记录为 Anki 词卡`)
+    downloadText(`selected-anki-${formatStamp()}.txt`, rows.join('\n'), 'text/plain')
+    setStatus(`Exported ${rows.length} ${rows.length === 1 ? "card" : "cards"} for Anki`)
   } else if (kind === 'copy') {
     window.sttDesktop.copyText(buildMarkdown())
-    setStatus('已复制全部记录为 Markdown')
+    setStatus('Copied history as Markdown')
   }
   closeExportMenu()
 }
@@ -643,7 +658,7 @@ async function saveBeforeUpdate() {
     window.sttDesktop.saveHistory(state.entries),
     chrome.storage.local.set({ desktop_input_draft: $('input').value }),
   ])
-  if (!isHistorySaved) throw new Error('保存翻译历史失败。')
+  if (!isHistorySaved) throw new Error('Could not save translation history.')
 }
 
 let pendingArchiveImport = null
@@ -679,19 +694,19 @@ async function exportLearningArchive() {
     linkEl.click()
     linkEl.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    const counts = `收藏 ${sources.vocabularyEntries.length} · 记忆 ${Object.keys(sources.translationMemory).length} · 记录 ${sources.history.length}`
-    statusEl.textContent = `已导出完整学习档案(${counts}),不含密钥。`
-    setStatus('已导出完整学习档案')
+    const counts = `Vocabulary: ${sources.vocabularyEntries.length} · Translation memory: ${Object.keys(sources.translationMemory).length} · History: ${sources.history.length}`
+    statusEl.textContent = `Learning archive exported (${counts}). API keys are excluded.`
+    setStatus('Learning archive exported')
   } catch {
-    statusEl.textContent = '导出档案失败,请重试。'
+    statusEl.textContent = 'Could not export the archive. Try again.'
   }
 }
 
 function showArchiveConflicts(counts) {
   const box = $('archive-conflict')
-  $('archive-conflict-text').textContent = `待导入档案与现有数据有 ${counts.totalConflicts} 处冲突`
-    + `(收藏 ${counts.vocabularyConflicts} · 记忆 ${counts.memoryConflicts})。`
-    + `将保留现有数据,仅导入 ${counts.vocabularyAdded + counts.memoryAdded} 条新增内容。`
+  $('archive-conflict-text').textContent = `Conflicts found: ${counts.totalConflicts} `
+    + `(Vocabulary: ${counts.vocabularyConflicts} · Translation memory: ${counts.memoryConflicts}). `
+    + `Existing entries will be kept. New entries to import: ${counts.vocabularyAdded + counts.memoryAdded}.`
   box.hidden = false
 }
 
@@ -704,14 +719,14 @@ async function applyArchiveImport(plan) {
   state.entries = plan.history.map((entry) => ({
     ...entry,
     status: entry.status === 'done' ? 'done' : 'error',
-    error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
+    error: entry.status === 'done' ? '' : (entry.error || 'The last request did not finish. Try again.'),
   }))
   render()
   void updateStudyProgress()
   const { counts } = plan
-  statusEl.textContent = `已导入档案:新增收藏 ${counts.vocabularyAdded} 条,新增记忆 ${counts.memoryAdded} 条,`
-    + `记录 ${plan.history.length} 条,保留现有冲突 ${counts.totalConflicts} 处。`
-  setStatus('已导入完整学习档案')
+  statusEl.textContent = `Archive imported. New vocabulary: ${counts.vocabularyAdded} · New translations: ${counts.memoryAdded} · `
+    + `History: ${plan.history.length} · Conflicts skipped: ${counts.totalConflicts}`
+  setStatus('Learning archive imported')
   pendingArchiveImport = null
   $('archive-conflict').hidden = true
 }
@@ -728,12 +743,12 @@ async function importLearningArchive(file) {
     if (plan.counts.totalConflicts > 0) {
       pendingArchiveImport = plan
       showArchiveConflicts(plan.counts)
-      statusEl.textContent = `检测到 ${plan.counts.totalConflicts} 处冲突,现有数据未被改动,请选择处理方式。`
+      statusEl.textContent = `Conflicts found: ${plan.counts.totalConflicts}. Choose how to proceed.`
       return
     }
     await applyArchiveImport(plan)
   } catch (error) {
-    statusEl.textContent = `导入失败:${String(error?.message || error)}`
+    statusEl.textContent = `Import failed: ${String(error?.message || error)}`
   }
 }
 
@@ -749,8 +764,8 @@ function showNotice(text, kind = 'info', action, dismissible = false) {
   if (dismissible) {
     const close = el('button', 'notice-close', '×')
     close.type = 'button'
-    close.title = '关闭提醒'
-    close.setAttribute('aria-label', '关闭提醒')
+    close.title = 'Dismiss notice'
+    close.setAttribute('aria-label', 'Dismiss notice')
     close.addEventListener('click', hideNotice)
     node.append(close)
   }
@@ -816,10 +831,10 @@ async function saveSelection(entry, text, button) {
       },
     })
     const ok = Boolean(response?.ok)
-    button.textContent = ok ? '✓ 已收藏' : '收藏失败'
-    setStatus(ok ? '已加入表达本' : '收藏失败')
+    button.textContent = ok ? '✓ Saved' : 'Could not save'
+    setStatus(ok ? 'Saved to vocabulary' : 'Could not save')
   } catch {
-    button.textContent = '收藏失败'
+    button.textContent = 'Could not save'
   } finally {
     button.removeAttribute('aria-busy')
   }
@@ -857,13 +872,13 @@ function restoreDraft() {
   updateComposer()
   scheduleDraftSave()
   hideNotice()
-  setStatus('已恢复草稿')
+  setStatus('Draft restored')
   $('input').focus()
 }
 function showDraftNotice() {
   if (!state.draft) return
-  showNotice(`已暂存未发送的内容（${state.draft.length} 字）,可随时恢复。`, 'draft', {
-    label: '恢复草稿',
+  showNotice(`Unsent text saved as a draft.`, 'draft', {
+    label: 'Restore draft',
     run: restoreDraft,
   })
 }
@@ -895,7 +910,7 @@ function openSettings() {
 function closeSettings() {
   const wasOpen = !$('settings-panel').hidden
   if (state.speechEntryId === SPEECH_PREVIEW_ID) {
-    setSpeechStatus('已停止朗读。')
+    setSpeechStatus('Playback stopped.')
     stopActiveSpeech()
     patchSpeechButtons()
   }
@@ -935,7 +950,7 @@ async function loadSettings() {
     $('btn-toggle-key').classList.remove('is-on')
     updateSettingsValidity()
   } catch {
-    setStatus('读取设置失败')
+    setStatus('Could not load settings')
   }
 }
 
@@ -949,9 +964,9 @@ async function saveSpeechSettings(event) {
       desktop_tts_cloud: $('opt-cloud-speech').checked,
       desktop_tts_api_key: $('cfg-cloud-speech-key').value.trim(),
     })
-    statusEl.textContent = '已保存朗读设置。'
+    statusEl.textContent = 'Speech settings saved.'
   } catch {
-    statusEl.textContent = '保存朗读设置失败，请重试。'
+    statusEl.textContent = 'Could not save speech settings. Try again.'
   } finally {
     button.disabled = false
   }
@@ -986,9 +1001,9 @@ function updateSettingsValidity() {
   const values = settingsFieldValues()
   const urlMissing = !values.base_url
   const urlBad = Boolean(values.base_url) && !isValidBaseUrl(values.base_url)
-  setFieldError('cfg-base-url', urlMissing ? '请填写 API 地址' : urlBad ? '请输入以 http(s):// 开头的有效地址' : '')
-  setFieldError('cfg-api-key', values.api_key ? '' : '请填写 API Key')
-  setFieldError('cfg-model', values.model ? '' : '请填写翻译模型')
+  setFieldError('cfg-base-url', urlMissing ? 'Enter the API URL.' : urlBad ? 'Enter a valid URL starting with http:// or https://.' : '')
+  setFieldError('cfg-api-key', values.api_key ? '' : 'Enter the API key.')
+  setFieldError('cfg-model', values.model ? '' : 'Enter a translation model.')
   const canConnect = isValidBaseUrl(values.base_url) && Boolean(values.api_key)
   const canSave = canConnect && Boolean(values.model)
   $('btn-discover').disabled = !canConnect
@@ -1001,7 +1016,7 @@ function toggleKeyVisibility() {
   const visible = input.type === 'text'
   input.type = visible ? 'password' : 'text'
   button.setAttribute('aria-pressed', String(!visible))
-  const label = visible ? '显示密钥' : '隐藏密钥'
+  const label = visible ? 'Show API key' : 'Hide API key'
   button.title = label
   button.classList.toggle('is-on', !visible)
 }
@@ -1011,7 +1026,7 @@ async function saveSettings() {
   const button = $('btn-save-settings')
   button.disabled = true
   $('settings-status').dataset.kind = ''
-  $('settings-status').textContent = '正在保存…'
+  $('settings-status').textContent = 'Saving…'
   const values = {
     base_url: $('cfg-base-url').value.trim(),
     api_key: $('cfg-api-key').value.trim(),
@@ -1020,15 +1035,15 @@ async function saveSettings() {
   }
   try {
     await chrome.storage.sync.set(values)
-    $('settings-status').textContent = '已保存。'
+    $('settings-status').textContent = 'Settings saved.'
     $('settings-status').dataset.kind = 'success'
     await checkConfig()
     if (state.configured) {
       closeSettings()
-      setStatus('模型已连接,可以开始翻译')
+      setStatus('Model configured. You can start translating.')
     }
   } catch {
-    $('settings-status').textContent = '保存失败,请重试。'
+    $('settings-status').textContent = 'Could not save settings. Try again.'
     $('settings-status').dataset.kind = 'error'
   }
   updateSettingsValidity()
@@ -1039,14 +1054,14 @@ async function discoverModels() {
   if (!isValidBaseUrl(values.base_url) || !values.api_key) { updateSettingsValidity(); return }
   const button = $('btn-discover')
   button.disabled = true
-  $('settings-status').textContent = '正在连接并读取模型…'
+  $('settings-status').textContent = 'Fetching models…'
   try {
     const response = await chrome.runtime.sendMessage({
       type: 'DISCOVER_PROVIDER_MODELS',
       payload: { baseUrl: $('cfg-base-url').value.trim(), apiKey: $('cfg-api-key').value.trim() },
     })
     if (!response?.ok) {
-      $('settings-status').textContent = response?.message || '连接失败,请重试。'
+      $('settings-status').textContent = response?.message || 'Could not connect. Try again.'
       $('settings-status').dataset.kind = 'error'
       updateSettingsValidity()
       return
@@ -1059,9 +1074,9 @@ async function discoverModels() {
       option.value = model
       list.append(option)
     }
-    $('settings-status').textContent = `连接成功,找到 ${models.length} 个文本模型。`
+    $('settings-status').textContent = `Text models found: ${models.length}`
   } catch {
-    $('settings-status').textContent = '连接失败,请检查网络。'
+    $('settings-status').textContent = 'Could not connect. Check your network connection.'
   }
   updateSettingsValidity()
 }
@@ -1075,8 +1090,8 @@ async function checkConfig() {
     state.configured = false
   }
   if (!state.configured) {
-    showNotice('还没有连接模型。填写 API 地址、Key 和模型后才能翻译。', 'info', {
-      label: '去设置',
+    showNotice('Set up your API URL, key, and model to start translating.', 'info', {
+      label: 'Open settings',
       run: openSettings,
     })
   } else if (!['error', 'draft'].includes($('notice').dataset.kind)) {
@@ -1089,7 +1104,7 @@ function renderModes() {
     button.classList.toggle('is-active', button.dataset.mode === state.mode)
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode))
   }
-  $('send-label').textContent = state.mode === 'guide' ? '开始引导' : '翻译'
+  $('send-label').textContent = state.mode === 'guide' ? 'Start guided reading' : MODE_LABELS.translate
 }
 
 async function setMode(mode) {
@@ -1101,13 +1116,12 @@ async function setMode(mode) {
   } catch {
     // mode still applies for this session
   }
-  const label = mode === 'guide' ? '引导理解' : '翻译'
-  retranslateCurrent(`已切换到${label} · 已重新翻译`)
+  retranslateCurrent(`Switched to ${MODE_LABELS[mode]}`)
   if (state.workspace === 'translate') $('input').focus()
 }
 
 function sendRequest(entry, forceRefresh = false) {
-  setStatus(`${forceRefresh ? '重新生成' : '请求中'} · ${entry.mode === 'guide' ? '引导理解' : '翻译'} · ${entry.text.length} 字`)
+  setStatus(`${forceRefresh ? 'Regenerating' : 'Processing'} · ${MODE_LABELS[entry.mode]} · ${entry.text.length} characters`)
   try {
     chrome.runtime.sendMessage({
       type: 'START_TRANSLATION',
@@ -1125,10 +1139,10 @@ function sendRequest(entry, forceRefresh = false) {
         glossary: state.glossary,
       },
     }, (response) => {
-      if (!response?.accepted) failEntry(entry, '后台没有接受请求,请重试。')
+      if (!response?.accepted) failEntry(entry, 'Could not start the request. Try again.')
     })
   } catch {
-    failEntry(entry, '无法连接后台,请重启应用。')
+    failEntry(entry, 'Could not reach the background service. Restart the app.')
   }
 }
 
@@ -1152,13 +1166,13 @@ async function pasteAndTranslate() {
   try {
     const text = String(await window.sttDesktop.readClipboard() || '').trim()
     if (!text) {
-      setStatus('剪贴板里没有文字,请先复制要翻译的内容')
+      setStatus('Clipboard is empty. Copy some text to translate.')
       $('input').focus()
       return
     }
     if (state.workspace === 'translate') translatePastedText(text)
   } catch {
-    setStatus('读取剪贴板失败')
+    setStatus('Could not read the clipboard')
   }
 }
 
@@ -1193,7 +1207,7 @@ function scheduleLiveTranslate() {
     if (state.isComposing || !current || current !== text || current === state.liveText) return
     state.liveText = current
     submit({ keepInput: true })
-    setStatus('已自动翻译')
+    setStatus('Translation started automatically')
   }, 850)
 }
 
@@ -1205,12 +1219,12 @@ function submit(options = {}) {
   const text = $('input').value.trim()
   if (!text) {
     $('input').focus()
-    setStatus('请输入或粘贴要翻译的内容')
+    setStatus('Enter or paste text to translate')
     return
   }
   if (!state.configured) {
     void checkConfig()
-    setStatus('请先完成模型设置')
+    setStatus('Set up a translation model first')
     return
   }
   const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
@@ -1218,7 +1232,7 @@ function submit(options = {}) {
   const recent = state.entries[state.entries.length - 1]
   if (recent && recent.memoryKey === memoryKey && ['pending', 'loading', 'streaming'].includes(recent.status)
     && Date.now() - recent.createdAt < 2000) {
-    setStatus('相同内容正在处理中,请稍候')
+    setStatus('Already processing this text')
     return
   }
   const id = makeId('s')
@@ -1264,7 +1278,7 @@ function submit(options = {}) {
   render()
   cancelStaleRequests(entry.id)
   if (cached) {
-    setStatus('来自翻译记忆 · 即时')
+    setStatus('From translation memory')
     announceResult(entry.mode === 'guide'
       ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
       : entry.translatedText)
@@ -1295,7 +1309,7 @@ function handleTranslationEvent(payload) {
         entry.lexical = payload.lexicalDetails || null
         if (!entry.translatedText) {
           entry.status = 'error'
-          entry.error = '模型没有返回译文,请重试或换个模型。'
+          entry.error = 'The model returned no translation. Try again or choose another model.'
           setStatus(entry.error)
           restoreFailedText(entry)
           announceResult(entry.error)
@@ -1303,7 +1317,7 @@ function handleTranslationEvent(payload) {
         }
       }
       state.lastElapsed = Date.now() - entry.createdAt
-      setStatus(`完成 · ${state.lastElapsed} ms`)
+      setStatus(`Done · ${state.lastElapsed} ms`)
       announceResult(entry.mode === 'guide'
         ? (entry.guide?.answer?.meaning || entry.guide?.hints?.[0] || '')
         : entry.translatedText)
@@ -1350,9 +1364,9 @@ function handleSpeechEvent(payload) {
     return
   }
   if (!['end', 'error', 'interrupted', 'cancelled'].includes(payload.status)) return
-  if (payload.status === 'error') setSpeechStatus('朗读不可用，请检查朗读设置与系统语音。')
-  if (payload.status === 'end') setSpeechStatus('朗读结束。')
-  if (payload.status === 'interrupted' || payload.status === 'cancelled') setSpeechStatus('已停止朗读。')
+  if (payload.status === 'error') setSpeechStatus('Speech unavailable. Check speech settings and system voices.')
+  if (payload.status === 'end') setSpeechStatus('Playback finished.')
+  if (payload.status === 'interrupted' || payload.status === 'cancelled') setSpeechStatus('Playback stopped.')
   state.speechId = null
   state.speechEntryId = null
   patchSpeechButtons()
@@ -1368,7 +1382,7 @@ function patchSpeechButtons() {
   }
   const previewButton = $('btn-preview-speech')
   const isPreviewPlaying = Boolean(state.speechId) && state.speechEntryId === SPEECH_PREVIEW_ID
-  previewButton.textContent = isPreviewPlaying ? '停止试听' : '试听英文'
+  previewButton.textContent = isPreviewPlaying ? 'Stop preview' : 'Preview voice'
   previewButton.setAttribute('aria-pressed', String(isPreviewPlaying))
 }
 
@@ -1386,13 +1400,13 @@ function stopActiveSpeech() {
 
 function renderEmpty() {
   const box = el('div', 'empty')
-  box.append(el('h2', 'empty-title', '试试示例'))
+  box.append(el('h2', 'empty-title', 'Try an example'))
 
   const examples = el('div', 'empty-examples')
   for (const [label, text] of [
-    ['试一个单词', 'record'],
-    ['试一个句子', 'The report, which was filed late, still changed the decision.'],
-    ['试一段中文', '这份报告虽然提交晚了,但仍然改变了最终决定。'],
+    ['English word', 'record'],
+    ['English sentence', 'The report, which was filed late, still changed the decision.'],
+    ['Chinese sentence', '这份报告虽然提交晚了,但仍然改变了最终决定。'],
   ]) {
     const button = el('button', '', label)
     button.type = 'button'
@@ -1401,7 +1415,7 @@ function renderEmpty() {
       updateComposer()
       $('input').focus()
       if (state.configured) submit({ lookup: null })
-      else setStatus('已填入示例，配置模型后点「翻译」')
+      else setStatus('Example added. Set up your model, then click Translate.')
     })
     examples.append(button)
   }
@@ -1415,13 +1429,13 @@ function renderLexical(entry) {
   const box = el('div', 'lexical')
   if (lexical.phonetic) {
     const row = el('div', 'lexical-row')
-    row.append(el('span', 'lexical-label', '音标'))
+    row.append(el('span', 'lexical-label', 'Pronunciation'))
     row.append(el('span', 'phonetic-badge', lexical.phonetic))
     box.append(row)
   }
   if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
     const section = el('div', 'lexical-section')
-    section.append(el('div', 'lexical-section-title', '释义'))
+    section.append(el('div', 'lexical-section-title', 'Definitions'))
     const list = el('ul', 'definitions')
     for (const definition of lexical.definitions) {
       const item = el('li', 'sense')
@@ -1441,7 +1455,7 @@ function renderLexical(entry) {
   }
   if (lexical.contextual_analysis) {
     const note = el('div', 'lexical-context')
-    note.append(el('span', 'lexical-label', '语境'))
+    note.append(el('span', 'lexical-label', 'Context'))
     note.append(el('span', '', lexical.contextual_analysis))
     box.append(note)
   }
@@ -1482,7 +1496,7 @@ function revealNextHint(entry) {
   entry.hintCount = count + 1
   hints.append(hintNode(guide.hints[count], count, true))
   const remaining = guide.hints.length - entry.hintCount
-  if (remaining > 0) more.textContent = `再提示一点 · 还有 ${remaining} 条`
+  if (remaining > 0) more.textContent = `Next hint (${remaining} left)`
   else more.remove()
   persistHistory()
   updateScrollFab()
@@ -1493,7 +1507,7 @@ function renderGuide(entry) {
   if (!guide) return null
   const box = document.createDocumentFragment()
   const tools = el('div', 'guide-tools')
-  if (guide.phonetic) box.append(lexicalRow('音标', guide.phonetic))
+  if (guide.phonetic) box.append(lexicalRow('Pronunciation', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
     const hints = el('div', 'hints')
     hints.dataset.hints = 'true'
@@ -1501,7 +1515,7 @@ function renderGuide(entry) {
     guide.hints.slice(0, revealed).forEach((hint, index) => hints.append(hintNode(hint, index)))
     box.append(hints)
     if (revealed < guide.hints.length) {
-      const more = el('button', '', `再提示一点 · 还有 ${guide.hints.length - revealed} 条`)
+      const more = el('button', '', `Next hint (${guide.hints.length - revealed} left)`)
       more.type = 'button'
       more.dataset.hintMore = 'true'
       more.addEventListener('click', () => revealNextHint(entry))
@@ -1510,7 +1524,7 @@ function renderGuide(entry) {
   }
   const answer = guide.answer
   if (answer) {
-    const reveal = el('button', '', entry.answerRevealed ? '收起答案' : '揭晓答案')
+    const reveal = el('button', '', entry.answerRevealed ? 'Hide answer' : 'Reveal answer')
     reveal.type = 'button'
     reveal.addEventListener('click', () => {
       entry.answerRevealed = !entry.answerRevealed
@@ -1524,22 +1538,22 @@ function renderGuide(entry) {
     const panel = el('div', 'answer')
     if (answer.meaning) {
       const p = el('p')
-      p.append(el('strong', '', '含义:'), ` ${answer.meaning}`)
+      p.append(el('strong', '', 'Meaning:'), ` ${answer.meaning}`)
       panel.append(p)
     }
     if (answer.explanation) {
       const p = el('p')
-      p.append(el('strong', '', '解释:'), ` ${answer.explanation}`)
+      p.append(el('strong', '', 'Explanation:'), ` ${answer.explanation}`)
       panel.append(p)
     }
     if (answer.example) {
       const p = el('p')
-      p.append(el('strong', '', '例句:'), ` ${answer.example}`)
+      p.append(el('strong', '', 'Example:'), ` ${answer.example}`)
       panel.append(p)
     }
     if (answer.usage) {
       const p = el('p')
-      p.append(el('strong', '', '用法:'), ` ${answer.usage}`)
+      p.append(el('strong', '', 'Usage:'), ` ${answer.usage}`)
       panel.append(p)
     }
     box.append(panel)
@@ -1553,15 +1567,15 @@ function renderResult(entry) {
     result.classList.add('is-error')
     result.setAttribute('role', 'alert')
     const message = el('div', 'error-message')
-    message.append(el('strong', 'error-title', '处理失败'), el('span', '', entry.error || '请重试'))
+    message.append(el('strong', 'error-title', 'Request failed'), el('span', '', entry.error || 'Try again'))
     const tools = el('div', 'error-tools')
-    const retry = el('button', '', '重试')
+    const retry = el('button', '', 'Retry')
     retry.type = 'button'
     retry.addEventListener('click', () => regenerate(entry))
-    const fix = el('button', '', '去设置')
+    const fix = el('button', '', 'Open settings')
     fix.type = 'button'
     fix.addEventListener('click', openSettings)
-    const remove = el('button', 'is-danger', '删除')
+    const remove = el('button', 'is-danger', 'Delete')
     remove.type = 'button'
     remove.addEventListener('click', () => deleteEntry(entry))
     tools.append(retry, fix, remove)
@@ -1570,32 +1584,32 @@ function renderResult(entry) {
   }
   if (entry.status === 'pending' || entry.status === 'loading') {
     result.classList.add('is-loading')
-    result.textContent = '正在请求模型…'
+    result.textContent = 'Waiting for the model…'
     return result
   }
   if (entry.mode === 'guide') {
     if (entry.guide) {
       const guide = renderGuide(entry)
       if (guide) result.append(guide)
-      else result.textContent = '没有生成引导内容,可以重新生成。'
+      else result.textContent = 'No guidance was generated. Try again.'
     } else {
-      result.textContent = '没有生成引导内容,可以重新生成。'
+      result.textContent = 'No guidance was generated. Try again.'
     }
     return result
   }
   if (!entry.translatedText) {
     result.classList.add('is-loading')
-    result.textContent = '等待译文…'
+    result.textContent = 'Waiting for translation…'
     return result
   }
   const answer = el('div', 'translation-answer')
-  answer.append(el('span', 'translation-text', entry.translatedText))
+  answer.append(languageText('span', 'translation-text', entry.translatedText))
   if (entry.status === 'streaming') answer.append(el('span', 'caret'))
   result.append(answer)
   const lexical = renderLexical(entry)
   if (lexical) {
     const details = el('details', 'lexical-details')
-    details.append(el('summary', '', '词典详情 · 音标 / 释义 / 例句 / 语境'), lexical)
+    details.append(el('summary', '', 'Dictionary details'), lexical)
     result.append(details)
   }
   return result
@@ -1637,7 +1651,7 @@ function startCompanionEntry(entry, mode) {
   state.activeEntryId = companion.id
   render()
   if (cached) {
-    setStatus('来自翻译记忆 · 即时')
+    setStatus('From translation memory')
     persistHistory()
     void recordTutorLookup(companion)
   } else {
@@ -1650,10 +1664,10 @@ function deleteEntry(entry) {
   if (index < 0) return
   const removed = state.entries.splice(index, 1)[0]
   render()
-  showSnackbar('已删除 1 条记录', '撤销', () => {
+  showSnackbar('Entry deleted', 'Undo', () => {
     state.entries.splice(Math.min(index, state.entries.length), 0, removed)
     render()
-    setStatus('已撤销删除')
+    setStatus('Entry restored')
   })
 }
 
@@ -1679,7 +1693,7 @@ function positionActionMenu(menuEl, triggerEl) {
 function renderActions(entry) {
   const bar = el('div', 'actions')
   bar.setAttribute('role', 'toolbar')
-  bar.setAttribute('aria-label', '结果操作')
+  bar.setAttribute('aria-label', 'Result actions')
 
   const text = resultPlainText(entry)
   if (text && entry.status === 'done') {
@@ -1687,7 +1701,7 @@ function renderActions(entry) {
     copy.type = 'button'
     copy.addEventListener('click', (event) => {
       window.sttDesktop.copyText(text)
-      setStatus('结果已复制到剪贴板')
+      setStatus('Result copied to clipboard')
       showCopyDone(event.currentTarget)
     })
     bar.append(copy)
@@ -1709,7 +1723,7 @@ function renderActions(entry) {
   }
 
   if (entry.status === 'done' && entry.text) {
-    const save = el('button', 'action-save', '收藏')
+    const save = el('button', 'action-save', 'Save')
     save.type = 'button'
     save.dataset.saveButton = 'true'
     save.addEventListener('click', (event) => void saveVocabulary(entry, event.currentTarget))
@@ -1718,14 +1732,14 @@ function renderActions(entry) {
 
   const more = el('button', 'action-more', '⋯')
   more.type = 'button'
-  more.title = '更多操作'
-  more.setAttribute('aria-label', '更多操作')
+  more.title = 'More actions'
+  more.setAttribute('aria-label', 'More actions')
   more.setAttribute('aria-expanded', 'false')
   const menu = el('div', 'action-menu')
   menu.id = makeId('actions')
   menu.setAttribute('popover', 'auto')
   menu.setAttribute('role', 'group')
-  menu.setAttribute('aria-label', '结果操作')
+  menu.setAttribute('aria-label', 'Result actions')
   menu.hidden = true
   more.setAttribute('popovertarget', menu.id)
   menu.addEventListener('beforetoggle', (event) => {
@@ -1750,38 +1764,38 @@ function renderActions(entry) {
     menuAdd(ACTION_LABELS.regenerate, () => regenerate(entry))
     if (entry.text) {
       const companionMode = entry.mode === 'guide' ? 'translate' : 'guide'
-      const companion = menuAdd(companionMode === 'guide' ? '深入引导理解' : '快速翻译',
+      const companion = menuAdd(companionMode === 'guide' ? 'Explore with hints' : 'Translate',
         () => startCompanionEntry(entry, companionMode), false, 'action-companion')
       companion.dataset.companionMode = companionMode
     }
   }
   menuAdd(ACTION_LABELS.copySource, (event) => {
     window.sttDesktop.copyText(entry.text)
-    setStatus('原文已复制到剪贴板')
+    setStatus('Source text copied to clipboard')
     showCopyDone(event.currentTarget)
   })
-  menuAdd('复制双语对照', (event) => {
-    const bilingual = `原文\n${String(entry.text || '').trim()}\n\n译文\n${text || '（无结果）'}`
+  menuAdd('Copy source and translation', (event) => {
+    const bilingual = `Source text\n${String(entry.text || '').trim()}\n\nTranslation\n${text || '(No result)'}`
     window.sttDesktop.copyText(bilingual)
-    setStatus('双语对照已复制到剪贴板')
+    setStatus('Copied source and translation')
     showCopyDone(event.currentTarget)
   })
   if (entry.status === 'done' && text) {
-    menuAdd('朗读译文', () => toggleSpeech(entry, resultPlainText(entry)))
+    menuAdd('Listen to translation', () => toggleSpeech(entry, resultPlainText(entry)))
   }
-  menuAdd('回填输入框', () => {
+  menuAdd('Send to input', () => {
     $('input').value = entry.text
     updateComposer()
     $('input').focus()
-    setStatus('已回填到输入框')
+    setStatus('Text sent to input')
   })
-  menuAdd('导出此条为 Markdown', () => {
+  menuAdd('Export as Markdown', () => {
     const index = state.entries.indexOf(entry)
-    const filename = `译文-${entry.id || index + 1}.md`
+    const filename = `translation-${entry.id || index + 1}.md`
     downloadText(filename, entryToMarkdown(entry, index), 'text/markdown')
-    setStatus('已导出此条为 Markdown')
+    setStatus('Entry exported as Markdown')
   })
-  menuAdd('删除', () => deleteEntry(entry), true)
+  menuAdd('Delete', () => deleteEntry(entry), true)
   more.addEventListener('click', (event) => {
     event.stopPropagation()
   })
@@ -1796,9 +1810,9 @@ function renderEntryEl(entry) {
   if (collapsed) wrapper.classList.add('is-collapsed')
 
   const source = el('div', 'entry-source')
-  source.append(el('span', 'source-label', '原文'))
-  const bubble = el('div', 'bubble', entry.text)
-  bubble.title = '点击回填到输入框'
+  source.append(el('span', 'source-label', 'Source text'))
+  const bubble = languageText('div', 'bubble', entry.text, entry.sourceLanguage)
+  bubble.title = 'Click to send this text to input'
   bubble.addEventListener('click', () => {
     if (String(window.getSelection()?.toString() || '').trim()) return
     $('input').value = entry.text
@@ -1814,9 +1828,9 @@ function renderEntryEl(entry) {
   head.type = 'button'
   head.setAttribute('aria-expanded', String(!collapsed))
   head.setAttribute('aria-controls', `entry-result-${entry.id}`)
-  head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
-  if (entry.fromMemory) head.append(el('span', 'memory-tag', '翻译记忆'))
-  head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
+  head.append(el('span', 'tag', MODE_LABELS[entry.mode] || MODE_LABELS.translate))
+  if (entry.fromMemory) head.append(el('span', 'memory-tag', 'Translation memory'))
+  head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
   const chevron = el('span', 'chevron')
   chevron.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
@@ -1830,9 +1844,9 @@ function renderEntryEl(entry) {
 
   const body = el('div', 'entry-body')
   body.id = `entry-result-${entry.id}`
-  const label = entry.status === 'error' ? '出错了'
-    : ['pending', 'loading', 'streaming'].includes(entry.status) ? '正在处理'
-      : entry.mode === 'guide' ? '引导解析' : '译文'
+  const label = entry.status === 'error' ? 'Error'
+    : ['pending', 'loading', 'streaming'].includes(entry.status) ? 'Processing'
+      : entry.mode === 'guide' ? 'Guidance' : 'Translation'
   body.append(el('div', 'result-label', label))
   body.append(renderResult(entry))
   if (entry.status !== 'error') body.append(renderActions(entry))
@@ -1867,11 +1881,10 @@ function patchStreamResult(entry) {
     return
   }
   const label = node.querySelector('.entry-body > .result-label')
-  if (label) label.textContent = '正在处理'
+  if (label) label.textContent = 'Processing'
   result.classList.remove('is-error', 'is-loading')
   const answer = el('div', 'translation-answer')
-  const text = el('span', 'translation-text')
-  text.append(document.createTextNode(entry.translatedText || ''))
+  const text = languageText('span', 'translation-text', entry.translatedText || '')
   answer.append(text, el('span', 'caret'))
   result.replaceChildren(answer)
   const lexical = renderLexical(entry)
@@ -1904,7 +1917,7 @@ function cancelStaleRequests(exceptId) {
     } catch { }
     stale.requestId = makeId('r')
     stale.status = 'error'
-    stale.error = '已被新的翻译取代。'
+    stale.error = 'Replaced by a newer request.'
   }
 }
 
@@ -1916,10 +1929,10 @@ function cancelRequest(entry) {
   }
   entry.requestId = makeId('r')
   entry.status = 'error'
-  entry.error = '已取消请求,可以重新生成。'
+  entry.error = 'Request canceled. You can try again.'
   restoreFailedText(entry)
   renderEntry(entry)
-  setStatus('已取消请求')
+  setStatus('Request canceled')
 }
 
 function regenerate(entry) {
@@ -1940,7 +1953,7 @@ function regenerate(entry) {
 function toggleSpeech(entry, text = entry.text) {
   if (state.speechId) {
     const isSameEntry = state.speechEntryId === entry.id
-    setSpeechStatus('已停止朗读。')
+    setSpeechStatus('Playback stopped.')
     stopActiveSpeech()
     patchSpeechButtons()
     if (isSameEntry) return
@@ -1948,19 +1961,19 @@ function toggleSpeech(entry, text = entry.text) {
   const speechId = makeId('speech')
   state.speechId = speechId
   state.speechEntryId = entry.id
-  setSpeechStatus('正在朗读…')
+  setSpeechStatus('Reading aloud…')
   patchSpeechButtons()
   try {
     chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
-        setSpeechStatus(response?.message || '朗读不可用')
+        setSpeechStatus(response?.message || 'Speech unavailable')
         state.speechId = null
         state.speechEntryId = null
         patchSpeechButtons()
       }
     })
   } catch {
-    setSpeechStatus('朗读不可用')
+    setSpeechStatus('Speech unavailable')
     state.speechId = null
     state.speechEntryId = null
     patchSpeechButtons()
@@ -1987,11 +2000,11 @@ async function saveVocabulary(entry, button) {
         sourceUrl: '',
       },
     })
-    button.textContent = response?.ok ? '✓ 已收藏' : '收藏失败'
-    setStatus(response?.ok ? '已加入表达本' : '收藏失败')
+    button.textContent = response?.ok ? '✓ Saved' : 'Could not save'
+    setStatus(response?.ok ? 'Saved to vocabulary' : 'Could not save')
     if (response?.ok) void updateStudyProgress()
   } catch {
-    button.textContent = '收藏失败'
+    button.textContent = 'Could not save'
   }
   button.removeAttribute('aria-busy')
 }
@@ -2020,7 +2033,7 @@ function bind() {
     try {
       await window.sttDesktop.openReleases()
     } catch {
-      showNotice('无法打开发布页面', 'error', null, true)
+      showNotice('Could not open the releases page', 'error', null, true)
     }
   })
   $('btn-settings').addEventListener('click', openSettings)
@@ -2065,32 +2078,32 @@ function bind() {
   $('archive-conflict-cancel').addEventListener('click', () => {
     pendingArchiveImport = null
     $('archive-conflict').hidden = true
-    $('archive-status').textContent = '已取消导入,现有数据未改动。'
+    $('archive-status').textContent = 'Import canceled'
   })
   $('btn-library').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-study-progress').addEventListener('click', () => window.sttDesktop.openLibrary())
   $('btn-log').addEventListener('click', () => window.sttDesktop.openLog())
   $('opt-always-on-top').addEventListener('change', (event) => {
     void window.sttDesktop.setAlwaysOnTop(event.target.checked)
-    setStatus(event.target.checked ? '窗口已置顶' : '已取消置顶')
+    setStatus(event.target.checked ? 'Always on top enabled' : 'Always on top disabled')
   })
   $('opt-login-item').addEventListener('change', (event) => {
     void window.sttDesktop.setLoginItem(event.target.checked)
-    setStatus(event.target.checked ? '已开启开机自启' : '已关闭开机自启')
+    setStatus(event.target.checked ? 'Launch at login enabled' : 'Launch at login disabled')
   })
   $('opt-live-translate').addEventListener('change', (event) => {
     state.liveTranslate = event.target.checked
     clearTimeout(state.liveTimer)
     state.liveTimer = 0
     void chrome.storage.sync.set({ desktop_live_translate: state.liveTranslate })
-    setStatus(state.liveTranslate ? '已开启输入后自动翻译' : '已关闭输入后自动翻译')
+    setStatus(state.liveTranslate ? 'Translate as you type enabled' : 'Translate as you type disabled')
   })
   $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
   $('glossary-add').addEventListener('click', () => {
     const source = $('glossary-source').value.trim()
     const target = $('glossary-target').value.trim()
     if (!source || !target) {
-      setStatus('请填写术语原文和固定译法')
+      setStatus('Enter the term and its preferred translation.')
       return
     }
     state.glossary = sanitizeGlossary([...state.glossary, { source, target }])
@@ -2098,26 +2111,26 @@ function bind() {
     $('glossary-target').value = ''
     persistGlossary()
     renderGlossaryList()
-    setStatus('已添加术语')
+    setStatus('Term added')
   })
   $('lang-target').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
   $('lang-source').addEventListener('change', (event) => setSourceLanguage(event.target.value, true))
   $('btn-swap-lang').addEventListener('click', swapLanguages)
   $('btn-clear').addEventListener('click', () => {
     if (!state.entries.length) {
-      setStatus('没有可清空的翻译历史')
+      setStatus('No history to clear')
       return
     }
     const count = state.entries.length
-    showSnackbar('确定清空全部 ' + count + ' 条翻译历史？', '清空', () => {
+    showSnackbar(`Clear translation history (${count})?`, 'Clear', () => {
       const removed = state.entries.slice()
       state.entries = []
       void window.sttDesktop.clearHistory()
       render()
-      showSnackbar('已清空 ' + count + ' 条翻译历史', '撤销', () => {
+      showSnackbar('Translation history cleared', 'Undo', () => {
         state.entries = removed
         render()
-        setStatus('已撤销清空')
+        setStatus('Translation history restored')
       })
     })
   })
@@ -2168,7 +2181,7 @@ function bind() {
     state.prefs.pasteAutoSubmit = event.target.checked
     updateComposer()
     void savePrefs()
-    setStatus(event.target.checked ? '粘贴后会自动翻译' : '粘贴后需手动点翻译')
+    setStatus(event.target.checked ? 'Translate on paste enabled' : 'Translate on paste disabled')
   })
   $('opt-enter').addEventListener('change', (event) => {
     state.prefs.enterToSend = event.target.checked
@@ -2205,7 +2218,7 @@ function bind() {
     state.prefs.accent = swatch.dataset.accent
     void savePrefs()
     applyPrefs()
-    setStatus(`已切换强调色:${swatch.title}`)
+    setStatus(`Accent color: ${swatch.title}`)
   })
   $('btn-export').addEventListener('click', (event) => {
     event.stopPropagation()
@@ -2299,7 +2312,7 @@ function bind() {
     if (action === 'copy') {
       void window.sttDesktop.copyText(text)
       showCopyDone(button)
-      setStatus('已复制选中文字')
+      setStatus('Selection copied')
       selectionFeedback = true
       setTimeout(() => {
         selectionFeedback = false
@@ -2454,7 +2467,7 @@ function bind() {
     state.activeEntryId = activeId
     persistHistory()
     render()
-    setStatus('悬浮卡片的翻译已同步到学习记录')
+    setStatus('Floating card translation added to history')
   })
 }
 
@@ -2516,7 +2529,7 @@ async function init() {
       state.entries = restored.map((entry) => ({
         ...entry,
         status: entry.status === 'done' ? 'done' : 'error',
-        error: entry.status === 'done' ? '' : (entry.error || '上次未完成,可重新生成'),
+        error: entry.status === 'done' ? '' : (entry.error || 'The last request did not finish. Try again.'),
       }))
     }
   } catch {
@@ -2527,9 +2540,9 @@ async function init() {
   void maybeShowReviewReminder()
   try {
     const version = await window.sttDesktop.getAppVersion()
-    $('installed-version').textContent = version ? `v${version}` : '未知'
+    $('installed-version').textContent = version ? `v${version}` : 'Unknown'
   } catch {
-    $('installed-version').textContent = '未知'
+    $('installed-version').textContent = 'Unknown'
   }
   try {
     const savedDraft = await chrome.storage.local.get('desktop_input_draft')
@@ -2544,7 +2557,7 @@ async function init() {
         }
       }
       updateComposer()
-      setStatus(state.lastSubmittedText ? '已恢复上次原文' : '已恢复上次未发送的内容')
+      setStatus(state.lastSubmittedText ? 'Last source text restored' : 'Unsent text restored')
     }
   } catch {
     // saved draft is optional

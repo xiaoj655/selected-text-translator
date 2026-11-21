@@ -8,7 +8,7 @@ import { installMainChrome } from './chrome-shim-main.js'
 import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
-import { createTutor } from './tutor.js'
+import { coachError, createTutor } from './tutor.js'
 import { discoverReadingArticles } from './reading-sources.js'
 import { createReadingTutor } from './reading-tutor.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
@@ -117,19 +117,19 @@ function installReadingIpc(storage, fetcher) {
     'stt:reading-discuss'({ articleId, pastedText, question, history } = {}) {
       const article = articleId
         ? articles.get(articleId)
-        : typeof pastedText === 'string' && { title: '自选英文', text: pastedText.slice(0, 12000).trim() }
-      if (!article) throw new Error('这篇文章已不在目录里，请刷新文章列表后再选一次。')
+        : typeof pastedText === 'string' && { title: 'Pasted text', text: pastedText.slice(0, 12000).trim() }
+      if (!article) throw coachError('This article is no longer in the list. Refresh and choose it again.')
       return readingTutor.ask({ article, question, history })
     },
     'stt:reading-open'(articleId) {
       const article = articles.get(articleId)
-      if (!article?.url.startsWith('https://')) throw new Error('暂时无法打开原文，请刷新文章列表后重试。')
+      if (!article?.url.startsWith('https://')) throw new Error('Could not open the original article. Refresh the list and try again.')
       return shell.openExternal(article.url)
     },
   }
   for (const [channel, handle] of Object.entries(handlers)) {
     ipcMain.handle(channel, (event, input) => {
-      if (!isMainWindowEvent(event)) throw new Error('请在主窗口使用文章带读。')
+      if (!isMainWindowEvent(event)) throw new Error('Open the main window to read an article.')
       return handle(input)
     })
   }

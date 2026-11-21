@@ -51,7 +51,7 @@ export async function verifyResultMenu({ app, page, mock, shot }) {
     await page.locator('#btn-send').click()
     await page.waitForFunction((value) => {
       return document.querySelector('.entry .bubble')?.textContent.includes(value)
-        && document.querySelector('.entry .result-label')?.textContent === '译文'
+        && document.querySelector('.entry .result-label')?.textContent === 'Translation'
     }, text, { timeout: 15000 })
     await page.waitForFunction(() => innerWidth === 620 && innerHeight === 500)
     await page.locator('.entry .action-more').click()
@@ -60,7 +60,7 @@ export async function verifyResultMenu({ app, page, mock, shot }) {
     await assertMenuClickable(page)
     await shot(page, 'main-actions-small-window')
 
-    await page.getByRole('button', { name: '复制原文', exact: true }).focus()
+    await page.getByRole('button', { name: 'Copy source text', exact: true }).focus()
     await page.keyboard.press('Escape')
     await assertMenuClosed(page)
     assert.equal(await page.locator('.entry .action-more').evaluate((button) => document.activeElement === button), true,
@@ -87,8 +87,8 @@ export async function verifyResultMenu({ app, page, mock, shot }) {
     await page.locator('.entry .action-more').click()
     await page.locator('.entry .action-menu').waitFor({ state: 'visible' })
     await assertMenuClickable(page)
-    await page.getByRole('button', { name: '重新生成', exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('.entry .result-label')?.textContent === '译文')
+    await page.getByRole('button', { name: 'Regenerate', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.entry .result-label')?.textContent === 'Translation')
     assert.equal(mock.requests.slice(requestStart).filter((request) => request.text === text).length, 2,
       'a real pointer click must regenerate the result through one fresh API request')
     await assertMenuClosed(page)

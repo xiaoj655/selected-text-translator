@@ -1,8 +1,8 @@
-const KIND_LABELS = { phrase: '读懂句中的短语', sentence: '读懂整句' }
+const KIND_LABELS = { phrase: 'Understand a phrase in context', sentence: 'Understand the whole sentence' }
 const OUTCOME_LABELS = {
-  independent: '每道新句都独立读对了。',
-  hinted: '经过提示或订正，最后一道新句读对了。',
-  incorrect: '最后一道新句还有卡点，下一次会换个场景再练。',
+  independent: 'You understood all the new sentences on your own.',
+  hinted: 'You understood the last sentence after a hint or correction.',
+  incorrect: 'You’ll practice the same skill in a different context next time.',
 }
 
 export function el(tag, className, text) {
@@ -26,9 +26,10 @@ export function englishText(tag, className, text) {
   return node
 }
 
-function lessonError(error) {
+export function coachErrorText(error, fallback) {
   const message = String(error?.message || '').replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, '')
-  return /^[\p{Script=Han}]/u.test(message) ? message : '生成练习失败，请重试。'
+  const marker = '[english-coach] '
+  return message.startsWith(marker) ? message.slice(marker.length) : fallback
 }
 
 function lessonOutcome(answers) {
@@ -37,7 +38,7 @@ function lessonOutcome(answers) {
 }
 
 export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
-  const titleEl = el('h3', 'sr-only', '复习练习')
+  const titleEl = el('h3', 'sr-only', 'Review')
   titleEl.tabIndex = -1
   const contentEl = el('div', 'tutor-content')
   rootEl.append(titleEl, contentEl)
@@ -83,19 +84,19 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
     const source = plan.source
     if (!source) {
       if (plan.candidateCount === 0) {
-        showActionMessage('还没有练习材料', '在翻译工作台查过的英文短语和句子会成为练习材料。')
+        showActionMessage('No practice material yet', 'Translate an English phrase or sentence to start building your practice material.')
         return
       }
-      const next = Number.isFinite(plan.nextReviewAt) ? new Intl.DateTimeFormat('zh-CN', {
-        month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      const next = Number.isFinite(plan.nextReviewAt) ? new Intl.DateTimeFormat('en', {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
       }).format(plan.nextReviewAt) : ''
-      showActionMessage('暂时没有待练习的内容', next ? `下次复练时间是 ${next}。` : '到复练时间会换一句英文再练。')
+      showActionMessage('You’re all caught up', next ? `Next review: ${next}` : 'A new sentence will be ready when your next review is due.')
       return
     }
     const headingEl = el('h4', '', KIND_LABELS[source.kind])
     const reason = source.isReview
-      ? '来自查词记录 · 到期复练'
-      : source.occurrenceCount > 1 ? `来自查词记录 · 在 ${source.occurrenceCount} 天里查过` : '来自查词记录'
+      ? 'From your translation history · Due for review'
+      : source.occurrenceCount > 1 ? `From your translation history · Looked up on ${source.occurrenceCount} different days` : 'From your translation history'
     const cardEl = setCard(headingEl, el('p', 'tutor-detail', reason), englishText('blockquote', 'tutor-source', source.text))
     if (errorMessage) {
       const errorEl = el('p', 'tutor-error', errorMessage)
@@ -104,21 +105,21 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
       focus(errorEl)
     }
     if (!plan.isConfigured) {
-      cardEl.append(el('p', 'tutor-detail', '启用通用学习模型后就能生成练习。'))
-      if (onOpenSettings) cardEl.append(button('打开模型设置', 'tutor-settings', onOpenSettings, 'primary'))
+      cardEl.append(el('p', 'tutor-detail', 'Set up a learning model to generate exercises.'))
+      if (onOpenSettings) cardEl.append(button('Open model settings', 'tutor-settings', onOpenSettings, 'primary'))
       return
     }
     const actionsEl = el('div', 'tutor-actions')
     actionsEl.append(
-      button(source.isReview ? '开始复练' : '开始练习', 'tutor-start', startLesson, 'primary'),
-      el('span', 'tutor-detail', '约 2–3 分钟'),
+      button(source.isReview ? 'Start review' : 'Start practice', 'tutor-start', startLesson, 'primary'),
+      el('span', 'tutor-detail', 'About 2–3 minutes'),
     )
     cardEl.append(actionsEl)
   }
 
   async function loadPlan(showLoading = true) {
     const request = ++planRequest
-    if (showLoading) showProgress('正在读取查词记录…')
+    if (showLoading) showProgress('Loading your translation history…')
     try {
       const nextPlan = await api.getPlan()
       if (request !== planRequest) return
@@ -126,7 +127,7 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
       showPlan()
     } catch {
       if (request !== planRequest) return
-      showActionMessage('读取练习计划失败', '可以重新读取本机的查词记录。', button('重试', '', () => void loadPlan()))
+      showActionMessage('Couldn’t load your practice plan', 'Try loading your translation history again.', button('Try again', '', () => void loadPlan()))
     }
   }
 
@@ -134,7 +135,7 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
     if (isStarting || !plan?.source || !plan.isConfigured) return
     isStarting = true
     planRequest++
-    showProgress('正在出题…')
+    showProgress('Preparing your questions…')
     try {
       lesson = await api.startLesson(plan.source.id)
       answers = []
@@ -143,7 +144,7 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
       renderQuestion()
     } catch (error) {
       lesson = null
-      showPlan(lessonError(error))
+      showPlan(coachErrorText(error, 'Couldn’t generate the exercise. Try again.'))
     } finally {
       isStarting = false
     }
@@ -153,7 +154,7 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
     const question = lesson.questions[position]
     const headingEl = el('h4', '', KIND_LABELS[plan.source.kind])
     headingEl.tabIndex = -1
-    const counterEl = el('p', 'tutor-step', `第 ${position + 1} / ${lesson.questions.length} 题`)
+    const counterEl = el('p', 'tutor-step', `Question ${position + 1} of ${lesson.questions.length}`)
     const questionHead = el('header', 'tutor-question-head')
     questionHead.append(headingEl, counterEl)
     const sentenceEl = englishText('p', 'tutor-sentence', question.sentence)
@@ -167,10 +168,10 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
     hintEl.hidden = true
     hintEl.tabIndex = -1
     let usedHint = false
-    const hintButtonEl = button('看提示', 'tutor-hint', () => {
+    const hintButtonEl = button('Show hint', 'tutor-hint', () => {
       hintEl.hidden = !hintEl.hidden
       hintButtonEl.setAttribute('aria-expanded', String(!hintEl.hidden))
-      hintButtonEl.textContent = hintEl.hidden ? '看提示' : '收起提示'
+      hintButtonEl.textContent = hintEl.hidden ? 'Show hint' : 'Hide hint'
       if (hintEl.hidden) return
       usedHint = true
       focus(hintEl)
@@ -197,14 +198,14 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
   function showFeedback(question, cardEl, answer) {
     const hasNext = position + 1 < lesson.questions.length
     const feedbackEl = el('div', 'tutor-feedback')
-    const headingEl = el('h5', '', answer.correct ? '答对了' : '这句的理解有一点偏差')
+    const headingEl = el('h5', '', answer.correct ? 'Correct' : 'Not quite')
     headingEl.tabIndex = -1
     headingEl.id = 'tutor-feedback'
     feedbackEl.dataset.result = answer.correct ? 'correct' : 'incorrect'
     feedbackEl.append(headingEl)
-    if (!answer.correct) feedbackEl.append(el('p', 'tutor-correct-answer', `正确答案是 ${question.choices[question.correctIndex]}`))
+    if (!answer.correct) feedbackEl.append(el('p', 'tutor-correct-answer', `Correct answer: ${question.choices[question.correctIndex]}`))
     feedbackEl.append(el('p', '', question.explanation))
-    cardEl.append(feedbackEl, button(hasNext ? '下一题' : '完成练习', 'tutor-next', () => {
+    cardEl.append(feedbackEl, button(hasNext ? 'Next question' : 'Finish practice', 'tutor-next', () => {
       if (hasNext) {
         position++
         renderQuestion()
@@ -216,14 +217,14 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   function showSummary(outcome) {
-    const headingEl = el('h4', '', '练习完成')
+    const headingEl = el('h4', '', 'Practice complete')
     headingEl.id = 'tutor-summary'
     headingEl.tabIndex = -1
     const numCorrect = answers.filter((answer) => answer.correct).length
     const statusEl = el('div', 'tutor-summary-status')
-    statusEl.append(el('p', 'tutor-detail', '正在保存练习结果…'))
-    setCard(headingEl, el('p', 'tutor-detail', `本轮主题 ${lesson.topic}`), el('p', '', OUTCOME_LABELS[outcome]),
-      el('p', 'tutor-detail', `答对 ${numCorrect} / ${answers.length} 题`), statusEl)
+    statusEl.append(el('p', 'tutor-detail', 'Saving your results…'))
+    setCard(headingEl, el('p', 'tutor-detail', `Topic: ${lesson.topic}`), el('p', '', OUTCOME_LABELS[outcome]),
+      el('p', 'tutor-detail', `${numCorrect} of ${answers.length} correct`), statusEl)
     focus(headingEl)
     return statusEl
   }
@@ -242,14 +243,14 @@ export function createReviewWorkspace({ rootEl, api, onOpenSettings }) {
       })
       if (result === false) throw new Error('Unable to save lesson result.')
       isSaved = true
-      statusEl.replaceChildren(button('查看下一组练习', 'tutor-continue', () => {
+      statusEl.replaceChildren(button('Next exercise', 'tutor-continue', () => {
         lesson = null
         void loadPlan()
       }, 'primary'))
     } catch {
-      const errorEl = el('p', 'tutor-error', '保存练习结果失败，可以重试。')
+      const errorEl = el('p', 'tutor-error', 'Couldn’t save your results. Try again.')
       errorEl.tabIndex = -1
-      statusEl.replaceChildren(errorEl, button('重试保存', 'tutor-retry', saveResult, 'primary'))
+      statusEl.replaceChildren(errorEl, button('Retry saving', 'tutor-retry', saveResult, 'primary'))
       focus(errorEl)
     } finally {
       isSaving = false

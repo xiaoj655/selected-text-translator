@@ -121,10 +121,10 @@ function sendRequest(forceRefresh = false) {
         contextEnd: null,
       },
     }, (response) => {
-      if (!response?.accepted) failEntry('后台没有接受请求,请重试。')
+      if (!response?.accepted) failEntry('Request could not start. Try again.')
     })
   } catch {
-    failEntry('无法连接后台,请重启应用。')
+    failEntry('Could not connect to the app. Restart it and try again.')
   }
 }
 
@@ -268,9 +268,9 @@ async function saveSelection(text, button) {
         sourceUrl: '',
       },
     })
-    button.textContent = response?.ok ? '✓ 已收藏' : '收藏失败'
+    button.textContent = response?.ok ? '✓ Saved' : 'Could not save'
   } catch {
-    button.textContent = '收藏失败'
+    button.textContent = 'Could not save'
   }
   button.removeAttribute('aria-busy')
 }
@@ -317,9 +317,9 @@ async function saveVocabulary(button) {
         sourceUrl: '',
       },
     })
-    button.textContent = response?.ok ? '✓ 已收藏' : '收藏失败'
+    button.textContent = response?.ok ? '✓ Saved' : 'Could not save'
   } catch {
-    button.textContent = '收藏失败'
+    button.textContent = 'Could not save'
   }
   button.removeAttribute('aria-busy')
 }
@@ -370,12 +370,12 @@ function render() {
     resultEl.classList.add('is-error')
     resultEl.textContent = entry.error
   } else if (entry.status === 'done') {
-    resultEl.textContent = entry.translatedText || '没有返回译文,可以重新生成。'
+    resultEl.textContent = entry.translatedText || 'No translation returned. Try again.'
     const lexical = renderLexical(entry)
     if (lexical) resultEl.append(lexical)
   } else {
     resultEl.classList.add('is-loading')
-    resultEl.textContent = entry.status === 'streaming' ? '' : '正在请求模型…'
+    resultEl.textContent = entry.status === 'streaming' ? '' : 'Contacting model…'
     if (entry.status === 'streaming') {
       resultEl.append(document.createTextNode(entry.translatedText), el('span', 'caret'))
     }
@@ -389,10 +389,10 @@ function renderLexical(entry) {
   const lexical = entry.lexical
   if (!lexical) return null
   const box = el('div', 'lexical')
-  if (lexical.phonetic) box.append(lexicalRow('音标', lexical.phonetic))
+  if (lexical.phonetic) box.append(lexicalRow('Pronunciation', lexical.phonetic))
   if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
     const row = el('div', 'lexical-row')
-    row.append(el('span', 'lexical-label', '释义'))
+    row.append(el('span', 'lexical-label', 'Definitions'))
     const list = el('ul', 'definitions')
     for (const definition of lexical.definitions) {
       const parts = []
@@ -404,7 +404,7 @@ function renderLexical(entry) {
     row.append(list)
     box.append(row)
   }
-  if (lexical.contextual_analysis) box.append(lexicalRow('语境', lexical.contextual_analysis))
+  if (lexical.contextual_analysis) box.append(lexicalRow('Context', lexical.contextual_analysis))
   return box.childElementCount ? box : null
 }
 
@@ -442,7 +442,7 @@ function cancelRequest() {
   cancelActiveRequest()
   entry.requestId = makeId('r')
   entry.status = 'error'
-  entry.error = '已取消请求,可以重新生成。'
+  entry.error = 'Request canceled. You can try again.'
   render()
   reportEntry()
 }
@@ -477,7 +477,7 @@ function renderActions() {
       scheduleResize()
     }
   }, 'action-more')
-  more.setAttribute('aria-label', '更多操作')
+  more.setAttribute('aria-label', 'More actions')
   more.setAttribute('aria-expanded', 'false')
 
   const menu = el('div', 'action-menu')
@@ -493,17 +493,17 @@ function renderActions() {
   }
   menuAdd(ACTION_LABELS.copySource, () => copyText(entry.text))
   if (entry.status === 'done' && resultPlainText(entry)) {
-    menuAdd('朗读译文', () => toggleSpeech(resultPlainText(entry)))
-    menuAdd('复制双语对照', (button) => {
+    menuAdd('Listen to translation', () => toggleSpeech(resultPlainText(entry)))
+    menuAdd('Copy source and translation', (button) => {
       const translated = resultPlainText(entry)
-      copyText(`原文\n${String(entry.text || '').trim()}\n\n译文\n${translated || '（无结果）'}`, button)
+      copyText(`Source\n${String(entry.text || '').trim()}\n\nTranslation\n${translated || '(No result)'}`, button)
     })
   }
   if (entry.status === 'done') {
-    menuAdd('收藏', (button) => void saveVocabulary(button))
+    menuAdd('Save', (button) => void saveVocabulary(button))
   }
   if (!isBusy) menuAdd(ACTION_LABELS.regenerate, regenerate)
-  menuAdd('在主窗口打开', openInMainWindow)
+  menuAdd('Open in main window', openInMainWindow)
   bar.append(menu)
 }
 

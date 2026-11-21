@@ -1,3 +1,4 @@
+import { uiText } from './ui-language.js'
 import { READING_STORAGE_KEYS, readReadingSettings, saveReadingSettings } from './reading-support.js'
 
 const CONTROL_FIELDS = Object.freeze({
@@ -30,7 +31,7 @@ export async function createReadingControls({ autoSave = false } = {}) {
   }
 
   function setControlValue(key, value) {
-    if (key === 'voiceName') ensureVoiceOption(value, `${value} · 已保存`)
+    if (key === 'voiceName') ensureVoiceOption(value, uiText(`${value} · 已保存`, `${value} · Saved`))
     controls[key].value = String(value ?? '')
     if (key === 'rate' && !controls[key].value) controls[key].value = '0.9'
   }
@@ -52,13 +53,13 @@ export async function createReadingControls({ autoSave = false } = {}) {
       const result = await saveReadingSettings(values, { changedKeys })
       if (result.ok) {
         for (const key of changedKeys) previous[key] = values[key]
-        if (autoSave) statusEl.textContent = '阅读偏好已自动保存。'
+        if (autoSave) statusEl.textContent = uiText('阅读偏好已自动保存。', 'Reading preferences saved.')
       } else {
         statusEl.textContent = result.error
       }
       return result
     } catch {
-      statusEl.textContent = '保存失败，请重试。'
+      statusEl.textContent = uiText('保存失败，请重试。', 'Could not save settings. Try again.')
       return { ok: false }
     }
   }
@@ -85,7 +86,7 @@ export async function createReadingControls({ autoSave = false } = {}) {
   })
   previewEl.addEventListener('click', async () => {
     previewEl.disabled = true
-    statusEl.textContent = '正在准备试听…'
+    statusEl.textContent = uiText('正在准备试听…', 'Preparing voice preview…')
     try {
       const result = await chrome.runtime.sendMessage({
         type: 'PREVIEW_SPEECH',
@@ -96,9 +97,9 @@ export async function createReadingControls({ autoSave = false } = {}) {
           rate: Number(controls.rate.value),
         },
       })
-      statusEl.textContent = result?.ok ? '正在播放所选音色。' : result?.message || '无法播放，请检查系统音色。'
+      statusEl.textContent = result?.ok ? uiText('正在播放所选音色。', 'Playing the selected voice.') : result?.message || uiText('无法播放，请检查系统音色。', 'Could not play audio. Check your system voices.')
     } catch {
-      statusEl.textContent = '无法播放，请重新加载插件后重试。'
+      statusEl.textContent = uiText('无法播放，请重新加载插件后重试。', 'Could not play audio. Restart the app and try again.')
     } finally {
       previewEl.disabled = false
     }
@@ -116,16 +117,16 @@ export async function createReadingControls({ autoSave = false } = {}) {
         }),
       ])
       for (const voice of result?.voices || []) {
-        const label = `${voice.voiceName} · ${voice.lang || '自动'}${voice.remote ? ' · 在线' : ''}`
+        const label = `${voice.voiceName} · ${voice.lang || uiText('自动', 'Auto')}${voice.remote ? uiText(' · 在线', ' · Online') : ''}`
         ensureVoiceOption(voice.voiceName, label)
         const optionEl = Array.from(controls.voiceName.options).find((option) => option.value === voice.voiceName)
         if (optionEl) optionEl.textContent = label
       }
       if (!result?.voices?.length && !statusEl.textContent) {
-        statusEl.textContent = '暂未发现可用音色，其他设置可正常使用。'
+        statusEl.textContent = uiText('暂未发现可用音色，其他设置可正常使用。', 'No voices found. Other settings are still available.')
       }
     } catch {
-      if (!statusEl.textContent) statusEl.textContent = '暂时无法获取音色，其他设置可正常使用。'
+      if (!statusEl.textContent) statusEl.textContent = uiText('暂时无法获取音色，其他设置可正常使用。', 'Could not load voices. Other settings are still available.')
     } finally {
       clearTimeout(timeoutId)
     }

@@ -173,7 +173,7 @@ async function loadSource(source, fetchImpl) {
 
 export async function discoverReadingArticles(category, { fetchImpl = globalThis.fetch } = {}) {
   if (typeof category !== 'string' || !Object.hasOwn(READING_SOURCES, category)) {
-    throw new Error('请选择一个阅读分类。')
+    throw new Error('Choose an article category.')
   }
   const sources = READING_SOURCES[category]
   const results = await Promise.allSettled(sources.map((source) => loadSource(source, fetchImpl)))

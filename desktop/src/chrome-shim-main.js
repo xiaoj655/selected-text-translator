@@ -43,6 +43,7 @@ export function installMainChrome({ storage, windows, tts, providerFetch, logger
   const callback = (value) => (typeof value === 'function' ? value : () => {})
 
   const chrome = {
+    desktopUI: true,
     runtime: {
       lastError: undefined,
       onMessage: {

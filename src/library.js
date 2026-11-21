@@ -1,3 +1,4 @@
+import { uiText, isDesktopUI } from './ui-language.js'
 import { getDueEntries, MAX_BACKUP_FILE_BYTES, scheduleReview, serializeVocabularyBackup } from './vocabulary-store.js'
 import { getStudyProgress } from './vocabulary-progress.js'
 import { buildAnkiTsv, countAnkiRows } from './anki-export.js'
@@ -33,7 +34,7 @@ if (window.sttDesktop) {
   style.rel = 'stylesheet'
   style.href = new URL('../../app/library.css', import.meta.url).href
   document.head.append(style)
-  document.querySelector('.intro-row h1').textContent = '我的表达本'
+  document.querySelector('.intro-row h1').textContent = 'Vocabulary'
   const applyAppearance = (prefs = {}) => {
     document.documentElement.dataset.theme = prefs?.theme || 'system'
     document.documentElement.dataset.font = prefs?.font || 'normal'
@@ -81,7 +82,7 @@ async function send(type, payload = {}) {
 async function init() {
   try {
     state.draftNoticeEl = createEl('section', 'draft-notice hidden')
-    state.draftNoticeEl.setAttribute('aria-label', '未保存的修订')
+    state.draftNoticeEl.setAttribute('aria-label', uiText('未保存的修订', 'Unsaved edits'))
     undoNoticeEl.after(state.draftNoticeEl)
     allTabEl.addEventListener('click', () => selectView('all'))
     reviewTabEl.addEventListener('click', () => selectView('review'))
@@ -110,7 +111,7 @@ async function init() {
     })
     await refresh()
   } catch {
-    setStatus('无法载入表达本，请重新打开页面。', true)
+    setStatus(uiText('无法载入表达本，请重新打开页面。', 'Could not load your vocabulary. Reopen the page and try again.'), true)
   }
 }
 
@@ -118,7 +119,7 @@ async function refresh() {
   if (state.isBusy) { state.shouldRefresh = true; return }
   try {
     const response = await send('VOCABULARY_LIST')
-    if (!response.ok) { setStatus(response.message || '无法读取收藏，请重试。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('无法读取收藏，请重试。', 'Could not load saved vocabulary. Try again.'), true); return }
     if (state.isBusy) { state.shouldRefresh = true; return }
     state.shouldRefresh = false
     state.entries = Array.isArray(response.entries) ? response.entries : []
@@ -131,7 +132,7 @@ async function refresh() {
     if (state.mode === 'review') renderReview()
     else renderList()
   } catch {
-    setStatus('无法读取收藏，请重试。', true)
+    setStatus(uiText('无法读取收藏，请重试。', 'Could not load saved vocabulary. Try again.'), true)
   }
 }
 
@@ -139,7 +140,7 @@ function updateCounts() {
   const due = getDueEntries(state.entries, Date.now()).length
   document.getElementById('all-count').textContent = state.entries.length
   document.getElementById('due-count').textContent = due
-  document.getElementById('library-count').textContent = `${state.entries.length} 个词与表达 · ${due} 个待复习`
+  document.getElementById('library-count').textContent = uiText(`${state.entries.length} 个词与表达 · ${due} 个待复习`, `${state.entries.length} saved · ${due} due`)
   const progress = getStudyProgress(state.entries)
   document.getElementById('progress-due').textContent = progress.due
   document.getElementById('progress-learning').textContent = progress.learning
@@ -201,8 +202,8 @@ function renderList() {
   }
   listEl.replaceChildren()
   if (!entries.length) {
-    listEl.appendChild(createEmptyState(query ? '还没有找到这个词。' : '从一次阅读里的心动开始。',
-      query ? '换一个单词、表达或原句试试。' : '在阅读卡片中保存词与表达，它们会带着语境留在这里。'))
+    listEl.appendChild(createEmptyState(query ? uiText('还没有找到这个词。', 'No matches') : uiText('从一次阅读里的心动开始。', 'No saved vocabulary yet'),
+      query ? uiText('换一个单词、表达或原句试试。', 'Search for a different word, phrase, or sentence.') : uiText('在阅读卡片中保存词与表达，它们会带着语境留在这里。', 'Save words and phrases to review them here.')))
   }
   for (const entry of visibleEntries) {
     const cardEl = createEntryCard(entry)
@@ -223,14 +224,14 @@ function createContext(entry, previousState = null) {
   const contextEl = createEl('div', 'context-block')
   contextEl.appendChild(createContextText(view.segments))
   if (!view.hasLocation) {
-    contextEl.appendChild(createEl('p', 'context-location-note', '未记录具体位置'))
+    contextEl.appendChild(createEl('p', 'context-location-note', uiText('未记录具体位置', 'Position in the source text is unavailable.')))
   }
   if (view.isFocused) {
     const fullEl = createEl('details', 'context-full')
     const fullContextEl = createContextText(view.fullSegments)
     let restoredScrollTop = previousState?.isFullOpen ? previousState.fullScrollTop : null
     fullEl.open = Boolean(previousState?.isFullOpen)
-    fullEl.append(createEl('summary', '', '完整语境'), fullContextEl)
+    fullEl.append(createEl('summary', '', uiText('完整语境', 'Full context')), fullContextEl)
     fullEl.addEventListener('toggle', () => {
       if (!fullEl.open) return
       if (restoredScrollTop !== null) {
@@ -276,7 +277,7 @@ function appendAnswer(containerEl, entry) {
   if (entry.example) {
     containerEl.append(createEl('span', 'answer-label', 'MAKE IT YOURS'), createEl('p', 'entry-example', entry.example))
     const text = getEntrySpeechTargets(entry).example
-    if (text) containerEl.appendChild(createSpeechButton(entry, 'example', text, '读例句'))
+    if (text) containerEl.appendChild(createSpeechButton(entry, 'example', text, uiText('读例句', 'Listen to example')))
   }
 }
 
@@ -288,7 +289,7 @@ function createSpeechButton(entry, target, text, label) {
   buttonEl.dataset.idleLabel = `▷ ${label}`
   buttonEl.disabled = !text
   if (text) buttonEl.title = text
-  else buttonEl.title = '这段内容超过 1200 字，暂时无法朗读。'
+  else buttonEl.title = uiText('这段内容超过 1200 字，暂时无法朗读。', 'Audio is limited to 1,200 characters.')
   updateSpeechButton(buttonEl)
   return buttonEl
 }
@@ -296,7 +297,7 @@ function createSpeechButton(entry, target, text, label) {
 function createSpeechControls(entry) {
   const controlsEl = createEl('div', 'library-speech-controls')
   const targets = getEntrySpeechTargets(entry)
-  const wordLabel = /^\p{L}+(?:['’-]\p{L}+)*$/u.test(String(entry.text || '').trim()) ? '读词' : '朗读选区'
+  const wordLabel = /^\p{L}+(?:['’-]\p{L}+)*$/u.test(String(entry.text || '').trim()) ? uiText('读词', 'Listen to word') : uiText('朗读选区', 'Listen to selection')
   controlsEl.appendChild(createSpeechButton(entry, 'word', targets.word, wordLabel))
   if (targets.context) {
     controlsEl.appendChild(createSpeechButton(entry, 'context', targets.context, targets.contextLabel))
@@ -306,7 +307,7 @@ function createSpeechControls(entry) {
 
 function updateSpeechButton(buttonEl) {
   const isActive = libraryAudio.getActiveKey() === buttonEl.dataset.speechKey
-  buttonEl.textContent = isActive ? '■ 停止' : buttonEl.dataset.idleLabel
+  buttonEl.textContent = isActive ? uiText('■ 停止', '■ Stop') : buttonEl.dataset.idleLabel
   buttonEl.setAttribute('aria-pressed', String(isActive))
 }
 
@@ -365,12 +366,12 @@ function createEditorField(field) {
 
 function createEntryEditor() {
   const formEl = createEl('form', 'entry-editor')
-  formEl.setAttribute('aria-label', '修订学习内容')
-  formEl.append(createEl('h3', '', '让这份理解更贴近你。'),
-    createEl('p', 'editor-help', '只修改学习内容，原文、来源和复习进度会保留。'),
-    createEl('p', 'editor-help editor-draft-help', '草稿仅保留在当前页面，刷新或关闭前请保存或复制。'))
+  formEl.setAttribute('aria-label', uiText('修订学习内容', 'Edit vocabulary entry'))
+  formEl.append(createEl('h3', '', uiText('让这份理解更贴近你。', 'Edit entry')),
+    createEl('p', 'editor-help', uiText('只修改学习内容，原文、来源和复习进度会保留。', 'Edits keep your source text and review progress.')),
+    createEl('p', 'editor-help editor-draft-help', uiText('草稿仅保留在当前页面，刷新或关闭前请保存或复制。', 'Save or copy your draft before refreshing or closing this page.')))
   const advancedEl = createEl('details', 'editor-advanced')
-  advancedEl.appendChild(createEl('summary', '', '更多内容：补充解释与音标'))
+  advancedEl.appendChild(createEl('summary', '', uiText('更多内容：补充解释与音标', 'Explanation and pronunciation')))
   advancedEl.addEventListener('toggle', () => {
     if (state.draft) state.draft.isAdvancedOpen = advancedEl.open
   })
@@ -382,12 +383,12 @@ function createEntryEditor() {
   const messageEl = createEl('p', 'editor-message')
   messageEl.setAttribute('role', 'status')
   messageEl.setAttribute('aria-live', 'polite')
-  const reloadEl = createButton('载入最新内容', reloadDraft, 'secondary editor-reload hidden')
+  const reloadEl = createButton(uiText('载入最新内容', 'Load latest version'), reloadDraft, 'secondary editor-reload hidden')
   const actionsEl = createEl('div', 'editor-actions')
-  const saveEl = createEl('button', 'editor-save', '保存修订')
+  const saveEl = createEl('button', 'editor-save', uiText('保存修订', 'Save changes'))
   saveEl.type = 'submit'
-  const cancelEl = createButton('取消', cancelDraft, 'secondary editor-cancel')
-  const copyEl = createButton('复制草稿', () => void copyDraft(), 'text-button editor-copy')
+  const cancelEl = createButton(uiText('取消', 'Cancel'), cancelDraft, 'secondary editor-cancel')
+  const copyEl = createButton(uiText('复制草稿', 'Copy draft'), () => void copyDraft(), 'text-button editor-copy')
   actionsEl.append(saveEl, cancelEl, copyEl)
   formEl.append(messageEl, reloadEl, actionsEl)
   formEl.addEventListener('submit', (event) => { event.preventDefault(); void saveDraft() })
@@ -402,10 +403,10 @@ function updateEditorControls() {
   const isConflict = draft.code === 'entry-changed'
   const messageEl = formEl.querySelector('.editor-message')
   let message = draft.message
-  if (draft.isMissing) message = '这条表达已在其他页面移除。草稿仍保留，可先复制；当前无法保存。'
-  else if (isConflict) message = '这条表达的学习内容已在其他页面修改。你的草稿已保留；可先复制，再载入最新内容。'
+  if (draft.isMissing) message = uiText('这条表达已在其他页面移除。草稿仍保留，可先复制；当前无法保存。', 'This entry was removed elsewhere. You can still copy your draft.')
+  else if (isConflict) message = uiText('这条表达的学习内容已在其他页面修改。你的草稿已保留；可先复制，再载入最新内容。', 'This entry changed elsewhere. Copy your draft before loading the latest version.')
   else if (!update.ok) message = update.message
-  else if (!message && draft.hasExternalChanges) message = '内容已在其他页面更新。草稿已保留，保存时只提交你改动的字段。'
+  else if (!message && draft.hasExternalChanges) message = uiText('内容已在其他页面更新。草稿已保留，保存时只提交你改动的字段。', 'This entry was updated elsewhere. Saving will apply only your changes.')
   messageEl.textContent = message
   messageEl.dataset.tone = draft.isMissing || draft.code || !update.ok ? 'error' : 'info'
   for (const field of VOCABULARY_EDIT_FIELDS) {
@@ -417,7 +418,7 @@ function updateEditorControls() {
   }
   const saveEl = formEl.querySelector('.editor-save')
   saveEl.disabled = draft.isSaving || draft.isMissing || isConflict || !update.ok || !update.hasChanges
-  saveEl.textContent = draft.isSaving ? '正在保存…' : '保存修订'
+  saveEl.textContent = draft.isSaving ? uiText('正在保存…', 'Saving…') : uiText('保存修订', 'Save changes')
   formEl.querySelector('.editor-cancel').disabled = draft.isSaving
   const reloadEl = formEl.querySelector('.editor-reload')
   reloadEl.classList.toggle('hidden', draft.isMissing || (!draft.hasExternalChanges && !isConflict))
@@ -434,11 +435,11 @@ function renderDraftNotice() {
   if (!draft || isInline) return
   if (state.mode === 'review') {
     state.editorEl.remove()
-    noticeEl.append(createEl('p', '', '有一份未保存的修订，草稿已为你保留。'),
-      createButton('返回继续修订', showDraft, 'secondary'))
+    noticeEl.append(createEl('p', '', uiText('有一份未保存的修订，草稿已为你保留。', 'You have unsaved changes.')),
+      createButton(uiText('返回继续修订', 'Continue editing'), showDraft, 'secondary'))
     return
   }
-  noticeEl.append(createEl('p', 'draft-notice-label', draft.isMissing ? '保留的修订草稿' : '搜索之外，还有一份修订草稿'),
+  noticeEl.append(createEl('p', 'draft-notice-label', draft.isMissing ? uiText('保留的修订草稿', 'Unsaved draft') : uiText('搜索之外，还有一份修订草稿', 'An entry outside these results has an unsaved draft.')),
     createEl('h2', 'draft-notice-title', draft.text), state.editorEl)
 }
 
@@ -455,7 +456,7 @@ function showDraft() {
 
 function beginEdit(entry) {
   if (state.draft) {
-    if (state.draft.id !== entry.id) setStatus('请先保存或取消当前修订，再编辑另一条表达。', true)
+    if (state.draft.id !== entry.id) setStatus(uiText('请先保存或取消当前修订，再编辑另一条表达。', 'Save or cancel your current edits before editing another entry.'), true)
     showDraft()
     return
   }
@@ -496,20 +497,20 @@ async function copyDraft() {
   const text = serializeVocabularyDraft(state.draft)
   try {
     await navigator.clipboard.writeText(text)
-    setStatus('已复制修订草稿。')
+    setStatus(uiText('已复制修订草稿。', 'Draft copied.'))
   } catch {
     let copyEl = state.editorEl.querySelector('.editor-copy-text')
     if (!copyEl) {
       copyEl = createEl('textarea', 'editor-copy-text')
       copyEl.readOnly = true
       copyEl.rows = 6
-      copyEl.setAttribute('aria-label', '选中并复制修订草稿')
+      copyEl.setAttribute('aria-label', uiText('选中并复制修订草稿', 'Select and copy draft'))
       state.editorEl.appendChild(copyEl)
     }
     copyEl.value = text
     copyEl.focus()
     copyEl.select()
-    setStatus('草稿已选中，可以复制后妥善保留。')
+    setStatus(uiText('草稿已选中，可以复制后妥善保留。', 'Draft selected. Copy it to keep your changes.'))
   }
 }
 
@@ -524,7 +525,7 @@ async function saveDraft() {
     const response = await send('VOCABULARY_UPDATE', update.payload)
     if (!response.ok) {
       state.draft = { ...state.draft, isSaving: false, code: response.code || 'save-failed',
-        message: response.message || '保存修订失败，草稿已保留，请重试。' }
+        message: response.message || uiText('保存修订失败，草稿已保留，请重试。', 'Could not save your edits. Your draft is still here. Try again.') }
       if (response.entry) {
         state.draft = syncVocabularyDraft(state.draft, response.entry)
         state.entries = state.entries.map((entry) => entry.id === draft.id ? response.entry : entry)
@@ -539,10 +540,10 @@ async function saveDraft() {
     state.editorEl.remove()
     state.editorEl = null
     updateCounts()
-    setStatus('已保存修订，原有复习进度已保留。')
+    setStatus(uiText('已保存修订，原有复习进度已保留。', 'Changes saved. Review progress is preserved.'))
   } catch {
     if (state.draft) state.draft = { ...state.draft, isSaving: false,
-      message: '保存修订失败，草稿已保留，请重试。' }
+      message: uiText('保存修订失败，草稿已保留，请重试。', 'Could not save your edits. Your draft is still here. Try again.') }
   } finally {
     updateEditorControls()
     if (state.mode === 'review') renderReview()
@@ -560,7 +561,7 @@ function createEntryCard(entry) {
   })
   const summaryEl = createEl('summary')
   summaryEl.append(createEl('span', 'entry-title', entry.text),
-    createEl('span', 'entry-meta', new Date(entry.createdAt).toLocaleDateString()))
+    createEl('span', 'entry-meta', new Date(entry.createdAt).toLocaleDateString(isDesktopUI() ? 'en' : undefined)))
   const bodyEl = createEl('div', 'entry-body')
   if (entry.phonetic) bodyEl.appendChild(createEl('p', 'entry-phonetic', entry.phonetic))
   bodyEl.appendChild(createSpeechControls(entry))
@@ -580,12 +581,12 @@ function createEntryCard(entry) {
       sourceEl.appendChild(linkEl)
     }
   } catch { }
-  const removeEl = createButton('移除', () => void removeEntry(entry.id, removeEl), 'secondary')
-  removeEl.setAttribute('aria-label', `移除 ${entry.text}`)
+  const removeEl = createButton(uiText('移除', 'Remove'), () => void removeEntry(entry.id, removeEl), 'secondary')
+  removeEl.setAttribute('aria-label', uiText(`移除 ${entry.text}`, `Remove ${entry.text}`))
   removeEl.disabled = isEditing
-  if (isEditing) removeEl.title = '请先保存或取消这条表达的修订。'
+  if (isEditing) removeEl.title = uiText('请先保存或取消这条表达的修订。', 'Save or cancel your edits first.')
   const buttonsEl = createEl('div', 'entry-action-buttons')
-  if (!isEditing) buttonsEl.appendChild(createButton('修订内容', () => beginEdit(entry), 'secondary'))
+  if (!isEditing) buttonsEl.appendChild(createButton(uiText('修订内容', 'Edit entry'), () => beginEdit(entry), 'secondary'))
   buttonsEl.appendChild(removeEl)
   actionsEl.append(sourceEl, buttonsEl)
   bodyEl.appendChild(actionsEl)
@@ -595,7 +596,7 @@ function createEntryCard(entry) {
 
 async function removeEntry(id, buttonEl) {
   if (state.draft?.id === id) {
-    setStatus('请先保存或取消这条表达的修订，再移除它。', true)
+    setStatus(uiText('请先保存或取消这条表达的修订，再移除它。', 'Save or cancel your edits before removing the entry.'), true)
     return
   }
   const originalEntry = state.entries.find((entry) => entry.id === id)
@@ -603,7 +604,7 @@ async function removeEntry(id, buttonEl) {
   buttonEl.disabled = true
   try {
     const response = await send('VOCABULARY_REMOVE', { id })
-    if (!response.ok) { setStatus(response.message || '移除失败，请重试。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('移除失败，请重试。', 'Could not remove the entry. Try again.'), true); return }
     state.lastRemovedEntry = response.entry || originalEntry || null
     renderUndoNotice()
     state.entries = state.entries.filter((entry) => entry.id !== id)
@@ -611,7 +612,7 @@ async function removeEntry(id, buttonEl) {
     renderList()
     setStatus()
   } catch {
-    setStatus('移除失败，请重试。', true)
+    setStatus(uiText('移除失败，请重试。', 'Could not remove the entry. Try again.'), true)
   } finally {
     buttonEl.disabled = false
   }
@@ -620,9 +621,9 @@ async function removeEntry(id, buttonEl) {
 function renderUndoNotice() {
   const entry = state.lastRemovedEntry
   undoNoticeEl.classList.toggle('hidden', !entry)
-  undoMessageEl.textContent = entry ? `已移除“${entry.text}”。` : ''
+  undoMessageEl.textContent = entry ? uiText(`已移除“${entry.text}”。`, `Removed “${entry.text}”.`) : ''
   undoEl.disabled = state.isUndoBusy
-  undoEl.textContent = state.isUndoBusy ? '正在恢复…' : '撤销'
+  undoEl.textContent = state.isUndoBusy ? uiText('正在恢复…', 'Restoring…') : uiText('撤销', 'Undo')
 }
 
 async function undoRemoval() {
@@ -634,12 +635,12 @@ async function undoRemoval() {
     const response = await send('VOCABULARY_IMPORT', {
       data: { version: 2, exportedAt: Date.now(), entries: [entry] },
     })
-    if (!response.ok) { setStatus(response.message || '恢复失败，请再次点击撤销。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('恢复失败，请再次点击撤销。', 'Could not restore the entry. Try Undo again.'), true); return }
     if (state.lastRemovedEntry === entry) state.lastRemovedEntry = null
     await refresh()
-    setStatus('已恢复表达和原有复习进度。')
+    setStatus(uiText('已恢复表达和原有复习进度。', 'Entry and review progress restored.'))
   } catch {
-    setStatus('恢复失败，请再次点击撤销。', true)
+    setStatus(uiText('恢复失败，请再次点击撤销。', 'Could not restore the entry. Try Undo again.'), true)
   } finally {
     state.isUndoBusy = false
     renderUndoNotice()
@@ -671,11 +672,11 @@ function renderReview() {
   reviewCardEl.replaceChildren()
   if (!entry) {
     const hasReviewed = state.reviewQueue.length > 0
-    const emptyEl = createEmptyState(hasReviewed ? '今天的这一小步，完成了。' : '现在没有到期的表达。',
-      hasReviewed ? '还不熟的表达会稍后再出现，记住的会隔几天再与你见面。'
-        : '新收藏的词与表达从明天开始复习。现在继续读点喜欢的内容吧。', '✓')
+    const emptyEl = createEmptyState(hasReviewed ? uiText('今天的这一小步，完成了。', 'Review complete') : uiText('现在没有到期的表达。', 'Nothing due for review'),
+      hasReviewed ? uiText('还不熟的表达会稍后再出现，记住的会隔几天再与你见面。', 'Come back when more vocabulary is due.')
+        : uiText('新收藏的词与表达从明天开始复习。现在继续读点喜欢的内容吧。', 'New vocabulary is ready to review the day after you save it.'), '✓')
     if (getDueEntries(state.entries, Date.now()).length) {
-      emptyEl.appendChild(createButton('开始下一轮', startReviewSession, 'review-reveal'))
+      emptyEl.appendChild(createButton(uiText('开始下一轮', 'Start next round'), startReviewSession, 'review-reveal'))
     }
     reviewCardEl.appendChild(emptyEl)
     updateSpeechControls()
@@ -691,15 +692,15 @@ function renderReview() {
   cardEl.appendChild(createSpeechControls(entry))
   cardEl.append(createEl('span', 'context-label', 'REMEMBER THE MOMENT'), createContext(entry, previousState))
   if (!state.isRevealed) {
-    cardEl.appendChild(createButton('想到了，揭晓释义', revealReviewAnswer, 'review-reveal'))
+    cardEl.appendChild(createButton(uiText('想到了，揭晓释义', 'Reveal meaning'), revealReviewAnswer, 'review-reveal'))
   } else {
     const answerEl = createEl('section', 'review-answer')
     answerEl.tabIndex = -1
-    answerEl.setAttribute('aria-label', '表达释义')
+    answerEl.setAttribute('aria-label', uiText('表达释义', 'Meaning'))
     appendAnswer(answerEl, entry)
     const ratingEl = createEl('div', 'review-rating')
     const goodDays = scheduleReview(entry, 'good', Date.now()).intervalDays
-    for (const [rating, label, interval] of [['again', '还不熟', '10 分钟后再看'], ['good', '记住了', `${goodDays} 天后再看`]]) {
+    for (const [rating, label, interval] of [['again', uiText('还不熟', 'Still learning'), uiText('10 分钟后再看', 'Review in 10 minutes')], ['good', uiText('记住了', 'Got it'), uiText(`${goodDays} 天后再看`, `Review in ${goodDays} ${goodDays === 1 ? "day" : "days"}`)]]) {
       const buttonEl = createButton('', () => void rateEntry(entry.id, rating), rating === 'again' ? 'secondary' : '')
       buttonEl.append(createEl('span', '', label), createEl('small', '', interval))
       buttonEl.disabled = state.isBusy
@@ -756,17 +757,17 @@ async function rateEntry(id, rating) {
       state.entries = state.entries.map((item) => item.id === id ? response.entry : item)
       state.isRevealed = false
       updateCounts()
-      setStatus('该表达已在另一处复习，已同步进度。')
+      setStatus(uiText('该表达已在另一处复习，已同步进度。', 'This entry was reviewed elsewhere. Progress updated.'))
       return
     }
-    if (!response.ok) { setStatus(response.message || '保存复习进度失败，请重试。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('保存复习进度失败，请重试。', 'Could not save review progress. Try again.'), true); return }
     state.entries = state.entries.map((entry) => entry.id === id ? response.entry : entry)
     state.reviewIndex++
     state.isRevealed = false
     setStatus()
     updateCounts()
   } catch {
-    setStatus('保存复习进度失败，请重试。', true)
+    setStatus(uiText('保存复习进度失败，请重试。', 'Could not save review progress. Try again.'), true)
   } finally {
     state.isBusy = false
     renderReview()
@@ -779,7 +780,7 @@ async function downloadBackup() {
   exportEl.disabled = true
   try {
     const response = await send('VOCABULARY_EXPORT')
-    if (!response.ok) { setStatus(response.message || '导出失败，请重试。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('导出失败，请重试。', 'Could not export vocabulary. Try again.'), true); return }
     const url = URL.createObjectURL(new Blob([serializeVocabularyBackup(response.data)], { type: 'application/json' }))
     const linkEl = createEl('a')
     linkEl.href = url
@@ -791,9 +792,9 @@ async function downloadBackup() {
     linkEl.click()
     linkEl.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setStatus('已导出词汇与学习进度，不包含模型配置或密钥。')
+    setStatus(uiText('已导出词汇与学习进度，不包含模型配置或密钥。', 'Vocabulary and review progress exported. Model settings and API keys are excluded.'))
   } catch {
-    setStatus('导出失败，请重试。', true)
+    setStatus(uiText('导出失败，请重试。', 'Could not export vocabulary. Try again.'), true)
   } finally {
     exportEl.disabled = state.entries.length === 0
   }
@@ -803,10 +804,10 @@ async function downloadAnki() {
   exportAnkiEl.disabled = true
   try {
     const response = await send('VOCABULARY_EXPORT')
-    if (!response.ok) { setStatus(response.message || '导出失败，请重试。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('导出失败，请重试。', 'Could not export vocabulary. Try again.'), true); return }
     const tsv = buildAnkiTsv(response.data?.entries)
     const count = countAnkiRows(tsv)
-    if (!count) { setStatus('表达本还没有可导出的内容。', true); return }
+    if (!count) { setStatus(uiText('表达本还没有可导出的内容。', 'No vocabulary to export.'), true); return }
     const url = URL.createObjectURL(new Blob([tsv], { type: 'text/plain;charset=utf-8' }))
     const linkEl = createEl('a')
     linkEl.href = url
@@ -818,9 +819,9 @@ async function downloadAnki() {
     linkEl.click()
     linkEl.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setStatus(`已导出 ${count} 条到 Anki（Front=原文, Back=释义与语境）。`)
+    setStatus(uiText(`已导出 ${count} 条到 Anki（Front=原文, Back=释义与语境）。`, `Exported ${count} ${count === 1 ? "Anki card" : "Anki cards"}. Front: source text. Back: meaning and context.`))
   } catch {
-    setStatus('导出 Anki 失败，请重试。', true)
+    setStatus(uiText('导出 Anki 失败，请重试。', 'Could not export Anki cards. Try again.'), true)
   } finally {
     exportAnkiEl.disabled = state.entries.length === 0
   }
@@ -832,22 +833,22 @@ async function restoreBackup() {
   importEl.disabled = true
   try {
     if (file.size > MAX_BACKUP_FILE_BYTES) {
-      setStatus('请选择不超过 5 MB 的表达本 JSON 备份。', true)
+      setStatus(uiText('请选择不超过 5 MB 的表达本 JSON 备份。', 'Choose a vocabulary JSON backup of 5 MB or less.'), true)
       return
     }
     let data
     try {
       data = JSON.parse(await file.text())
     } catch {
-      setStatus('这份文件不是有效的 JSON 备份，原有收藏未改变。', true)
+      setStatus(uiText('这份文件不是有效的 JSON 备份，原有收藏未改变。', 'This file is not a valid vocabulary JSON backup.'), true)
       return
     }
     const response = await send('VOCABULARY_IMPORT', { data })
-    if (!response.ok) { setStatus(response.message || '导入失败，原有收藏未改变。', true); return }
+    if (!response.ok) { setStatus(response.message || uiText('导入失败，原有收藏未改变。', 'Could not import the backup.'), true); return }
     await refresh()
-    setStatus(`已导入 ${response.added} 条，跳过 ${response.skipped} 条已有表达。原有复习进度已保留。`)
+    setStatus(uiText(`已导入 ${response.added} 条，跳过 ${response.skipped} 条已有表达。原有复习进度已保留。`, `Imported ${response.added} · Skipped ${response.skipped} duplicates. Review progress is preserved.`))
   } catch {
-    setStatus('无法读取备份，请重试。', true)
+    setStatus(uiText('无法读取备份，请重试。', 'Could not read the backup. Try again.'), true)
   } finally {
     importEl.disabled = false
     importFileEl.value = ''

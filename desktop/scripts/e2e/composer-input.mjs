@@ -47,7 +47,7 @@ async function waitForTranslation(page, text) {
     const entry = document.querySelector('.entry')
     const status = document.getElementById('statusbar')?.textContent || ''
     return Boolean(entry?.querySelector('.bubble')?.textContent.includes(value)
-      && /完成/u.test(status) && !entry.querySelector('.is-loading'))
+      && /Done/u.test(status) && !entry.querySelector('.is-loading'))
   }, text, { timeout: 15000 })
 }
 

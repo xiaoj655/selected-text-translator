@@ -1,19 +1,19 @@
 const kinds = {
-  translation: '翻译',
-  guidance: '引导理解',
-  tutor: 'AI 老师',
-  'provider-models': '检测连接',
-  'cloud-speech': '云端朗读',
+  translation: 'Translation',
+  guidance: 'Guided Reading',
+  tutor: 'English Coach',
+  'provider-models': 'Connection test',
+  'cloud-speech': 'Cloud speech',
 }
 const outcomes = {
-  pending: '等待响应',
-  error: '请求失败',
-  aborted: '已取消',
+  pending: 'Awaiting response',
+  error: 'Request failed',
+  aborted: 'Canceled',
 }
-const clock = new Intl.DateTimeFormat('zh-CN', { timeStyle: 'medium' })
+const clock = new Intl.DateTimeFormat('en', { timeStyle: 'medium' })
 
 function resultLabel(entry) {
-  return entry.status == null ? (outcomes[entry.outcome] || '已响应') : `HTTP ${entry.status}`
+  return entry.status == null ? (outcomes[entry.outcome] || 'Responded') : `HTTP ${entry.status}`
 }
 
 function copyableRequest(entry) {
@@ -44,7 +44,7 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
   function applySnapshot(result) {
     snapshot = result
     more.toggleAttribute('data-recording-requests', result.enabled)
-    if (result.enabled) more.setAttribute('aria-description', '正在记录请求')
+    if (result.enabled) more.setAttribute('aria-description', 'Recording requests')
     else more.removeAttribute('aria-description')
   }
 
@@ -57,9 +57,9 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
     ].filter(Boolean).join(' · ')
     $('debug-url').textContent = `${entry.method} ${entry.url}`
     $('debug-headers').textContent = Object.entries(entry.headers)
-      .map(([name, value]) => `${name}: ${value}`).join('\n') || '无请求头'
+      .map(([name, value]) => `${name}: ${value}`).join('\n') || 'No headers'
     const body = copyableRequest(entry).body
-    const bodyText = body == null ? '无请求体' : typeof body === 'string' ? body : JSON.stringify(body, null, 2)
+    const bodyText = body == null ? 'No request body' : typeof body === 'string' ? body : JSON.stringify(body, null, 2)
     if ($('debug-body').textContent !== bodyText) $('debug-body').textContent = bodyText
     $('debug-truncated').hidden = !entry.truncated
   }
@@ -75,8 +75,8 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
     $('debug-content').hidden = !selected
     empty.hidden = Boolean(selected)
     empty.textContent = snapshot?.enabled
-      ? '还没有请求。关闭面板后发起一次翻译、练习或连接检测。'
-      : '开启「记录请求」后查看发往模型服务的请求。'
+      ? 'No requests yet. Close this panel and translate, practice, or test a connection.'
+      : 'Turn on request recording to see calls to your model provider.'
 
     const present = new Set(entries.map(({ id }) => id))
     for (const [id, row] of rows) {
@@ -121,7 +121,7 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
       render()
     } catch {
       if (current !== revision || !dialog.open) return
-      feedback.textContent = '无法读取请求记录。'
+      feedback.textContent = 'Could not read the request log.'
     }
   }
 
@@ -134,7 +134,7 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
       applySnapshot(await operation())
       if (dialog.open) feedback.textContent = message
     } catch {
-      if (dialog.open) feedback.textContent = '无法更新请求记录，请重试。'
+      if (dialog.open) feedback.textContent = 'Could not update the request log. Try again.'
     } finally {
       changing = false
       if (dialog.open) {
@@ -146,7 +146,7 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
 
   $('open-debug').addEventListener('click', () => {
     prepareOpen()
-    empty.textContent = '正在读取记录…'
+    empty.textContent = 'Loading requests…'
     dialog.showModal()
     void refresh()
   })
@@ -160,17 +160,17 @@ export function bindRequestDebug({ api, copyText, prepareOpen }) {
   })
   toggle.addEventListener('change', () => {
     const enabled = toggle.checked
-    void change(() => api.setEnabled(enabled), enabled ? '正在记录请求。' : '已关闭记录并清空列表。')
+    void change(() => api.setEnabled(enabled), enabled ? 'Recording requests.' : 'Recording is off. The request log was cleared.')
   })
-  clear.addEventListener('click', () => void change(() => api.clear(), '已清空请求。'))
+  clear.addEventListener('click', () => void change(() => api.clear(), 'Request log cleared.'))
   copy.addEventListener('click', async () => {
     const entry = snapshot?.entries.find(({ id }) => id === selectedId)
     if (!entry) return
     try {
       const copied = await copyText(JSON.stringify(copyableRequest(entry), null, 2))
-      if (dialog.open) feedback.textContent = copied === false ? '复制失败。' : '已复制当前请求。'
+      if (dialog.open) feedback.textContent = copied === false ? 'Could not copy the request.' : 'Request copied.'
     } catch {
-      if (dialog.open) feedback.textContent = '复制失败。'
+      if (dialog.open) feedback.textContent = 'Could not copy the request.'
     }
   })
   api.onChanged(() => void refresh())

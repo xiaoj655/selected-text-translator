@@ -1,3 +1,4 @@
+import { uiText } from './ui-language.js';
 import { bindConnectionControls } from './connection-controls.js'
 import { matchesUrlPattern } from './url-patterns.js'
 import { createReadingControls } from './settings-controls.js'
@@ -78,7 +79,7 @@ async function loadCurrentTabUrl() {
     }
   } catch {}
   currentTabUrl = null;
-  currentUrlEl.textContent = '当前页面不支持划词阅读';
+  currentUrlEl.textContent = uiText('当前页面不支持划词阅读', 'Reading tools are unavailable for this page.');
   pageStatusEl.classList.add('hidden');
   disableButtonsEl.style.display = 'none';
   enableButtonEl.style.display = 'none';
@@ -91,15 +92,15 @@ async function loadPageStatus(url) {
   if (matchResult) {
     pageStatusEl.classList.remove('hidden', 'enabled');
     pageStatusEl.classList.add('disabled');
-    pageStatusEl.querySelector('.page-status-text').textContent = '已停用';
+    pageStatusEl.querySelector('.page-status-text').textContent = uiText('已停用', 'Disabled');
     disableButtonsEl.style.display = 'none';
     enableButtonEl.style.display = 'block';
     enableCurrentBtn.dataset.pattern = matchResult.pattern;
-    enableCurrentBtn.textContent = matchResult.pattern.startsWith('=') ? '重新启用此页' : '移除匹配的停用规则';
+    enableCurrentBtn.textContent = matchResult.pattern.startsWith('=') ? uiText('重新启用此页', 'Enable this page') : uiText('移除匹配的停用规则', 'Remove the matching rule');
   } else {
     pageStatusEl.classList.remove('hidden', 'disabled');
     pageStatusEl.classList.add('enabled');
-    pageStatusEl.querySelector('.page-status-text').textContent = '已启用';
+    pageStatusEl.querySelector('.page-status-text').textContent = uiText('已启用', 'Enabled');
     disableButtonsEl.style.display = 'flex';
     enableButtonEl.style.display = 'none';
   }
@@ -119,7 +120,7 @@ async function onDisableCurrent() {
     const pattern = `=${currentTabUrl || getOriginPathname()}`;
     await addToBlacklist(pattern);
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -128,7 +129,7 @@ async function onDisableCurrentSubpath() {
     const pattern = getOriginPathname();
     await addToBlacklist(pattern);
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -151,7 +152,7 @@ async function onEnableCurrent() {
       setStatus('Failed to enable.', STATUS_COLOR_ERROR);
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 

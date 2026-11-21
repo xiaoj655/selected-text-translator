@@ -1,10 +1,12 @@
+import { uiText } from './ui-language.js'
+
 const ANKI_TAG = 'selected-english'
 const FIELD_LABELS = Object.freeze([
-  ['phonetic', '音标'],
-  ['explanation', '释义'],
-  ['example', '例句'],
-  ['context', '语境'],
-  ['usage', '用法'],
+  ['phonetic', '音标', 'Pronunciation:'],
+  ['explanation', '释义', 'Explanation:'],
+  ['example', '例句', 'Example:'],
+  ['context', '语境', 'Context:'],
+  ['usage', '用法', 'Usage:'],
 ])
 
 function escapeAnkiField(value) {
@@ -22,9 +24,9 @@ function formatAnkiRow(entry) {
   const meaning = escapeAnkiField(String(entry.meaning || '').trim())
   if (!text || !meaning) return ''
   const parts = [meaning]
-  for (const [key, label] of FIELD_LABELS) {
+  for (const [key, chineseLabel, englishLabel] of FIELD_LABELS) {
     const value = escapeAnkiField(String(entry[key] || '').trim())
-    if (value) parts.push(`${label} ${value}`)
+    if (value) parts.push(`${uiText(chineseLabel, englishLabel)} ${value}`)
   }
   return [text, parts.join('<br>'), ANKI_TAG].join('\t')
 }

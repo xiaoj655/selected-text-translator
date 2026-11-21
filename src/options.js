@@ -1,3 +1,4 @@
+import { uiText } from './ui-language.js';
 import { bindConnectionControls } from './connection-controls.js'
 import { createReadingControls } from './settings-controls.js'
 import { STORAGE_KEYS } from './translation-contracts.js';
@@ -115,7 +116,7 @@ async function onDisableLogs() {
     });
     setStatus('Debug logging disabled.', '#17663e');
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -129,7 +130,7 @@ async function loadBlacklist() {
     blacklistPatterns = await readDisabledUrlPatterns();
     renderBlacklist();
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -162,7 +163,7 @@ function createBlacklistItemEl(index, pattern) {
 
   const patternEl = document.createElement('span');
   patternEl.className = 'blacklist-item-pattern';
-  patternEl.textContent = pattern.startsWith('=') ? `${pattern.slice(1)}（仅此页）` : pattern;
+  patternEl.textContent = pattern.startsWith('=') ? uiText(`${pattern.slice(1)}（仅此页）`, `${pattern.slice(1)} (this page only)`) : pattern;
 
   const editInput = document.createElement('input');
   editInput.type = 'text';
@@ -235,7 +236,7 @@ async function saveEdit(index, newPattern) {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -247,7 +248,7 @@ async function deletePattern(index) {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 
@@ -270,7 +271,7 @@ async function onBlacklistAdd() {
       renderBlacklist();
     }
   } catch {
-    setStatus('操作失败，请重试。', '#c43f2f');
+    setStatus(uiText('操作失败，请重试。', 'Could not complete the action. Try again.'), '#c43f2f');
   }
 }
 

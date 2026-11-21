@@ -6,9 +6,9 @@ export function resultText(entry) {
 function lexicalLines(lexical) {
   if (!lexical) return []
   const lines = []
-  if (lexical.phonetic) lines.push(`音标  ${lexical.phonetic}`)
+  if (lexical.phonetic) lines.push(`Pronunciation: ${lexical.phonetic}`)
   if (Array.isArray(lexical.definitions) && lexical.definitions.length) {
-    lines.push('释义')
+    lines.push('Definitions')
     for (const definition of lexical.definitions) {
       const parts = []
       if (definition.pos) parts.push(`[${definition.pos}]`)
@@ -17,13 +17,13 @@ function lexicalLines(lexical) {
       lines.push(`  ${parts.join(' ').trim()}`)
     }
   }
-  if (lexical.contextual_analysis) lines.push(`语境  ${lexical.contextual_analysis}`)
+  if (lexical.contextual_analysis) lines.push(`Context: ${lexical.contextual_analysis}`)
   return lines
 }
 
 function guideLines(entry, guide) {
   const lines = []
-  if (guide.phonetic) lines.push(`音标  ${guide.phonetic}`)
+  if (guide.phonetic) lines.push(`Pronunciation: ${guide.phonetic}`)
   if (Array.isArray(guide.hints) && guide.hints.length) {
     const raw = Number(entry.hintCount)
     const revealed = Math.max(1, Math.min(Number.isFinite(raw) ? raw : 1, guide.hints.length))
@@ -31,10 +31,10 @@ function guideLines(entry, guide) {
   }
   const answer = guide.answer
   if (answer && entry.answerRevealed) {
-    if (answer.meaning) lines.push(`含义  ${answer.meaning}`)
-    if (answer.explanation) lines.push(`解释  ${answer.explanation}`)
-    if (answer.example) lines.push(`例句  ${answer.example}`)
-    if (answer.usage) lines.push(`用法  ${answer.usage}`)
+    if (answer.meaning) lines.push(`Meaning: ${answer.meaning}`)
+    if (answer.explanation) lines.push(`Explanation: ${answer.explanation}`)
+    if (answer.example) lines.push(`Example: ${answer.example}`)
+    if (answer.usage) lines.push(`Usage: ${answer.usage}`)
   }
   return lines
 }

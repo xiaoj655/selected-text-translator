@@ -23,7 +23,8 @@ const TUTOR_PROMPT = [
   'Start with a short diagnostic sentence. End with an unseen transfer sentence that tests the same skill using',
   'a different situation and different surrounding words. Do not reuse the lookup or any previous lesson sentence.',
   'When reviewTopic is present, make both questions practice that same topic from the previous lesson.',
-  'Keep sentences in English, and use concise Simplified Chinese for the topic, prompts, choices, hints, and explanations.',
+  'Use clear, concise English for all sentences, topics, prompts, choices, hints, and explanations.',
+  'Give the topic name in English even if reviewTopic is in another language.',
   'The topic names only the target phrase or reading skill. Omit the meaning, correct choice, and reasoning from it.',
   'Ask what the English actually says. Use 2–3 distinct plausible choices and one unambiguously correct choice.',
   'Write a concrete hint pointing to the relevant English words or clause, without giving away the answer.',
@@ -127,7 +128,11 @@ function parseLesson(lesson, source) {
     seen.add(key)
     return { sentence, prompt, choices, correctIndex, hint, explanation }
   })
-  return { id: randomUUID(), sourceId: source.id, topic: source.reviewTopic || topic, questions }
+  return { id: randomUUID(), sourceId: source.id, topic, questions }
+}
+
+export function coachError(message) {
+  return new Error(`[english-coach] ${message}`)
 }
 
 export async function readTutorSettings(storage) {
@@ -161,12 +166,12 @@ export async function requestTutorJson({ fetcher, settings, prompt, data, parse,
       signal,
     })
   } catch {
-    throw new Error(signal.aborted ? timeoutMessage : '无法连接学习模型，请检查网络或模型设置。')
+    throw coachError(signal.aborted ? timeoutMessage : 'Could not connect to the learning model. Check your network and model settings.')
   }
   if (!response.ok) {
-    if (response.status === 429) throw new Error('学习模型请求过于频繁，请稍后重试。')
-    if ([401, 403, 404].includes(response.status)) throw new Error('未能访问学习模型，请检查模型设置。')
-    throw new Error(`学习模型请求失败（${response.status}），请重试。`)
+    if (response.status === 429) throw coachError('Too many requests to the learning model. Try again shortly.')
+    if ([401, 403, 404].includes(response.status)) throw coachError('Could not access the learning model. Check your model settings.')
+    throw coachError(`The learning model request failed (HTTP ${response.status}). Try again.`)
   }
   try {
     const json = await response.json()
@@ -175,7 +180,7 @@ export async function requestTutorJson({ fetcher, settings, prompt, data, parse,
       ? rawContent.map((part) => typeof part?.text === 'string' ? part.text : '').join('') : rawContent
     return parse(JSON.parse(readText(content, 18000)))
   } catch {
-    throw new Error(signal.aborted ? timeoutMessage : invalidResponseMessage)
+    throw coachError(signal.aborted ? timeoutMessage : invalidResponseMessage)
   }
 }
 
@@ -191,8 +196,8 @@ function requestLesson(fetcher, settings, source) {
       ...(source.reviewTopic ? { reviewTopic: source.reviewTopic } : {}),
     },
     parse: (lesson) => parseLesson(lesson, source),
-    timeoutMessage: '生成练习超时，请重试。',
-    invalidResponseMessage: '学习模型返回的练习不完整或有重复，请重试。',
+    timeoutMessage: 'Generating the exercise took too long. Try again.',
+    invalidResponseMessage: 'The learning model returned an incomplete or duplicate exercise. Try again.',
   })
 }
 
@@ -249,18 +254,18 @@ export function createTutor({ storage, history, fetcher = fetch, now = Date.now 
   }
 
   function startLesson(sourceId) {
-    if (typeof sourceId !== 'string' || !sourceId) return Promise.reject(new Error('请选择一条练习记录。'))
+    if (typeof sourceId !== 'string' || !sourceId) return Promise.reject(coachError('Choose an exercise to start.'))
     if (activeLessons.has(sourceId)) return Promise.resolve(activeLessons.get(sourceId))
     if (pendingLesson?.sourceId === sourceId) return pendingLesson.work
-    if (pendingLesson) return Promise.reject(new Error('上一组练习正在生成，请稍候。'))
+    if (pendingLesson) return Promise.reject(coachError('Another exercise is still being generated. Try again shortly.'))
     const work = (async () => {
       try {
         const [settings, source] = await Promise.all([
           readTutorSettings(storage),
           withSources((sources) => sources.find((item) => item.id === sourceId && isDue(item, now()))),
         ])
-        if (!settings) throw new Error('请先在设置中配置 API 地址、密钥和通用学习模型。')
-        if (!source) throw new Error('这条练习已更新，请返回并刷新练习。')
+        if (!settings) throw coachError('Add an API URL, API key, and learning model in Settings.')
+        if (!source) throw coachError('This exercise has changed. Reopen Review to refresh it.')
         const lesson = await requestLesson(fetcher, settings, source)
         activeLessons.set(sourceId, lesson)
         if (activeLessons.size > MAX_OPEN_LESSONS) activeLessons.delete(activeLessons.keys().next().value)
@@ -286,7 +291,7 @@ export function createTutor({ storage, history, fetcher = fetch, now = Date.now 
         return true
       }
       if (!source || !lesson || lesson.id !== lessonId || !OUTCOMES.includes(outcome)) {
-        throw new Error('练习已失效，请重新开始。')
+        throw coachError('This exercise is no longer available. Start a new one.')
       }
       const streak = outcome === 'independent' ? (source.independentStreak || 0) + 1 : 0
       const days = streak ? REVIEW_DAYS[Math.min(streak - 1, REVIEW_DAYS.length - 1)] : 1

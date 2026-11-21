@@ -1,3 +1,4 @@
+import { uiText } from './ui-language.js'
 export const MASTERY_INTERVAL_DAYS = 7
 
 export function getStudyProgress(entries, now = Date.now()) {
@@ -16,13 +17,13 @@ export function getStudyProgress(entries, now = Date.now()) {
 
 export function formatStudyProgress(progress) {
   const value = progress || getStudyProgress([])
-  return `今日待复习 ${value.due} · 学习中 ${value.learning} · 已掌握 ${value.mastered}`
+  return uiText(`今日待复习 ${value.due} · 学习中 ${value.learning} · 已掌握 ${value.mastered}`, `${value.due} due · ${value.learning} learning · ${value.mastered} mastered`)
 }
 
 export function buildReviewReminder(progress) {
   const due = Number(progress?.due) || 0
   if (due <= 0) return null
-  return { due, text: `今天有 ${due} 条表达等待复习 · 趁热打铁记得更牢` }
+  return { due, text: uiText(`今天有 ${due} 条表达等待复习 · 趁热打铁记得更牢`, `${due} ${due === 1 ? "entry is" : "entries are"} due for review.`) }
 }
 
 export function getDayKey(now = Date.now()) {

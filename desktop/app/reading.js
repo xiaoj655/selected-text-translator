@@ -1,11 +1,11 @@
-import { button, createReviewWorkspace, el, englishText } from './tutor.js'
+import { button, coachErrorText, createReviewWorkspace, el, englishText } from './tutor.js'
 
 export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }) {
   const frame = el('div', 'tutor-frame')
-  const title = el('h2', 'sr-only', 'AI 老师')
+  const title = el('h2', 'sr-only', 'English Coach')
   title.id = 'tutor-title'
   const nav = el('nav', 'tutor-modes')
-  nav.setAttribute('aria-label', 'AI 老师模式')
+  nav.setAttribute('aria-label', 'English Coach modes')
   const readingPanel = el('div')
   const reviewPanel = el('div')
   readingPanel.id = 'tutor-reading-panel'
@@ -14,8 +14,8 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
 
   const reading = createReadingWorkspace({ rootEl: readingPanel, api: readingApi, onOpenSettings })
   const review = createReviewWorkspace({ rootEl: reviewPanel, api, onOpenSettings })
-  const readingButton = button('文章带读', 'tutor-reading-mode', () => setMode(false))
-  const reviewButton = button('复习练习', 'tutor-review-mode', () => setMode(true))
+  const readingButton = button('Article reading', 'tutor-reading-mode', () => setMode(false))
+  const reviewButton = button('Review', 'tutor-review-mode', () => setMode(true))
   readingButton.setAttribute('aria-controls', readingPanel.id)
   readingButton.setAttribute('aria-pressed', 'true')
   reviewButton.setAttribute('aria-controls', reviewPanel.id)
@@ -47,17 +47,12 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
 }
 
 const CATEGORIES = {
-  news: '近期新闻',
-  engineering: '工程博客',
-  ideas: '技术思考',
+  news: 'Recent news',
+  engineering: 'Engineering blogs',
+  ideas: 'Tech ideas',
 }
-const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' })
-const SETTINGS_REQUIRED = '请先在设置中配置 API 地址、密钥和通用学习模型。'
-
-function readingError(error, fallback) {
-  const message = String(error?.message || '').replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, '')
-  return /^[\p{Script=Han}]/u.test(message) ? message : fallback
-}
+const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
+const SETTINGS_REQUIRED = 'Add an API URL, API key, and learning model in Settings.'
 
 function attribution({ source, publishedAt }) {
   const meta = el('p', 'reading-meta')
@@ -73,16 +68,16 @@ function attribution({ source, publishedAt }) {
 function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
   const index = el('div')
   const header = el('header', 'reading-header')
-  const heading = el('h3', 'reading-heading', '选一篇文章')
+  const heading = el('h3', 'reading-heading', 'Choose an article')
   heading.tabIndex = -1
   const tools = el('div', 'reading-tools')
-  const refresh = button('刷新', 'reading-refresh', () => void loadArticles())
-  const paste = button('粘贴英文', 'reading-paste', openPaste)
+  const refresh = button('Refresh', 'reading-refresh', () => void loadArticles())
+  const paste = button('Paste text', 'reading-paste', openPaste)
   tools.append(paste, refresh)
   header.append(heading, tools)
   const filters = el('div', 'reading-filters')
   filters.setAttribute('role', 'group')
-  filters.setAttribute('aria-label', '文章来源分类')
+  filters.setAttribute('aria-label', 'Article categories')
   const categoryButtons = Object.entries(CATEGORIES).map(([id, label]) =>
     button(label, `reading-category-${id}`, () => selectCategory(id)))
   filters.append(...categoryButtons)
@@ -107,13 +102,13 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
     refresh.disabled = Boolean(feed?.pending)
     list.setAttribute('aria-busy', String(Boolean(feed?.pending)))
     if (feed?.pending) {
-      listStatus.textContent = '正在获取文章…'
+      listStatus.textContent = 'Loading articles…'
     } else if (feed?.articles?.length) {
       listStatus.textContent = feed.unavailableSources.length
-        ? `暂时无法读取 ${feed.unavailableSources.join('、')}。`
+        ? `Couldn’t load ${feed.unavailableSources.join(', ')}.`
         : ''
     } else {
-      listStatus.textContent = '暂时读不到文章。可以刷新重试，或粘贴英文自己选材。'
+      listStatus.textContent = 'No articles are available right now. Refresh or paste your own text.'
     }
     list.replaceChildren(...(feed?.articles || []).map((article) => {
       const item = el('li')
@@ -137,7 +132,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
       feeds.set(selected, previous || { articles: [], unavailableSources: [] })
       if (selected === category && previous?.articles?.length) {
         renderIndex()
-        listStatus.textContent = '刷新失败，仍可打开此前载入的文章。'
+        listStatus.textContent = 'Couldn’t refresh. You can still open the articles already loaded.'
         return
       }
     }
@@ -159,7 +154,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
   }
 
   function backButton(origin) {
-    return button('‹ 返回文章列表', 'reading-back', () => {
+    return button('‹ All articles', 'reading-back', () => {
       showPanel(null)
       if (origin.isConnected) origin.focus()
       else heading.focus()
@@ -168,21 +163,21 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
 
   function openPaste() {
     const form = el('form', 'reading-paste-form')
-    const label = el('label', '', '粘贴想一起读的英文')
+    const label = el('label', '', 'Paste English text to read together')
     const input = englishText('textarea', 'reading-input')
     input.id = 'reading-paste-text'
     input.required = true
     input.maxLength = 12000
     input.rows = 8
     label.htmlFor = input.id
-    const submit = el('button', 'primary', '开始阅读')
+    const submit = el('button', 'primary', 'Open text')
     submit.type = 'submit'
     submit.id = 'reading-paste-open'
     form.append(backButton(paste), label, input, submit)
     form.addEventListener('submit', (event) => {
       event.preventDefault()
       const pastedText = input.value.trim()
-      if (pastedText) openArticle({ title: '自选英文', text: pastedText }, paste, pastedText)
+      if (pastedText) openArticle({ title: 'Pasted text', text: pastedText }, paste, pastedText)
     })
     showPanel(form)
     input.focus()
@@ -205,7 +200,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
     panel.append(backButton(origin), title)
     let original
     if (article.url) {
-      original = el('a', 'reading-original', '打开原文 ↗')
+      original = el('a', 'reading-original', 'Open original ↗')
       original.id = 'reading-original'
       original.href = article.url
       original.addEventListener('auxclick', (event) => event.preventDefault())
@@ -221,40 +216,40 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
       const moreText = article.text?.length > excerpt.length ? article.text : excerpt
       if (moreText.length > preview.length) {
         const details = el('details', 'reading-material')
-        details.append(el('summary', '', pastedText ? '查看粘贴的全文' : '展开订阅中的英文'),
+        details.append(el('summary', '', pastedText ? 'Read the full text' : 'Read more from the feed'),
           englishText('p', 'reading-preview', moreText))
         panel.append(details)
       }
     } else {
-      panel.append(el('p', 'reading-meta', '这条订阅只提供标题。可以打开原文，或粘贴想读的段落。'))
+      panel.append(el('p', 'reading-meta', 'This feed only provides a headline. Open the original or paste a passage to read here.'))
     }
 
     const thread = el('div', 'reading-thread')
     thread.id = 'reading-thread'
     thread.setAttribute('role', 'log')
-    thread.setAttribute('aria-label', '带读对话')
+    thread.setAttribute('aria-label', 'Article discussion')
     const status = el('p', 'reading-meta reading-discussion-status')
     status.setAttribute('role', 'status')
-    const settings = button('打开模型设置', '', onOpenSettings)
+    const settings = button('Open model settings', '', onOpenSettings)
     settings.hidden = true
-    const start = button('让老师带我读', 'reading-start', () => void discuss(''), 'primary')
+    const start = button('Read with Coach', 'reading-start', () => void discuss(''), 'primary')
     const suggestions = el('div', 'reading-suggestions')
 
     const form = el('form', 'reading-question-form')
-    const label = el('label', '', '和老师聊聊这篇文章')
+    const label = el('label', '', 'Ask about this article')
     const input = el('textarea', 'reading-input')
     input.id = 'reading-question'
     input.rows = 2
     input.maxLength = 2500
     input.required = true
     input.value = state.draft
-    input.placeholder = '例如：作者为什么这么说？'
+    input.placeholder = 'For example: Why does the author say this?'
     label.htmlFor = input.id
-    const send = el('button', 'primary', '发送')
+    const send = el('button', 'primary', 'Send')
     send.type = 'submit'
     send.id = 'reading-send'
     form.append(label, input, send)
-    const pasteExcerpt = button('粘贴想读的段落', '', openPaste)
+    const pasteExcerpt = button('Paste a passage', '', openPaste)
     panel.append(thread, status, settings)
     if (excerpt) panel.append(start, suggestions, form)
     else panel.append(pasteExcerpt)
@@ -262,7 +257,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
     function appendTurn({ role, text, quote }) {
       const entry = el('div', 'reading-turn')
       entry.dataset.role = role
-      entry.append(el('p', 'reading-turn-speaker', role === 'user' ? '你' : 'AI 老师'),
+      entry.append(el('p', 'reading-turn-speaker', role === 'user' ? 'You' : 'English Coach'),
         el('p', 'reading-turn-text', text))
       if (quote) entry.append(englishText('blockquote', 'reading-quote', quote))
       thread.append(entry)
@@ -285,7 +280,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
       state.pending = true
       updateActions()
       settings.hidden = true
-      status.textContent = '老师正在阅读…'
+      status.textContent = 'English Coach is reading…'
       try {
         const history = state.turns.slice(-8).map(({ role, text, quote }) =>
           ({ role, text: quote ? `${text}\n${quote}` : text }))
@@ -306,7 +301,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
           thread.lastElementChild.scrollIntoView({ block: 'nearest' })
         }
       } catch (error) {
-        status.textContent = readingError(error, '暂时无法带读，请重试。')
+        status.textContent = coachErrorText(error, 'Couldn’t load a reply. Try again.')
         settings.hidden = status.textContent !== SETTINGS_REQUIRED
       } finally {
         state.pending = false
@@ -328,7 +323,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings }) {
       try {
         await api.openArticle(article.id)
       } catch {
-        status.textContent = '无法打开原文，可以复制链接在浏览器中打开。'
+        status.textContent = 'Couldn’t open the article. Copy the link to open it in your browser.'
       }
     })
 

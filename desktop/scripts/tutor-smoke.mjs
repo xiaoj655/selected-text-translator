@@ -19,10 +19,10 @@ function reply(sentences) {
     ok: true,
     async json() {
       const content = JSON.stringify({
-        topic: '短语 put off',
+        topic: 'The phrase “put off”',
         questions: sentences.map((sentence) => ({
-          sentence, prompt: '他们做了什么？', choices: ['推迟', '取消', '立即开始'], correctIndex: 0,
-          hint: '留意 put off 后的动作和时间。', explanation: '这里的 put off 表示推迟动作。',
+          sentence, prompt: 'What does “put off” mean here?', choices: ['Postpone', 'Cancel', 'Start now'], correctIndex: 0,
+          hint: 'Notice the action and time after “put off.”', explanation: 'Here, “put off” means to delay an action.',
         })),
       })
       return { choices: [{ message: { content } }] }
@@ -72,6 +72,7 @@ test('lesson applies the configured model, persists performance, and reviews wit
     const body = JSON.parse(options.body)
     assert.equal(body.model, PROVIDER.learning_model)
     assert.match(body.messages[0].content, /Create an English reading comprehension lesson/)
+    assert.match(body.messages[0].content, /Use clear, concise English/)
     requests.push(JSON.parse(body.messages[1].content))
     return reply(requests.length === 1 ? FIRST_SENTENCES : REVIEW_SENTENCES)
   }
@@ -93,17 +94,23 @@ test('lesson applies the configured model, persists performance, and reviews wit
   await rename(storageBackup, storageFile)
   assert.deepEqual(await Promise.all([tutor.recordResult(result), tutor.recordResult(result)]), [true, true])
 
+  const { desktop_tutor_v1: records } = await storage.local.get('desktop_tutor_v1')
+  const legacyTopic = '短语 put off'
+  records[0].reviewTopic = legacyTopic
+  await storage.local.set({ desktop_tutor_v1: records })
+
   const restarted = createTutor({ storage: createStorage(dir), history, fetcher, now })
   assert.equal((await restarted.getPlan()).source, null)
   assert.equal((await restarted.getPlan()).nextReviewAt, START + 3 * DAY_MS)
   clock += 3 * DAY_MS
   const review = (await restarted.getPlan()).source
   assert.equal(review.isReview, true)
-  assert.equal(review.topic, lesson.topic)
+  assert.equal(review.topic, legacyTopic)
   const practice = await restarted.startLesson(review.id)
+  assert.equal(practice.topic, lesson.topic)
   assert.deepEqual(practice.questions.map(({ sentence }) => sentence), REVIEW_SENTENCES)
   assert.deepEqual(requests[1].previousSentences, FIRST_SENTENCES)
-  assert.equal(requests[1].reviewTopic, lesson.topic)
+  assert.equal(requests[1].reviewTopic, legacyTopic)
   await restarted.recordResult({ lessonId: practice.id, sourceId: review.id, outcome: 'hinted' })
   assert.equal((await restarted.getPlan()).nextReviewAt, clock + DAY_MS)
 })
@@ -117,8 +124,8 @@ test('rejects an invalid lesson and its result, and permits a retry', async (t) 
   const tutor = createTutor({ storage, history, now: () => START, fetcher })
   const { source } = await tutor.getPlan()
   assert.equal(source.kind, 'sentence')
-  await assert.rejects(tutor.startLesson(source.id), /练习不完整或有重复/)
-  await assert.rejects(tutor.recordResult({ sourceId: source.id, outcome: 'independent' }), /练习已失效/)
+  await assert.rejects(tutor.startLesson(source.id), /an incomplete or duplicate exercise/)
+  await assert.rejects(tutor.recordResult({ sourceId: source.id, outcome: 'independent' }), /no longer available/)
   const lesson = await tutor.startLesson(source.id)
   assert.equal(lesson.questions.length, 2)
 })
@@ -136,19 +143,20 @@ test('article reading sends bounded discussion context and only displays verifia
     const body = JSON.parse(options.body)
     assert.equal(body.model, PROVIDER.learning_model)
     assert.match(body.messages[0].content, /Read an English article together/)
+    assert.match(body.messages[0].content, /in clear, accessible English/)
     requests.push(JSON.parse(body.messages[1].content))
     const quote = requests.length === 1 ? 'shorten the time' : 'The study surveyed 10,000 engineers.'
     const content = JSON.stringify({
-      reply: '小批发布会缩短定位回归问题所需的时间。', quote,
-      followups: ['为什么会更快？', '为什么会更快？', '有什么代价？', '还能用于哪里？'],
+      reply: 'Small releases make regressions quicker to find.', quote,
+      followups: ['Why is it faster?', 'Why is it faster?', 'What are the trade-offs?', 'Where else can it help?'],
     })
     return { ok: true, json: async () => ({ choices: [{ message: { content: [{ text: content }] } }] }) }
   } })
 
   const opening = await tutor.ask({ article: { ...baseArticle, text: excerpt } })
   assert.deepEqual(opening, {
-    reply: '小批发布会缩短定位回归问题所需的时间。', quote: 'shorten the time',
-    followups: ['为什么会更快？', '有什么代价？'],
+    reply: 'Small releases make regressions quicker to find.', quote: 'shorten the time',
+    followups: ['Why is it faster?', 'What are the trade-offs?'],
   })
   assert.deepEqual(requests[0], {
     article: { title: baseArticle.title, source: baseArticle.source, url: baseArticle.url,
@@ -178,11 +186,11 @@ test('article reading validates configuration and surfaces malformed model repli
     storage: { sync: { get: async () => ({}) } },
     fetcher: () => assert.fail('Unconfigured reading must not make a network request.'),
   })
-  await assert.rejects(missingSettings.ask({ article }), /请先在设置中配置/)
-  await assert.rejects(missingSettings.ask({ article, question: 'a'.repeat(2501) }), /2500 个字符/)
+  await assert.rejects(missingSettings.ask({ article }), /Add an API URL/)
+  await assert.rejects(missingSettings.ask({ article, question: 'a'.repeat(2501) }), /2,500 characters/)
   const malformed = createReadingTutor({
     storage: { sync: { get: async () => PROVIDER } },
     fetcher: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"quote":"OK"}' } }] }) }),
   })
-  await assert.rejects(malformed.ask({ article }), /带读内容不完整/)
+  await assert.rejects(malformed.ask({ article }), /an incomplete reply/)
 })

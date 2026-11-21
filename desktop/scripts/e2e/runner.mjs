@@ -269,7 +269,7 @@ export async function runE2E(mode = 'core') {
 
     if (mode !== 'input') {
       await check('empty state: example translates in one click when configured', async () => {
-        await mainPage.getByRole('button', { name: '试一个单词' }).click()
+        await mainPage.getByRole('button', { name: 'English word' }).click()
         await mainPage.waitForFunction(() => document.querySelectorAll('.entry').length >= 1, null, { timeout: 15000 })
         const source = await mainPage.locator('.entry .bubble').first().textContent()
         assert.match(source, /record/u)
@@ -289,11 +289,11 @@ export async function runE2E(mode = 'core') {
         assert.equal(await guide.getAttribute('aria-pressed'), 'true')
         const savedMode = await mainPage.evaluate(() => chrome.storage.sync.get('reading_mode'))
         assert.equal(savedMode.reading_mode, 'guide')
-        assert.equal(await mainPage.locator('#send-label').textContent(), '开始引导')
+        assert.equal(await mainPage.locator('#send-label').textContent(), 'Start guided reading')
         const translate = mainPage.locator('.mode[data-mode="translate"]')
         await translate.click()
         assert.equal(await translate.getAttribute('aria-pressed'), 'true')
-        assert.equal(await mainPage.locator('#send-label').textContent(), '翻译')
+        assert.equal(await mainPage.locator('#send-label').textContent(), 'Translate')
         await shot(mainPage, 'main-workspace-empty')
       })
 
@@ -371,8 +371,8 @@ export async function runE2E(mode = 'core') {
         try {
           await mainPage.locator('#input').fill(source)
           await mainPage.locator('#btn-send').click()
-          await mainPage.getByRole('button', { name: '取消请求' }).first().waitFor({ timeout: 15000 })
-          await mainPage.getByRole('button', { name: '取消请求' }).first().click()
+          await mainPage.getByRole('button', { name: 'Cancel request' }).first().waitFor({ timeout: 15000 })
+          await mainPage.getByRole('button', { name: 'Cancel request' }).first().click()
           await mainPage.waitForFunction(() => {
             const input = document.getElementById('input')
             return Boolean(input && input.value.trim())
@@ -421,13 +421,13 @@ export async function runE2E(mode = 'core') {
             const result = document.querySelector('.entry:last-child .result')
             const status = document.getElementById('statusbar')?.textContent || ''
             return Boolean(bubble && bubble.textContent.includes(text) && result
-              && !result.classList.contains('is-loading') && /完成|翻译记忆/u.test(status))
+              && !result.classList.contains('is-loading') && /Done|From translation memory/u.test(status))
           }, probe, { timeout: 20000 })
           const saveButton = mainPage.locator('.entry:last-child [data-save-button]')
           assert.equal(await saveButton.count(), 1, 'save must be a first-class result action')
-          assert.equal((await saveButton.textContent()).trim(), '收藏')
+          assert.equal((await saveButton.textContent()).trim(), 'Save')
           await saveButton.click()
-          await mainPage.waitForFunction(() => /✓ 已收藏/u.test(
+          await mainPage.waitForFunction(() => /✓ Saved/u.test(
             document.querySelector('.entry:last-child [data-save-button]')?.textContent || ''), null, { timeout: 5000 })
           const saved = await mainPage.evaluate(() => chrome.storage.local.get('vocabulary_entries'))
           assert.ok(saved.vocabulary_entries?.some((item) => item.text === probe),
@@ -489,7 +489,7 @@ export async function runE2E(mode = 'core') {
           await shot(mainPage, 'main-draft-restored')
 
           await mainPage.locator('#btn-send').click()
-          await mainPage.waitForFunction(() => /完成|翻译记忆/u.test(
+          await mainPage.waitForFunction(() => /Done|From translation memory/u.test(
             document.getElementById('statusbar')?.textContent || ''), null, { timeout: 20000 })
           assert.equal(await mainPage.locator('#input').inputValue(), probe,
             'the original must stay in the input after translating so it can be edited in place')
@@ -529,19 +529,19 @@ export async function runE2E(mode = 'core') {
         try {
           await mainPage.locator('#input').fill('stale-probe-alpha')
           await mainPage.locator('#btn-send').click()
-          await mainPage.waitForFunction(() => /请求中|已自动翻译/u.test(
+          await mainPage.waitForFunction(() => /Processing|Translation started automatically/u.test(
             document.getElementById('statusbar')?.textContent || ''), null, { timeout: 10000 })
           await mainPage.locator('#input').fill('fresh-probe-beta')
           await mainPage.locator('#btn-send').click()
           await mainPage.waitForFunction(() => {
             const bubble = document.querySelector('.entry .bubble')
             const status = document.getElementById('statusbar')?.textContent || ''
-            return Boolean(bubble && bubble.textContent.includes('fresh-probe-beta') && /完成/u.test(status))
+            return Boolean(bubble && bubble.textContent.includes('fresh-probe-beta') && /Done/u.test(status))
           }, null, { timeout: 20000 })
           await delay(1800)
           assert.match(await mainPage.locator('.entry .bubble').textContent(), /fresh-probe-beta/u,
             'the visible result must stay the newest translation')
-          assert.match(await mainPage.locator('#statusbar').textContent(), /完成/u,
+          assert.match(await mainPage.locator('#statusbar').textContent(), /Done/u,
             'a late event from a cancelled request must not clobber the current status')
           await mainPage.locator('#btn-history').click()
           await mainPage.waitForFunction(() => !document.getElementById('sidebar')?.hidden)
@@ -588,7 +588,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.waitForFunction(() => {
             const bubble = document.querySelector('.entry .bubble')
             const status = document.getElementById('statusbar')?.textContent || ''
-            return Boolean(bubble && bubble.textContent.includes('stale-regenerator-fast') && /完成/u.test(status))
+            return Boolean(bubble && bubble.textContent.includes('stale-regenerator-fast') && /Done/u.test(status))
           }, null, { timeout: 20000 })
 
           await mainPage.locator('#input').fill('stale-regenerate-slow')
@@ -600,7 +600,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('.history-item', { hasText: 'stale-regenerator-fast' }).first().click()
           await mainPage.waitForFunction(() => document.querySelector('.entry .bubble')?.textContent.includes('stale-regenerator-fast'))
           await mainPage.locator('.entry .action-more').click()
-          await mainPage.getByRole('button', { name: '重新生成', exact: true }).click()
+          await mainPage.getByRole('button', { name: 'Regenerate', exact: true }).click()
           await waitForSignal(regenerated.promise, 'the regenerated request to reach the mock API')
           const closed = await waitForSignal(slowClosed.promise, 'the superseded request to be aborted')
           assert.equal(closed.ended, false, 'the slow response must be aborted before returning a result')
@@ -611,9 +611,9 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('.history-item', { hasText: 'stale-regenerate-slow' }).first().click()
           await mainPage.waitForFunction(() => {
             const label = document.querySelector('.entry .result-label')
-            return Boolean(label && /出错了/u.test(label.textContent))
+            return Boolean(label && /Error/u.test(label.textContent))
           }, null, { timeout: 5000 })
-          assert.match(await mainPage.locator('.entry .result').textContent(), /已被新的翻译取代/u,
+          assert.match(await mainPage.locator('.entry .result').textContent(), /Replaced by a newer request/u,
             'the in-flight entry must be marked as superseded when regenerate starts a new request')
           await shot(mainPage, 'main-regenerate-stale-cancel')
         } finally {
@@ -648,7 +648,7 @@ export async function runE2E(mode = 'core') {
           }, null, { timeout: 20000 })
           const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
           assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
-          assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), '原文')
+          assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), 'Source text')
           const head = mainPage.locator('.entry:last-child .entry-head')
           await head.press('Space')
           assert.equal(await head.getAttribute('aria-expanded'), 'false')
@@ -702,7 +702,7 @@ export async function runE2E(mode = 'core') {
           assert.ok((await mainPage.locator('.entry:last-child .hint-step').count()) >= 1)
           assert.equal(await mainPage.locator('.entry:last-child .guide-intro').count(), 0,
             'the vague guide-intro sentence must not be rendered')
-          await mainPage.locator('.entry:last-child').getByRole('button', { name: '揭晓答案' }).click()
+          await mainPage.locator('.entry:last-child').getByRole('button', { name: 'Reveal answer' }).click()
           await mainPage.waitForFunction(() => Boolean(document.querySelector('.entry:last-child .answer')),
             null, { timeout: 5000 })
           await delay(300)
@@ -753,7 +753,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.waitForFunction(() => {
             const status = document.getElementById('statusbar')?.textContent || ''
             const result = document.querySelector('.entry:last-child .result')
-            return Boolean(result && !result.classList.contains('is-loading') && /完成|翻译记忆/u.test(status))
+            return Boolean(result && !result.classList.contains('is-loading') && /Done|From translation memory/u.test(status))
           }, null, { timeout: 20000 })
           assert.equal(await mainPage.locator('.entry:last-child .lexical-details').count(), 1)
           assert.equal(await mainPage.locator('.entry:last-child .lexical-details').evaluate((el) => el.open), false)
@@ -819,7 +819,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.waitForFunction(() => {
             const bubble = document.querySelector('.entry .bubble')
             const status = document.getElementById('statusbar')?.textContent || ''
-            return Boolean(bubble && bubble.textContent.includes('mode-switch-probe') && /完成|翻译记忆/u.test(status))
+            return Boolean(bubble && bubble.textContent.includes('mode-switch-probe') && /Done|From translation memory/u.test(status))
           }, null, { timeout: 20000 })
           assert.equal(await mainPage.locator('.entry:last-child .translation-answer').count(), 1)
 
@@ -957,19 +957,19 @@ export async function runE2E(mode = 'core') {
         try {
           await input.fill('')
           await input.dispatchEvent('input')
-          assert.equal((await selectedLabel()).trim(), '自动检测原文')
+          assert.equal((await selectedLabel()).trim(), 'Detect language')
 
           await input.fill('你好,我的朋友')
           await input.dispatchEvent('input')
-          assert.match(await selectedLabel(), /检测为中文/u)
+          assert.equal(await selectedLabel(), 'Detected: Simplified Chinese')
 
           await input.fill('Good morning, my friend.')
           await input.dispatchEvent('input')
-          assert.match(await selectedLabel(), /检测为英语/u)
+          assert.equal(await selectedLabel(), 'Detected: English')
 
           await input.fill('おはようございます')
           await input.dispatchEvent('input')
-          assert.match(await selectedLabel(), /检测为日语/u)
+          assert.equal(await selectedLabel(), 'Detected: Japanese')
 
           await input.fill('')
           await input.dispatchEvent('input')
@@ -997,7 +997,7 @@ export async function runE2E(mode = 'core') {
           assert.equal(saved.desktop_source_language, 'Japanese')
           assert.equal(saved.desktop_target_language, 'Chinese')
           await mainPage.locator('#input').fill('swap direction probe')
-          await mainPage.waitForFunction(() => /完成|翻译记忆/u.test(document.getElementById('statusbar')?.textContent || ''),
+          await mainPage.waitForFunction(() => /Done|From translation memory/u.test(document.getElementById('statusbar')?.textContent || ''),
             null, { timeout: 20000 })
           await waitForCaptured(1)
           assert.ok(capturedBodies.some((b) => b.translation_options?.source_lang === 'Japanese'),
@@ -1043,7 +1043,7 @@ export async function runE2E(mode = 'core') {
           assert.equal(saved.desktop_target_language, 'Japanese')
           const settingsValue = await mainPage.evaluate(() => document.getElementById('opt-target-language').value)
           assert.equal(settingsValue, 'Japanese', 'settings select must mirror the workspace bar')
-          assert.match(await mainPage.locator('#statusbar').textContent(), /目标语言已设为 Japanese/u)
+          assert.match(await mainPage.locator('#statusbar').textContent(), /Target language set to Japanese/u)
 
           await mainPage.locator('#input').fill(probe)
           await mainPage.waitForFunction((text) => {
@@ -1052,7 +1052,7 @@ export async function runE2E(mode = 'core') {
             const result = entry?.querySelector('.result')
             const status = document.getElementById('statusbar')?.textContent || ''
             return Boolean(bubble.includes(text) && result?.textContent.trim()
-              && !result.classList.contains('is-loading') && /完成/u.test(status))
+              && !result.classList.contains('is-loading') && /Done/u.test(status))
           }, probe, { timeout: 20000 })
           await waitForCaptured(1)
           assert.equal(capturedBodies[0].translation_options?.target_lang, 'Japanese')
@@ -1089,9 +1089,9 @@ export async function runE2E(mode = 'core') {
         try {
           await mainPage.evaluate((entries) => chrome.storage.local.set({ vocabulary_entries: entries }), samples)
           await mainPage.waitForFunction(() => document.getElementById('study-progress-text')
-            ?.textContent.includes('今日待复习 3'), null, { timeout: 10000 })
+            ?.textContent.includes('3 due'), null, { timeout: 10000 })
           assert.match(await mainPage.locator('#study-progress-text').textContent(),
-            /今日待复习 3 · 学习中 2 · 已掌握 1/u)
+            /3 due · 2 learning · 1 mastered/u)
           assert.equal(await mainPage.locator('#btn-study-progress.has-due').count(), 1)
           await shot(mainPage, 'main-study-progress')
 
@@ -1121,7 +1121,7 @@ export async function runE2E(mode = 'core') {
           assert.equal(ankiRows.length, 6)
           assert.match(ankiRows[0], /^reluctant\t/u)
           assert.match(ankiRows[0], /selected-english$/u)
-          assert.match(await libraryPage.locator('#library-status').textContent(), /已导出 6 条到 Anki/u)
+          assert.match(await libraryPage.locator('#library-status').textContent(), /Exported 6 Anki cards/u)
 
           await libraryPage.locator('#start-review').click()
           await libraryPage.waitForFunction(() => document.getElementById('review-tab')?.getAttribute('aria-pressed') === 'true',
@@ -1157,15 +1157,15 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
           await mainPage.locator('#notice').waitFor({ state: 'visible', timeout: 15000 })
           assert.equal(await mainPage.locator('#notice').getAttribute('data-kind'), 'review')
-          assert.match(await mainPage.locator('#notice').textContent(), /今天有 3 条表达等待复习/u)
-          assert.equal(await mainPage.getByRole('button', { name: '去复习' }).count(), 1)
+          assert.match(await mainPage.locator('#notice').textContent(), /3 entries are due for review/u)
+          assert.equal(await mainPage.getByRole('button', { name: 'Review vocabulary' }).count(), 1)
           assert.equal(await mainPage.locator('#notice .notice-close').count(), 1)
-          assert.match(await mainPage.locator('#study-progress-text').textContent(), /今日待复习 3/u)
+          assert.match(await mainPage.locator('#study-progress-text').textContent(), /3 due/u)
           const persisted = await mainPage.evaluate(() => chrome.storage.local.get('lastReviewReminderDate'))
           assert.equal(persisted.lastReviewReminderDate, dayKeys.today, 'reminder date must persist as today')
           await shot(mainPage, 'main-review-reminder')
 
-          await mainPage.getByRole('button', { name: '去复习' }).click()
+          await mainPage.getByRole('button', { name: 'Review vocabulary' }).click()
           const libraryPage = await app.waitForEvent('window', { timeout: 20000 })
           await libraryPage.locator('#study-progress').waitFor({ state: 'visible', timeout: 20000 })
           await libraryPage.close()
@@ -1175,7 +1175,7 @@ export async function runE2E(mode = 'core') {
 
           await mainPage.reload()
           await mainPage.locator('.app').waitFor({ state: 'visible', timeout: 20000 })
-          await mainPage.waitForFunction(() => /今日待复习 3/u.test(
+          await mainPage.waitForFunction(() => /3 due/u.test(
             document.getElementById('study-progress-text')?.textContent || ''), null, { timeout: 10000 })
           await delay(600)
           assert.equal(await mainPage.locator('#notice').isVisible(), false,
@@ -1237,7 +1237,7 @@ export async function runE2E(mode = 'core') {
           assert.equal(archive.sections.vocabulary.entries[0].text, 'portable archive')
           assert.equal(Object.keys(archive.sections.translationMemory.entries).length, 1)
           assert.ok(archive.sections.history.entries.some((entry) => entry.id === 'archive-h1'))
-          assert.match(await mainPage.locator('#archive-status').textContent(), /已导出完整学习档案/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /Learning archive exported/u)
 
           await mainPage.evaluate(async () => {
             await chrome.storage.local.set({ vocabulary_entries: [], translation_memory: {} })
@@ -1256,7 +1256,7 @@ export async function runE2E(mode = 'core') {
           }))
           assert.equal(Object.keys(restored.memory).length, 1)
           assert.ok(restored.history.some((entry) => entry.id === 'archive-h1'))
-          assert.match(await mainPage.locator('#archive-status').textContent(), /已导入档案/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /Archive imported/u)
           await mainPage.locator('#btn-close-settings').click()
           await mainPage.waitForFunction(() => document.getElementById('settings-panel').hidden)
           await shot(mainPage, 'main-learning-archive')
@@ -1318,9 +1318,9 @@ export async function runE2E(mode = 'core') {
             const box = document.getElementById('archive-conflict')
             return Boolean(box && !box.hidden)
           }, null, { timeout: 10000 })
-          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /2 处冲突/u)
-          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /收藏 1 · 记忆 1/u)
-          assert.match(await mainPage.locator('#archive-status').textContent(), /现有数据未被改动/u)
+          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /Conflicts found: 2/u)
+          assert.match(await mainPage.locator('#archive-conflict-text').textContent(), /Vocabulary: 1 · Translation memory: 1/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /Choose how to proceed/u)
           const beforeChoice = await mainPage.evaluate(async () => ({
             vocabulary: (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || [],
             memory: (await chrome.storage.local.get('translation_memory')).translation_memory || {},
@@ -1344,7 +1344,7 @@ export async function runE2E(mode = 'core') {
           assert.equal(after.memory['k-shared'].translatedText, '现有译文',
             'existing translation must survive the import')
           assert.equal(after.memory['k-new'].translatedText, '新记忆')
-          assert.match(await mainPage.locator('#archive-status').textContent(), /保留现有冲突 2 处/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /Conflicts skipped: 2/u)
           assert.equal(await mainPage.locator('#archive-conflict').evaluate((el) => el.hidden), true)
 
           const legacy = {
@@ -1363,7 +1363,7 @@ export async function runE2E(mode = 'core') {
             const vocab = (await chrome.storage.local.get('vocabulary_entries')).vocabulary_entries || []
             return vocab.some((entry) => entry.text === 'legacy word')
           }, null, { timeout: 10000 })
-          assert.match(await mainPage.locator('#archive-status').textContent(), /已导入档案/u)
+          assert.match(await mainPage.locator('#archive-status').textContent(), /Archive imported/u)
           assert.equal(await mainPage.locator('#archive-conflict').evaluate((el) => el.hidden), true,
             'a legacy archive with no conflicts should import without a prompt')
 
@@ -1398,7 +1398,7 @@ export async function runE2E(mode = 'core') {
             const result = document.querySelector('.entry:last-child .result')
             const status = document.getElementById('statusbar')?.textContent || ''
             return Boolean(result && result.textContent.trim() && !result.classList.contains('is-loading')
-              && /完成/u.test(status))
+              && /Done/u.test(status))
           }, null, { timeout: 20000 })
           const afterFirst = mock.requests.length
           assert.ok(afterFirst > before, 'first submission should reach the model API')
@@ -1413,7 +1413,7 @@ export async function runE2E(mode = 'core') {
             return Boolean(node && node.querySelector('.memory-tag') && node.querySelector('.result')?.textContent.trim())
           }, null, { timeout: 15000 })
           assert.equal(mock.requests.length, afterFirst, 'repeat submission must be served from memory, not the API')
-          assert.match(await mainPage.locator('#statusbar').textContent(), /来自翻译记忆/u)
+          assert.match(await mainPage.locator('#statusbar').textContent(), /From translation memory/u)
           await mainPage.locator('.entry:last-child').scrollIntoViewIfNeeded()
           await delay(200)
           await shot(mainPage, 'main-translation-memory')
@@ -1437,7 +1437,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('#btn-send').click()
           await mainPage.waitForFunction(() => {
             const status = document.getElementById('statusbar')?.textContent || ''
-            return /完成/u.test(status)
+            return /Done/u.test(status)
           }, null, { timeout: 20000 })
           const afterFirst = mock.requests.length
           assert.ok(afterFirst > before, 'the first probe should reach the API')
@@ -1447,7 +1447,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.waitForFunction(() => {
             const bubble = document.querySelector('.entry:last-child .bubble')
             const status = document.getElementById('statusbar')?.textContent || ''
-            return Boolean(bubble && bubble.textContent.includes('memorycase-probe-alpha') && /完成/u.test(status))
+            return Boolean(bubble && bubble.textContent.includes('memorycase-probe-alpha') && /Done/u.test(status))
           }, null, { timeout: 20000 })
           assert.equal(mock.requests.length, afterFirst + 1,
             'a different-cased text must reach the API, not be served from the other case\'s memory')
@@ -1588,7 +1588,7 @@ export async function runE2E(mode = 'core') {
           await mainPage.locator('#btn-send').click()
           await mainPage.waitForFunction(() => {
             const label = document.querySelector('.entry:last-child .result-label')
-            return Boolean(label && /出错了/u.test(label.textContent))
+            return Boolean(label && /Error/u.test(label.textContent))
           }, null, { timeout: 15000 })
           const message = mainPage.locator('.entry:last-child .error-message')
           assert.equal(await message.count(), 1, 'an empty translation must show an error message, not a spinner')
@@ -1616,8 +1616,8 @@ export async function runE2E(mode = 'core') {
         const cardPage = findCardPage(app)
         try {
           await openCard(app, mainPage, { text: 'record', context: '' })
-          await cardPage.getByRole('button', { name: '取消请求' }).waitFor({ timeout: 15000 })
-          await cardPage.getByRole('button', { name: '取消请求' }).click()
+          await cardPage.getByRole('button', { name: 'Cancel request' }).waitFor({ timeout: 15000 })
+          await cardPage.getByRole('button', { name: 'Cancel request' }).click()
           await cardPage.locator('#result.is-error').waitFor({ timeout: 10000 })
           await measure(cardPage, mainPage, 'cancel')
         } finally {
@@ -1630,7 +1630,7 @@ export async function runE2E(mode = 'core') {
         await openCard(app, mainPage, { text: 'record', context: '' })
         await waitForResult(cardPage, { expect: /唱片/u })
         await measure(cardPage, mainPage, 'copy')
-        await cardPage.getByRole('button', { name: '复制结果' }).click()
+        await cardPage.getByRole('button', { name: 'Copy result' }).click()
         await delay(150)
         const clipboard = execFileSync('xclip', ['-selection', 'clipboard', '-o'], { encoding: 'utf8' })
         assert.match(clipboard, /唱片/u)
@@ -1664,7 +1664,7 @@ export async function runE2E(mode = 'core') {
         const cardPage = findCardPage(app)
         await openCard(app, mainPage, { text: LONG_EN, context: '' })
         await waitForResult(cardPage, { expect: /尽管/u })
-        await cardPage.getByRole('button', { name: '更多操作' }).click()
+        await cardPage.getByRole('button', { name: 'More actions' }).click()
         await cardPage.locator('.action-menu:not([hidden])').waitFor()
         const { win: openWin } = await measure(cardPage, mainPage, 'menu open')
         await shot(cardPage, 'core-menu-open')
