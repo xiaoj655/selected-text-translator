@@ -26,7 +26,7 @@ function clamp(value, min, max) {
 export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
   const assetsDir = join(desktopDir, 'assets')
-  const appIcon = nativeImage.createFromPath(join(assetsDir, 'icon.png'))
+  const appIcon = nativeImage.createFromPath(join(assetsDir, process.platform === 'win32' ? 'icon.ico' : 'icon.png'))
   const vendorDir = join(desktopDir, 'vendor', 'src')
   const preloadPath = join(desktopDir, 'src', 'preload.cjs')
   const boundsFile = join(userDataDir, 'window-bounds.json')

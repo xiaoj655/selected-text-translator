@@ -303,6 +303,10 @@ function showExistingWindow() {
   void windows?.showMainWindow().catch((error) => logger('show-failed', error))
 }
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('io.github.xiaoj655.selected-text-translator')
+}
+
 if (app.requestSingleInstanceLock()) {
   app.on('second-instance', showExistingWindow)
   app.on('activate', showExistingWindow)

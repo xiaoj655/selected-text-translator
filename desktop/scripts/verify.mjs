@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 assert.match(pkg.version, /^\d+\.\d+\.\d+$/u, 'version must be semver')
+assert.equal(pkg.build?.win?.icon, 'assets/icon.ico', 'Windows builds must use the ICO application icon')
+assert.ok(existsSync(join(root, 'assets', 'icon.ico')), 'Windows ICO application icon is required')
 
 function collect(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -77,6 +79,8 @@ assert.match(appSource, /if \(state\.configured\) submit\(\{ lookup: null \}\)/u
   'examples must translate in one click without becoming tutor material')
 assert.match(mainSource, /await windows\.showMainWindow\(\)/u, 'launch must open the main window')
 assert.doesNotMatch(mainSource, /createCapture|createShortcuts/u, 'desktop launch must not register global selection')
+assert.match(mainSource, /app\.setAppUserModelId\('io\.github\.xiaoj655\.selected-text-translator'\)/u,
+  'Windows taskbar identity must match the packaged app id')
 const preloadSource = readFileSync(join(root, 'src', 'preload.cjs'), 'utf8')
 const windowsSource = readFileSync(join(root, 'src', 'windows.js'), 'utf8')
 assert.match(preloadSource, /Object\.defineProperty\(window, 'chrome'/u, 'chrome shim must replace the built-in object')
@@ -84,6 +88,8 @@ assert.doesNotMatch(preloadSource, /contextBridge/u, 'preload must run in the ma
 assert.match(preloadSource, /remove\(keys\)/u, 'storage shim must expose remove for draft cleanup')
 assert.match(mainSource, /op === 'remove'/u, 'main must handle storage remove operations')
 assert.doesNotMatch(windowsSource, /contextIsolation: true/u, 'preload needs the main world')
+assert.match(windowsSource, /process\.platform === 'win32' \? 'icon\.ico' : 'icon\.png'/u,
+  'Windows windows must load the ICO application icon')
 assert.ok(existsSync(join(root, 'app', 'app.css')), 'stylesheet is required')
 assert.ok(existsSync(join(root, 'src', 'history.js')), 'history persistence is required')
 assert.match(mainSource, /createHistory/u, 'history must be wired into the main process')
