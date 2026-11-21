@@ -42,7 +42,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let pendingCardHeight = 0
   let isQuitting = false
   let alwaysOnTop = false
-  let windowBackground = '#f7f8f6'
+  let windowBackground = '#ffffff'
   let tray = null
 
   function loadBounds() {
@@ -286,7 +286,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   }
 
   function setTheme(isDark) {
-    windowBackground = isDark ? '#1b211d' : '#f7f8f6'
+    windowBackground = isDark ? '#212121' : '#ffffff'
     if (main && !main.isDestroyed()) main.setBackgroundColor(windowBackground)
   }
 

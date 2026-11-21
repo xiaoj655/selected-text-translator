@@ -9,6 +9,8 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { createTutor } from './tutor.js'
+import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
+import { createRequestDebug } from './request-debug.js'
 import { createDesktopUpdater, fetchReleasePage, findDesktopUpdate } from './update.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -17,6 +19,7 @@ const vendorDir = join(desktopDir, 'vendor', 'src')
 const MAIN_WINDOW_URL = pathToFileURL(join(desktopDir, 'app', 'index.html')).href
 const RELEASES_URL = 'https://github.com/xiaoj655/selected-text-translator/releases'
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+const API_CREDENTIAL_KEYS = ['api_key', 'desktop_tts_api_key']
 
 let logFile = ''
 let windows
@@ -60,6 +63,12 @@ async function setupDesktopUpdater() {
   }
 }
 
+function isMainWindowEvent(event) {
+  const frame = event.senderFrame
+  return windows.senderFor(event.sender).documentId === 'main'
+    && frame?.parent === null && frame.url === MAIN_WINDOW_URL
+}
+
 function installUpdateIpc(updates) {
   const handlers = {
     'stt:update-status': () => updates.getState(),
@@ -68,9 +77,7 @@ function installUpdateIpc(updates) {
   }
   for (const [channel, handle] of Object.entries(handlers)) {
     ipcMain.handle(channel, (event) => {
-      const frame = event.senderFrame
-      const isMainWindow = windows.senderFor(event.sender).documentId === 'main'
-      if (!updates || !isMainWindow || frame?.parent !== null || frame?.url !== MAIN_WINDOW_URL) {
+      if (!updates || !isMainWindowEvent(event)) {
         return { status: 'unsupported' }
       }
       return handle()
@@ -78,8 +85,22 @@ function installUpdateIpc(updates) {
   }
 }
 
-function installIpc(storage, history) {
-  const tutor = createTutor({ storage, history })
+function installRequestDebugIpc(requestDebug) {
+  const handlers = {
+    'stt:request-debug-state': () => requestDebug.getState(),
+    'stt:request-debug-enable': (flag) => requestDebug.setEnabled(flag),
+    'stt:request-debug-clear': () => requestDebug.clear(),
+  }
+  for (const [channel, handle] of Object.entries(handlers)) {
+    ipcMain.handle(channel, (event, flag) => {
+      if (!isMainWindowEvent(event)) return { enabled: false, entries: [] }
+      return handle(flag)
+    })
+  }
+}
+
+function installIpc(storage, history, requestDebug) {
+  const tutor = createTutor({ storage, history, fetcher: requestDebug.forKind('tutor') })
   ipcMain.handle('stt:history-load', () => history.load())
   ipcMain.handle('stt:history-save', (_event, entries) => history.save(entries))
   ipcMain.handle('stt:history-clear', () => history.clear())
@@ -189,23 +210,36 @@ async function bootstrap() {
 
   const storage = createStorage(userDataDir)
   const history = createHistory(userDataDir)
+  const requestDebug = createRequestDebug({
+    notify: () => windows.sendToMainWindow('stt:request-debug-changed'),
+  })
+  const fetchSpeech = requestDebug.forKind('cloud-speech')
   const { play } = createSpeechPlayer({ BrowserWindow })
   const tts = createTts({
     logger,
     play,
     readCloudSettings: () => storage.sync.get(['desktop_tts_cloud', 'desktop_tts_api_key', 'base_url', 'api_key']),
+    synthesize: (text, options) => synthesizeDashScopeSpeech(text, { ...options, fetchImpl: fetchSpeech }),
   })
   windows = createWindows({ desktopDir, userDataDir, logger })
   try {
-    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item'])
+    const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item', ...API_CREDENTIAL_KEYS])
+    for (const key of API_CREDENTIAL_KEYS) requestDebug.setCredential(key, flags[key])
     if (flags?.desktop_always_on_top) windows.setAlwaysOnTop(true)
     if (flags?.desktop_login_item) app.setLoginItemSettings({ openAtLogin: true })
   } catch {
     // window flags are best effort
   }
-  const shim = installMainChrome({ storage, windows, tts, logger })
+  storage.onChangedSubscribe((changes, areaName) => {
+    if (areaName !== 'sync') return
+    for (const key of API_CREDENTIAL_KEYS) {
+      if (Object.hasOwn(changes, key)) requestDebug.setCredential(key, changes[key].newValue)
+    }
+  })
+  const shim = installMainChrome({ storage, windows, tts, providerFetch: requestDebug.forKind, logger })
   dispatch = shim.dispatch
-  installIpc(storage, history)
+  installIpc(storage, history, requestDebug)
+  installRequestDebugIpc(requestDebug)
   const updates = await setupDesktopUpdater()
   installUpdateIpc(updates)
 

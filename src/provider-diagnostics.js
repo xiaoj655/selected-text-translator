@@ -7,10 +7,10 @@ export function getModelsEndpoint(baseUrl) {
   return url.href
 }
 
-export async function discoverProviderModels({ baseUrl, apiKey } = {}) {
+export async function discoverProviderModels({ baseUrl, apiKey } = {}, fetchProvider = fetch) {
   if (!String(apiKey || '').trim()) return { ok: false, message: '请先填写 API Key。' }
   try {
-    const response = await fetch(getModelsEndpoint(baseUrl), {
+    const response = await fetchProvider(getModelsEndpoint(baseUrl), {
       headers: { Authorization: `Bearer ${String(apiKey).trim()}` },
       signal: AbortSignal.timeout(10000),
     })
@@ -36,6 +36,6 @@ export async function discoverProviderModels({ baseUrl, apiKey } = {}) {
 export function handleProviderDiagnostics(message, sender, sendResponse) {
   if (message?.type !== 'DISCOVER_PROVIDER_MODELS') return false
   if (sender.tab && !sender.url?.startsWith(chrome.runtime.getURL(''))) return false
-  void discoverProviderModels(message.payload).then(sendResponse)
+  void discoverProviderModels(message.payload, chrome.providerFetch?.('provider-models')).then(sendResponse)
   return true
 }

@@ -7,18 +7,22 @@
   <title>Selected Text Translator</title>
   <link rel="stylesheet" href="./app.css">
   <link rel="stylesheet" href="./tutor.css">
+  <link rel="stylesheet" href="./settings.css">
+  <link rel="stylesheet" href="./request-debug.css">
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <button id="btn-history" class="history-trigger" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏" aria-keyshortcuts="Control+H Meta+H">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-      </button>
-      <div class="brand">
-        <span class="brand-mark">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
-        </span>
-        <h1>Selected Text Translator</h1>
+      <div class="top-identity">
+        <button id="btn-history" class="history-trigger icon-btn" type="button" title="历史侧栏 · Ctrl/⌘+H" aria-label="历史侧栏" aria-haspopup="dialog" aria-controls="sidebar" aria-keyshortcuts="Control+H Meta+H">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1"/></svg>
+        </button>
+        <div class="brand">
+          <span class="brand-mark">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+          </span>
+          <h1>文本翻译</h1>
+        </div>
       </div>
       <nav class="workspace-nav" aria-label="工作区">
         <button id="btn-translate-workspace" type="button" aria-controls="translation-workspace" aria-pressed="true">翻译工作台</button>
@@ -28,7 +32,7 @@
         <button id="btn-export" type="button" title="导出学习记录 · Ctrl/⌘+E" aria-haspopup="menu" aria-expanded="false" aria-label="导出对话" aria-keyshortcuts="Control+E Meta+E">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
         </button>
-        <button id="btn-settings" type="button" title="模型设置" aria-label="模型设置">
+        <button id="btn-settings" type="button" title="设置" aria-label="模型设置" aria-haspopup="dialog" aria-controls="settings-panel">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
         </button>
         <button id="btn-more" type="button" title="更多" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作">
@@ -69,6 +73,9 @@
       <button type="button" id="btn-log" role="menuitem" aria-label="打开日志文件">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>打开日志
       </button>
+      <button type="button" id="open-debug" role="menuitem" aria-haspopup="dialog" aria-controls="request-debug">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18"/></svg>请求调试
+      </button>
       <button type="button" id="btn-help" class="help-trigger" role="menuitem" aria-keyshortcuts="Control+/ Meta+/">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></svg>键盘快捷键
       </button>
@@ -86,14 +93,14 @@
     <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
     <aside class="sidebar" id="sidebar" role="dialog" aria-modal="true" aria-label="历史记录" hidden>
       <div class="sidebar-head">
-        <div><h2>学习记录</h2><p class="drawer-tip">点击条目跳转到下方对应的学习卡片</p></div>
+        <h2>翻译历史</h2>
         <button id="btn-close-sidebar" class="icon-btn" type="button" title="关闭" aria-label="关闭历史侧栏">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
       <div class="sidebar-search">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="history-search" type="search" spellcheck="false" autocomplete="off" placeholder="搜索原文 / 译文…">
+        <input id="history-search" type="search" spellcheck="false" autocomplete="off" placeholder="搜索原文或译文" aria-label="搜索原文或译文">
       </div>
       <div class="sidebar-meta" id="history-count">共 0 条</div>
       <div class="sidebar-list" id="history-list"></div>
@@ -102,44 +109,66 @@
     <div class="notice" id="notice" hidden></div>
 
     <div class="settings-backdrop" id="settings-backdrop" hidden></div>
-    <section class="drawer" id="settings-panel" role="dialog" aria-modal="true" aria-label="设置" hidden>
+    <section class="drawer" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
       <div class="drawer-head">
-        <div><h2>设置</h2><p class="drawer-tip">模型配置保存在本机</p></div>
+        <h2 id="settings-title">设置</h2>
         <button id="btn-close-settings" class="icon-btn" type="button" title="关闭" aria-label="关闭设置">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
+      <nav class="settings-nav" aria-label="设置分类">
+        <a href="#settings-model-heading">模型</a>
+        <a href="#settings-general-heading">通用</a>
+        <a href="#speech-settings-heading">朗读</a>
+        <a href="#settings-glossary-heading">术语表</a>
+        <a href="#settings-archive-heading">学习档案</a>
+        <a href="#settings-appearance-heading">外观</a>
+      </nav>
       <div class="drawer-body">
-        <div class="drawer-section">
-          <h3>模型连接</h3>
-          <label>API 地址<input id="cfg-base-url" type="url" spellcheck="false" placeholder="https://…/compatible-mode/v1" aria-describedby="cfg-base-url-error"></label>
-          <p class="field-error" id="cfg-base-url-error" hidden></p>
-          <label class="has-toggle">API Key<input id="cfg-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-describedby="cfg-api-key-error">
-            <button class="field-toggle" id="btn-toggle-key" type="button" title="显示密钥" aria-label="显示密钥" aria-pressed="false">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </label>
-          <p class="field-error" id="cfg-api-key-error" hidden></p>
-          <label>翻译模型<input id="cfg-model" list="model-list" spellcheck="false" placeholder="例如 qwen-flash" aria-describedby="cfg-model-error"></label>
-          <p class="field-error" id="cfg-model-error" hidden></p>
-          <label>学习模型(可选)<input id="cfg-learning" list="model-list" spellcheck="false" placeholder="引导理解、AI 老师与音标"></label>
+        <form class="drawer-section" id="model-settings-form" method="post" novalidate aria-labelledby="settings-model-heading">
+          <h3 id="settings-model-heading" tabindex="-1">模型连接</h3>
+          <div class="settings-field">
+            <label for="cfg-base-url">API 地址</label>
+            <input id="cfg-base-url" name="base_url" type="url" required spellcheck="false" autocapitalize="none" placeholder="https://…/compatible-mode/v1" aria-describedby="cfg-base-url-error">
+            <p class="field-error" id="cfg-base-url-error" hidden></p>
+          </div>
+          <div class="settings-field">
+            <label for="cfg-api-key">API Key</label>
+            <div class="settings-key">
+              <input id="cfg-api-key" name="api_key" type="password" required autocomplete="new-password" spellcheck="false" autocapitalize="none" placeholder="sk-…" aria-describedby="cfg-api-key-error">
+              <button class="field-toggle icon-btn" id="btn-toggle-key" type="button" title="显示密钥" aria-label="显示密钥" aria-pressed="false" aria-controls="cfg-api-key">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <p class="field-error" id="cfg-api-key-error" hidden></p>
+          </div>
+          <div class="settings-field">
+            <label for="cfg-model">翻译模型</label>
+            <input id="cfg-model" name="model" list="model-list" required spellcheck="false" autocapitalize="none" placeholder="例如 qwen-flash" aria-describedby="cfg-model-error">
+            <p class="field-error" id="cfg-model-error" hidden></p>
+          </div>
+          <div class="settings-field">
+            <label for="cfg-learning">学习模型 <span>（可选）</span></label>
+            <input id="cfg-learning" name="learning_model" list="model-list" spellcheck="false" autocapitalize="none" aria-describedby="learning-model-tip">
+            <p class="drawer-tip" id="learning-model-tip">用于引导理解、AI 老师和音标。</p>
+          </div>
           <datalist id="model-list"></datalist>
           <div class="drawer-actions">
             <button id="btn-discover" type="button">检测连接</button>
-            <button id="btn-save-settings" class="primary" type="button">保存</button>
+            <button id="btn-save-settings" class="primary" type="submit">保存模型</button>
           </div>
           <p class="drawer-status" id="settings-status" role="status"></p>
-        </div>
+        </form>
         <div class="drawer-section">
-          <h3>通用</h3>
+          <h3 id="settings-general-heading" tabindex="-1">通用</h3>
           <div class="drawer-flags">
-            <label class="mini-toggle"><input type="checkbox" id="opt-always-on-top">窗口置顶</label>
-            <label class="mini-toggle"><input type="checkbox" id="opt-login-item">开机自启</label>
-            <label class="mini-toggle"><input type="checkbox" id="opt-live-translate">输入后自动翻译</label>
-            <label class="mini-toggle"><input type="checkbox" id="opt-paste" checked>粘贴后自动翻译</label>
-            <label class="mini-toggle"><input type="checkbox" id="opt-enter">Enter 发送</label>
+            <label class="mini-toggle" for="opt-always-on-top">窗口置顶<input type="checkbox" id="opt-always-on-top"></label>
+            <label class="mini-toggle" for="opt-login-item">开机自启<input type="checkbox" id="opt-login-item"></label>
+            <label class="mini-toggle" for="opt-live-translate">输入后自动翻译<input type="checkbox" id="opt-live-translate"></label>
+            <label class="mini-toggle" for="opt-paste">粘贴后自动翻译<input type="checkbox" id="opt-paste" checked></label>
+            <label class="mini-toggle" for="opt-enter">Enter 发送<input type="checkbox" id="opt-enter"></label>
           </div>
-          <label class="target-language-field" for="opt-target-language">目标语言<select id="opt-target-language" aria-label="目标语言">
+          <label class="settings-row" for="opt-target-language">目标语言<select id="opt-target-language">
             <option value="auto">自动(按原文语言)</option>
             <option value="Chinese">简体中文</option>
             <option value="English">英语</option>
@@ -151,19 +180,21 @@
           </select></label>
         </div>
         <form class="drawer-section" id="speech-settings-form" method="post" aria-labelledby="speech-settings-heading">
-          <h3 id="speech-settings-heading">朗读</h3>
+          <h3 id="speech-settings-heading" tabindex="-1">朗读</h3>
           <label class="mini-toggle" for="opt-cloud-speech">
-            <input type="checkbox" id="opt-cloud-speech" name="cloud_speech" aria-describedby="cloud-speech-tip">
             使用阿里云朗读英文
+            <input type="checkbox" id="opt-cloud-speech" name="cloud_speech" aria-describedby="cloud-speech-tip">
           </label>
           <p class="drawer-tip" id="cloud-speech-tip">点击朗读时会把当前英文发送给阿里云百炼，按调用量计费。</p>
-          <label for="cfg-cloud-speech-key">百炼北京 API Key（可选）
+          <div class="settings-field">
+            <label for="cfg-cloud-speech-key">百炼北京 API Key <span>（可选）</span></label>
             <input id="cfg-cloud-speech-key" name="speech_api_key" type="password" autocomplete="new-password"
               autocapitalize="none" spellcheck="false" aria-describedby="cloud-speech-key-tip">
-          </label>
-          <p class="drawer-tip" id="cloud-speech-key-tip">留空时复用已保存的百炼北京翻译密钥。</p>
-          <label class="speech-rate-field" for="cfg-speech-rate">朗读语速 <span class="speech-rate-value" id="speech-rate-value">0.9×</span>
-            <input id="cfg-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9" aria-label="朗读语速">
+            <p class="drawer-tip" id="cloud-speech-key-tip">留空时复用已保存的百炼北京翻译密钥。</p>
+          </div>
+          <label class="speech-rate-field settings-row" for="cfg-speech-rate">朗读语速
+            <input id="cfg-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9">
+            <span class="speech-rate-value" id="speech-rate-value" aria-hidden="true">0.9×</span>
           </label>
           <div class="drawer-actions">
             <button id="btn-save-speech" type="submit">保存朗读设置</button>
@@ -172,20 +203,25 @@
           <p class="drawer-status" id="speech-settings-status" role="status"></p>
         </form>
         <div class="drawer-section">
-          <h3>术语表</h3>
-          <p class="drawer-tip">指定术语的固定译法,让多次翻译用词保持一致(通用模型会把规则写入提示词)。</p>
+          <h3 id="settings-glossary-heading" tabindex="-1">术语表</h3>
+          <p class="drawer-tip">为通用模型指定固定译法，让译文用词一致。</p>
           <div class="glossary-add-row">
-            <input id="glossary-source" type="text" maxlength="80" placeholder="原文术语,如 Apple" aria-label="原文术语">
-            <span class="glossary-arrow" aria-hidden="true">→</span>
-            <input id="glossary-target" type="text" maxlength="80" placeholder="固定译法,如 苹果公司" aria-label="固定译法">
+            <div class="settings-field">
+              <label for="glossary-source">原文术语</label>
+              <input id="glossary-source" type="text" maxlength="80" placeholder="例如 Apple">
+            </div>
+            <div class="settings-field">
+              <label for="glossary-target">固定译法</label>
+              <input id="glossary-target" type="text" maxlength="80" placeholder="例如 苹果公司">
+            </div>
             <button id="glossary-add" class="secondary" type="button">添加</button>
           </div>
           <div id="glossary-list" class="glossary-list"></div>
           <p id="glossary-status" class="drawer-status" role="status"></p>
         </div>
         <div class="drawer-section">
-          <h3>学习档案</h3>
-          <p class="drawer-tip">把收藏、复习进度、翻译记忆与学习记录打包成一个文件,可在设备间迁移。档案不含模型配置或密钥。</p>
+          <h3 id="settings-archive-heading" tabindex="-1">学习档案</h3>
+          <p class="drawer-tip">在设备间迁移收藏、学习进度和翻译记录。模型配置和密钥留在本机。</p>
           <div class="drawer-actions">
             <button id="btn-archive-export" type="button">导出完整档案</button>
             <button id="btn-archive-import" type="button">导入完整档案</button>
@@ -201,13 +237,14 @@
           </div>
         </div>
         <div class="drawer-section">
-          <h3>外观</h3>
+          <h3 id="settings-appearance-heading" tabindex="-1">外观</h3>
           <div class="drawer-appearance">
-            <label>主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
-            <label>字号<select id="opt-font"><option value="normal">标准</option><option value="small">紧凑</option><option value="large">大</option></select></label>
-            <div class="accent-field">
+            <label class="settings-row" for="opt-theme">主题<select id="opt-theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+            <label class="settings-row" for="opt-font">字号<select id="opt-font"><option value="normal">标准</option><option value="small">紧凑</option><option value="large">大</option></select></label>
+            <div class="accent-field settings-row">
               <span class="accent-label">强调色</span>
               <div class="accent-picker" id="opt-accent" role="group" aria-label="强调色">
+                <button class="accent-swatch" type="button" data-accent="neutral" title="中性" aria-label="中性"></button>
                 <button class="accent-swatch" type="button" data-accent="indigo" title="靛蓝" aria-label="靛蓝"></button>
                 <button class="accent-swatch" type="button" data-accent="ocean" title="海蓝" aria-label="海蓝"></button>
                 <button class="accent-swatch" type="button" data-accent="emerald" title="翠绿" aria-label="翠绿"></button>
@@ -215,7 +252,7 @@
                 <button class="accent-swatch" type="button" data-accent="amber" title="琥珀" aria-label="琥珀"></button>
               </div>
             </div>
-            <label class="mini-toggle"><input type="checkbox" id="opt-reduced-motion">减少动效</label>
+            <label class="mini-toggle" for="opt-reduced-motion">减少动效<input type="checkbox" id="opt-reduced-motion"></label>
           </div>
         </div>
       </div>
@@ -242,9 +279,10 @@
                   <option value="German">德语</option>
                   <option value="Spanish">西班牙语</option>
                 </select>
-                <button id="btn-swap-lang" class="lang-swap" type="button" title="互换原文与译文语言" aria-label="互换原文与译文语言">⇄</button>
-                <span class="lang-arrow" aria-hidden="true">→</span>
-                <label class="lang-target-label" for="lang-target">译为</label>
+                <button id="btn-swap-lang" class="lang-swap icon-btn" type="button" title="互换原文与译文语言" aria-label="互换原文与译文语言">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg>
+                </button>
+                <label class="sr-only" for="lang-target">译文语言</label>
                 <select id="lang-target">
                   <option value="auto">自动</option>
                   <option value="Chinese">简体中文</option>
@@ -258,21 +296,24 @@
               </div>
             </div>
             <label class="sr-only" for="input">输入要翻译的内容</label>
-            <textarea id="input" rows="2" placeholder="粘贴要翻译的文字…" aria-describedby="composer-hint"></textarea>
+            <textarea id="input" rows="2" placeholder="输入或粘贴要翻译的文字" aria-describedby="composer-hint"></textarea>
             <div class="composer-actions">
               <div class="composer-left">
-                <button id="btn-clear-input" type="button" title="清空输入框">清空输入</button>
-                <button id="btn-paste-translate" type="button" title="读取剪贴板内容并立即翻译">粘贴并翻译</button>
+                <button id="btn-paste-translate" type="button" title="读取剪贴板内容并立即翻译">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/></svg>
+                  粘贴并翻译
+                </button>
+                <button id="btn-clear-input" type="button" title="清空输入框">清空</button>
                 <span class="composer-hint" id="composer-hint">粘贴即翻译</span>
-                <span class="char-count" id="char-count">0 字</span>
               </div>
               <button id="btn-send" class="primary" type="submit">
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>翻译
+                <span id="send-label">翻译</span> <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
               </button>
             </div>
           </div>
           <div class="status-line">
             <div class="statusbar" id="statusbar" role="status" aria-live="polite" aria-atomic="true">就绪</div>
+            <span class="char-count" id="char-count">0 字</span>
             <button type="button" id="btn-study-progress" class="study-progress-chip" title="打开表达本查看学习进度">
               <span id="study-progress-text">今日待复习 0 · 学习中 0 · 已掌握 0</span>
             </button>
@@ -325,6 +366,43 @@
       </section>
     </div>
   </div>
+  <dialog id="request-debug" class="request-debug" aria-labelledby="debug-title" closedby="any">
+    <header class="debug-header">
+      <h2 id="debug-title">请求调试</h2>
+      <form method="dialog">
+        <button class="icon-btn" id="debug-close" type="submit" aria-label="关闭请求调试" title="关闭" autofocus>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </form>
+    </header>
+    <div class="debug-controls">
+      <label class="debug-toggle">
+        <input id="debug-enabled" type="checkbox" aria-describedby="debug-tip" disabled>
+        记录请求
+      </label>
+      <div class="debug-actions">
+        <button id="debug-clear" type="button" disabled>清空</button>
+        <button id="debug-copy" type="button" disabled>复制当前请求</button>
+      </div>
+    </div>
+    <p id="debug-tip" class="debug-tip">仅保留本次运行中最近 30 条请求。关闭记录会清空列表。密钥会遮盖，分享前请检查原文和学习内容。</p>
+    <div class="debug-content" id="debug-content" hidden>
+      <div class="debug-list" id="debug-list" role="group" aria-label="最近的请求"></div>
+      <section class="debug-details" aria-label="请求详情" tabindex="0">
+        <p class="debug-meta" id="debug-meta"></p>
+        <p class="debug-url" id="debug-url"></p>
+        <details class="debug-headers">
+          <summary>请求头</summary>
+          <pre id="debug-headers"></pre>
+        </details>
+        <h3>请求体</h3>
+        <pre id="debug-body"></pre>
+        <p id="debug-truncated" class="debug-tip" hidden>请求体已截断。复制时也仅包含可见部分。</p>
+      </section>
+    </div>
+    <p class="debug-empty" id="debug-empty">正在读取记录…</p>
+    <div class="debug-feedback" id="debug-feedback" role="status"></div>
+  </dialog>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

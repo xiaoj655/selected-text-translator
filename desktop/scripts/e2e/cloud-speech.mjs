@@ -106,6 +106,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
         }
         chrome.runtime.onMessage.addListener(window.captureCloudSpeech)
       })
+      await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(true))
       await preview.click()
       const pending = await waitForSpeechMock(app, ({ requests }) => requests.length >= 1, 'a speech request')
       assert.deepEqual(pending.requests, [{
@@ -125,6 +126,13 @@ export async function verifyCloudSpeech({ app, page, check }) {
       await waitForSpeechStatus(page, '朗读结束。')
       assert.deepEqual(await page.evaluate(() => window.cloudSpeechEvents), ['start', 'end'])
       assert.equal(await preview.getAttribute('aria-pressed'), 'false')
+      const { entries } = await page.evaluate(() => window.sttDesktop.requestDebug.getState())
+      assert.deepEqual(entries.map(({ kind, outcome, status }) => ({ kind, outcome, status })), [
+        { kind: 'cloud-speech', outcome: 'response', status: 200 },
+        { kind: 'cloud-speech', outcome: 'aborted', status: null },
+      ])
+      assert.deepEqual(JSON.parse(entries[0].body), pending.requests[0].body)
+      assert.equal(entries[0].headers.authorization, '[redacted]')
 
       await toggle.uncheck()
       await keyInput.clear()
@@ -136,6 +144,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
     } finally {
       await preview.evaluate((button) => { if (button.getAttribute('aria-pressed') === 'true') button.click() })
       await page.evaluate(async () => {
+        await window.sttDesktop.requestDebug.setEnabled(false)
         if (window.captureCloudSpeech) chrome.runtime.onMessage.removeListener(window.captureCloudSpeech)
         delete window.captureCloudSpeech
         delete window.cloudSpeechEvents

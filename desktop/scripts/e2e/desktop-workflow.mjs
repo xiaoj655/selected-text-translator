@@ -42,7 +42,7 @@ async function clearHistory(page) {
   await page.locator('#btn-clear-input').click()
 }
 
-export async function verifyDesktopWorkflow({ app, page, mock, check }) {
+export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
   await check('version and native menu: show the installed app version, with no Electron menu', async () => {
     const metadata = await app.evaluate(({ app, Menu, BrowserWindow, globalShortcut }) => ({
       version: app.getVersion(),
@@ -76,6 +76,63 @@ export async function verifyDesktopWorkflow({ app, page, mock, check }) {
     }
   })
 
+  await check('request debug: opt in, inspect the outbound payload, copy, clear and disable', async () => {
+    const debug = page.getByRole('dialog', { name: '请求调试' })
+    const record = debug.getByRole('checkbox', { name: '记录请求' })
+    const open = async () => {
+      await page.locator('#btn-more').click()
+      await page.getByRole('menuitem', { name: '请求调试' }).click()
+      await page.waitForFunction(() => !document.getElementById('debug-enabled').disabled)
+    }
+    const close = () => debug.getByRole('button', { name: '关闭请求调试' }).click()
+    let outbound
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      outbound = body
+      await defaultResponse({ body, res })
+    })
+    try {
+      await paste(page, '调试模式默认关闭。')
+      await open()
+      assert.equal(await record.isChecked(), false)
+      assert.equal(await debug.locator('.debug-row').count(), 0)
+      await record.check()
+      await debug.getByText('正在记录请求。').waitFor()
+      await page.keyboard.press('Escape')
+      await debug.waitFor({ state: 'hidden' })
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-more')
+      assert.equal(await page.locator('#btn-more').getAttribute('data-recording-requests'), '')
+
+      const source = '这条翻译用来核对调试请求。'
+      await paste(page, source)
+      await open()
+      assert.equal(await debug.locator('.debug-row').count(), 1)
+      assert.match(await debug.locator('#debug-url').textContent(), /^POST http:\/\/127\.0\.0\.1:\d+\/v1\/chat\/completions$/u)
+      assert.match(await debug.locator('#debug-meta').textContent(), /翻译 · HTTP 200/u)
+      assert.deepEqual(JSON.parse(await debug.locator('#debug-body').textContent()), outbound)
+      await debug.getByText('请求头', { exact: true }).click()
+      assert.match(await debug.locator('#debug-headers').textContent(), /content-type: application\/json/iu)
+      assert.doesNotMatch(await debug.locator('#debug-headers').textContent(), /e2e-mock-key/u)
+      await shot?.(page, 'main-request-debug')
+
+      await debug.getByRole('button', { name: '复制当前请求' }).click()
+      await debug.getByText('已复制当前请求。').waitFor()
+      const clipboard = await page.evaluate(() => window.sttDesktop.readClipboard())
+      assert.deepEqual(JSON.parse(clipboard).body, outbound)
+      assert.doesNotMatch(clipboard, /e2e-mock-key/u)
+
+      await debug.getByRole('button', { name: '清空', exact: true }).click()
+      await debug.getByText('已清空请求。').waitFor()
+      assert.equal(await debug.locator('.debug-row').count(), 0)
+      await record.uncheck()
+      await debug.getByText('已关闭记录并清空列表。').waitFor()
+    } finally {
+      mock.resetHandler()
+      await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(false))
+      if (await debug.isVisible()) await close()
+      await clearHistory(page)
+    }
+  })
+
   await check('AI teacher: derives a lesson from a real lookup, preserves answers and schedules review', async () => {
     let lessonRequests = 0
     mock.setHandler(async ({ body, res, defaultResponse }) => {
@@ -93,12 +150,21 @@ export async function verifyDesktopWorkflow({ app, page, mock, check }) {
     })
     try {
       await paste(page, SOURCE)
+      await shot?.(page, 'main-translation')
       await page.locator('#btn-tutor-workspace').click()
       await page.locator('#tutor-start').waitFor({ state: 'visible' })
       assert.match(await page.locator('#tutor-workspace').textContent(), /来自查词记录/u)
       assert.equal(await page.locator('#translation-workspace').isVisible(), false)
       assert.equal(lessonRequests, 0)
+      await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(true))
       await page.locator('#tutor-start').click()
+      await page.locator('.tutor-choice').first().waitFor()
+      const audit = await page.evaluate(() => window.sttDesktop.requestDebug.getState())
+      assert.equal(audit.entries.length, 1)
+      assert.equal(audit.entries[0].kind, 'tutor')
+      assert.equal(audit.entries[0].status, 200)
+      assert.match(JSON.parse(audit.entries[0].body).messages[0].content, /Create an English reading comprehension lesson/u)
+      await shot?.(page, 'main-tutor-exercise')
       await page.locator('#tutor-hint').click()
       await page.locator('.tutor-choice').nth(1).click()
       assert.match(await page.locator('#tutor-feedback').textContent(), /答对了/u)
@@ -115,6 +181,7 @@ export async function verifyDesktopWorkflow({ app, page, mock, check }) {
       await page.getByText('暂时没有待练习的内容').waitFor({ state: 'visible' })
       assert.equal(lessonRequests, 1)
     } finally {
+      await page.evaluate(() => window.sttDesktop.requestDebug.setEnabled(false))
       mock.resetHandler()
       await page.locator('#btn-translate-workspace').click()
       await clearHistory(page)

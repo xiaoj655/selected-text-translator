@@ -144,6 +144,16 @@ window.sttDesktop = {
   onUpdateState(callback) {
     ipcRenderer.on('stt:update-state', (_event, state) => callback(state))
   },
+  requestDebug: {
+    getState: () => ipcRenderer.invoke('stt:request-debug-state'),
+    setEnabled: (flag) => ipcRenderer.invoke('stt:request-debug-enable', flag),
+    clear: () => ipcRenderer.invoke('stt:request-debug-clear'),
+    onChanged(callback) {
+      const listener = () => callback()
+      ipcRenderer.on('stt:request-debug-changed', listener)
+      return () => ipcRenderer.removeListener('stt:request-debug-changed', listener)
+    },
+  },
   tutor: {
     getPlan: () => ipcRenderer.invoke('stt:tutor-plan'),
     startLesson: (sourceId) => ipcRenderer.invoke('stt:tutor-lesson', sourceId),

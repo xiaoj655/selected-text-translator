@@ -3,6 +3,7 @@ import { resultText, resultPlainText } from './result-text.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './tutor.js'
 import { bindUpdateMenu } from './update-menu.js'
+import { bindRequestDebug } from './request-debug.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap, sourceLanguageLabel } from '../vendor/src/source-language.js'
@@ -16,7 +17,7 @@ import {
 
 const $ = (id) => document.getElementById(id)
 
-const ACCENTS = ['indigo', 'ocean', 'emerald', 'rose', 'amber']
+const ACCENTS = ['neutral', 'indigo', 'ocean', 'emerald', 'rose', 'amber']
 const SPEECH_PREVIEW_ID = 'speech-preview'
 const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
 
@@ -45,7 +46,7 @@ const state = {
   snackbarTimer: null,
   announceTimer: 0,
   lastElapsed: 0,
-  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'indigo', reducedMotion: false },
+  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'neutral', reducedMotion: false },
   collapsed: new Set(),
   selection: null,
   reviewReminderShown: false,
@@ -607,9 +608,11 @@ function applyPrefs() {
   $('opt-theme').value = ['system', 'light', 'dark'].includes(state.prefs.theme) ? state.prefs.theme : 'system'
   $('opt-font').value = ['small', 'normal', 'large'].includes(state.prefs.font) ? state.prefs.font : 'normal'
   $('opt-reduced-motion').checked = state.prefs.reducedMotion === true
-  const activeAccent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'indigo'
+  const activeAccent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'neutral'
   $('opt-accent').querySelectorAll('.accent-swatch').forEach((swatch) => {
-    swatch.classList.toggle('is-active', swatch.dataset.accent === activeAccent)
+    const active = swatch.dataset.accent === activeAccent
+    swatch.classList.toggle('is-active', active)
+    swatch.setAttribute('aria-pressed', String(active))
   })
   updateComposer()
   applyAppearance()
@@ -620,7 +623,7 @@ function applyAppearance() {
   root.dataset.theme = state.prefs.theme || 'system'
   root.dataset.font = state.prefs.font || 'normal'
   root.dataset.motion = state.prefs.reducedMotion ? 'reduced' : 'full'
-  root.dataset.accent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'indigo'
+  root.dataset.accent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'neutral'
   void window.sttDesktop.setTheme(root.dataset.theme)
 }
 
@@ -998,7 +1001,6 @@ function toggleKeyVisibility() {
   input.type = visible ? 'password' : 'text'
   button.setAttribute('aria-pressed', String(!visible))
   const label = visible ? '显示密钥' : '隐藏密钥'
-  button.setAttribute('aria-label', label)
   button.title = label
   button.classList.toggle('is-on', !visible)
 }
@@ -1086,15 +1088,13 @@ function renderModes() {
     button.classList.toggle('is-active', button.dataset.mode === state.mode)
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode))
   }
+  $('send-label').textContent = state.mode === 'guide' ? '开始引导' : '翻译'
 }
 
 async function setMode(mode) {
   if (!['translate', 'guide'].includes(mode) || mode === state.mode) return
   state.mode = mode
   renderModes()
-  for (const card of document.querySelectorAll('.empty-mode')) {
-    card.classList.toggle('is-active', card.dataset.emptyMode === mode)
-  }
   try {
     await chrome.storage.sync.set({ reading_mode: mode })
   } catch {
@@ -1385,32 +1385,7 @@ function stopActiveSpeech() {
 
 function renderEmpty() {
   const box = el('div', 'empty')
-  const hero = el('div', 'empty-hero')
-  hero.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>'
-  box.append(hero)
-  box.append(el('h2', '', '粘贴一段文字开始'))
-
-  const modes = el('div', 'empty-modes')
-  for (const [mode, icon, title, desc] of [
-    ['translate', '译', '直接翻译', '立刻得到译文、音标与用法,适合快速读懂一句话。'],
-    ['guide', '思', '引导理解', '先给线索、再揭晓答案,把查词变成一次主动思考。'],
-  ]) {
-    const card = el('button', 'empty-mode')
-    card.type = 'button'
-    card.dataset.emptyMode = mode
-    if (state.mode === mode) card.classList.add('is-active')
-    card.append(el('span', 'empty-mode-icon', icon))
-    const text = el('span', 'empty-mode-text')
-    text.append(el('strong', '', title))
-    text.append(el('small', '', desc))
-    card.append(text)
-    card.addEventListener('click', () => {
-      void setMode(mode)
-      $('input').focus()
-    })
-    modes.append(card)
-  }
-  box.append(modes)
+  box.append(el('h2', 'empty-title', '试试示例'))
 
   const examples = el('div', 'empty-examples')
   for (const [label, text] of [
@@ -1834,13 +1809,14 @@ function renderEntryEl(entry) {
 
   const card = el('div', 'entry-card')
   if (entry.mode === 'guide') card.classList.add('entry-card--guide')
-  const head = el('div', 'entry-head')
-  head.title = '点击折叠 / 展开'
+  const head = el('button', 'entry-head')
+  head.type = 'button'
+  head.setAttribute('aria-expanded', String(!collapsed))
+  head.setAttribute('aria-controls', `entry-result-${entry.id}`)
   head.append(el('span', 'tag', entry.mode === 'guide' ? '引导理解' : '翻译'))
   if (entry.fromMemory) head.append(el('span', 'memory-tag', '翻译记忆'))
   head.append(el('span', 'meta', new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })))
   head.append(el('span', 'spacer'))
-  head.append(el('span', 'meta', `${entry.text.length} 字`))
   const chevron = el('span', 'chevron')
   chevron.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
   head.append(chevron)
@@ -1852,6 +1828,7 @@ function renderEntryEl(entry) {
   card.append(head)
 
   const body = el('div', 'entry-body')
+  body.id = `entry-result-${entry.id}`
   const label = entry.status === 'error' ? '出错了'
     : ['pending', 'loading', 'streaming'].includes(entry.status) ? '正在处理'
       : entry.mode === 'guide' ? '引导解析' : '译文'
@@ -1908,7 +1885,10 @@ function renderEntry(entry) {
     render()
     return
   }
-  node.replaceWith(renderEntryEl(entry))
+  const restoreHeading = document.activeElement === node.querySelector('.entry-head')
+  const next = renderEntryEl(entry)
+  node.replaceWith(next)
+  if (restoreHeading) next.querySelector('.entry-head').focus({ preventScroll: true })
   if (['pending', 'loading', 'streaming'].includes(entry.status)) followStreamBottom()
   updateScrollFab()
   renderHistory()
@@ -2016,6 +1996,14 @@ async function saveVocabulary(entry, button) {
 }
 
 function bind() {
+  bindRequestDebug({
+    api: window.sttDesktop.requestDebug,
+    copyText: (text) => window.sttDesktop.copyText(text),
+    prepareOpen: () => {
+      closeTransientPanels()
+      $('btn-more').focus()
+    },
+  })
   $('modes').addEventListener('click', (event) => {
     const button = event.target.closest('.mode')
     if (button) void setMode(button.dataset.mode)
@@ -2036,7 +2024,18 @@ function bind() {
   })
   $('btn-settings').addEventListener('click', openSettings)
   $('btn-close-settings').addEventListener('click', closeSettings)
-  $('btn-save-settings').addEventListener('click', () => void saveSettings())
+  $('settings-panel').querySelector('.settings-nav').addEventListener('click', (event) => {
+    const link = event.target.closest('a')
+    if (!link) return
+    event.preventDefault()
+    const heading = $(link.hash.slice(1))
+    heading.scrollIntoView({ block: 'start' })
+    heading.focus({ preventScroll: true })
+  })
+  $('model-settings-form').addEventListener('submit', (event) => {
+    event.preventDefault()
+    void saveSettings()
+  })
   $('btn-discover').addEventListener('click', () => void discoverModels())
   for (const id of ['cfg-base-url', 'cfg-api-key', 'cfg-model', 'cfg-learning']) {
     $(id).addEventListener('input', updateSettingsValidity)
@@ -2347,7 +2346,7 @@ function bind() {
   })
 
   document.addEventListener('keydown', (event) => {
-    if (event.isComposing || state.isComposing) return
+    if (event.isComposing || state.isComposing || $('request-debug').open) return
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key.toLowerCase() === 'k' && $('help-overlay').hidden) {
       event.preventDefault()

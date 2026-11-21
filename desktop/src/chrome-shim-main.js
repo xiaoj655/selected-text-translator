@@ -1,6 +1,6 @@
 const MESSAGE_TIMEOUT_MS = 30000
 
-export function installMainChrome({ storage, windows, tts, logger = () => {} }) {
+export function installMainChrome({ storage, windows, tts, providerFetch, logger = () => {} }) {
   const messageListeners = new Set()
   const storageListeners = new Set()
 
@@ -89,6 +89,7 @@ export function installMainChrome({ storage, windows, tts, logger = () => {} }) 
       },
     },
     tts,
+    providerFetch,
   }
 
   globalThis.chrome = chrome

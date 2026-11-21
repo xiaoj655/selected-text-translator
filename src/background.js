@@ -220,10 +220,11 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       selectedText: createSelectedTextDiagnostics(text) })
     debugLog('request_payload', { selectionId, requestId,
       request: { host: new URL(endpoint).host, body: sanitizeRequestBodyForLog(requestBody) } })
+    const fetchProvider = chrome.providerFetch?.(kind === 'translate' ? 'translation' : 'guidance') ?? fetch
     let response
     let retryAttempt = 0
     while (true) {
-      response = await fetch(endpoint, {
+      response = await fetchProvider(endpoint, {
         method: 'POST',
         headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),

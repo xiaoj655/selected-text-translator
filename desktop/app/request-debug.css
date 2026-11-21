@@ -1,0 +1,164 @@
+.request-debug {
+  box-sizing: border-box;
+  inline-size: min(760px, calc(100% - 32px));
+  max-block-size: calc(100% - 32px);
+  margin: auto;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-3);
+  overscroll-behavior: contain;
+}
+
+.request-debug[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.request-debug::backdrop {
+  background: var(--scrim);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+#btn-more[data-recording-requests]::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-start: 4px;
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.debug-header, .debug-controls, .debug-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-header, .debug-controls { justify-content: space-between; }
+.debug-controls { flex-wrap: wrap; }
+.debug-header h2 { margin: 0; font-size: 20px; font-weight: 650; }
+.debug-header .icon-btn { width: 34px; height: 34px; }
+.debug-header .icon-btn svg { width: 17px; height: 17px; }
+
+.debug-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-block-size: 34px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.debug-toggle input {
+  inline-size: 16px;
+  block-size: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.debug-actions button {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.debug-actions button:enabled:hover { background: var(--surface); }
+.debug-actions button:disabled { opacity: .45; }
+
+.debug-tip, .debug-feedback, .debug-meta {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.debug-feedback { min-block-size: 1.5em; }
+
+.debug-content {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.debug-content[hidden] { display: none; }
+
+.debug-list, .debug-details {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.debug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-inline-end: 1px solid var(--border);
+}
+
+.debug-row {
+  display: grid;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: start;
+}
+
+.debug-row:hover { background: var(--surface); }
+.debug-row[aria-pressed="true"] { background: var(--surface-2); font-weight: 600; }
+.debug-row small { color: var(--text-2); font-weight: 400; }
+.debug-row:focus-visible, .debug-details:focus-visible { outline-offset: -2px; }
+
+.debug-details { min-height: min(250px, 40vh); padding: 16px; }
+.debug-details h3, .debug-headers summary { font-size: 13px; font-weight: 650; }
+.debug-details h3 { margin: 14px 0 6px; }
+.debug-headers summary { cursor: pointer; }
+.debug-url { margin: 4px 0 12px; font-weight: 600; overflow-wrap: anywhere; }
+
+.debug-details pre {
+  margin: 6px 0 0;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font: 12px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#debug-truncated { margin-top: 6px; }
+.debug-empty { margin: 0; padding: 36px 16px; color: var(--text-2); text-align: center; }
+
+@media (max-width: 560px) {
+  .request-debug { padding: 16px; }
+  .debug-content { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .debug-list {
+    flex-direction: row;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--border);
+  }
+  .debug-details { min-height: 0; }
+}
+
+@media (max-height: 500px) {
+  .request-debug { gap: 8px; }
+  .debug-details { min-height: 0; }
+  .debug-empty { padding-block: 20px; }
+}

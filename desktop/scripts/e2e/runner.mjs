@@ -278,20 +278,21 @@ export async function runE2E(mode = 'core') {
         await mainPage.locator('#btn-clear-input').click()
       })
 
-      await check('differentiation empty state: dual-mode cards switch translate/guide intent', async () => {
+      await check('empty workspace offers examples and switches modes from the composer', async () => {
         assert.equal(await mainPage.locator('#input').inputValue(), '', 'input must be empty for the empty state')
         assert.equal(await mainPage.locator('.empty').count(), 1, 'empty state should be visible')
-        assert.equal(await mainPage.locator('.empty-mode').count(), 2, 'two mode cards should be shown')
-        await shot(mainPage, 'empty-state-modes')
-        await mainPage.locator('.empty-mode[data-empty-mode="guide"]').click()
-        await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="guide"]')?.classList.contains('is-active'))
+        assert.equal(await mainPage.locator('.empty-examples button').count(), 3)
+        const guide = mainPage.locator('.mode[data-mode="guide"]')
+        await guide.click()
+        assert.equal(await guide.getAttribute('aria-pressed'), 'true')
         const savedMode = await mainPage.evaluate(() => chrome.storage.sync.get('reading_mode'))
         assert.equal(savedMode.reading_mode, 'guide')
-        assert.equal(await mainPage.locator('.empty-mode[data-empty-mode="guide"].is-active').count(), 1)
-        await shot(mainPage, 'empty-state-guide-active')
-        await mainPage.locator('.empty-mode[data-empty-mode="translate"]').click()
-        await mainPage.waitForFunction(() => document.querySelector('.mode[data-mode="translate"]')?.classList.contains('is-active'))
-        await shot(mainPage, 'empty-state-translate-active')
+        assert.equal(await mainPage.locator('#send-label').textContent(), '开始引导')
+        const translate = mainPage.locator('.mode[data-mode="translate"]')
+        await translate.click()
+        assert.equal(await translate.getAttribute('aria-pressed'), 'true')
+        assert.equal(await mainPage.locator('#send-label').textContent(), '翻译')
+        await shot(mainPage, 'main-workspace-empty')
       })
 
     }
@@ -302,7 +303,7 @@ export async function runE2E(mode = 'core') {
 
     if (mode === 'core' || mode === 'all') {
       await verifyCloudSpeech({ app, page: mainPage, check })
-      await verifyDesktopWorkflow({ app, page: mainPage, mock, check })
+      await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
     }
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {
@@ -645,9 +646,13 @@ export async function runE2E(mode = 'core') {
           const chips = await mainPage.locator('.entry:last-child .pos-chip').allTextContents()
           assert.ok(chips.length >= 2, `expected multiple senses, got ${chips.length}`)
           assert.equal(await mainPage.locator('.entry:last-child .source-label').textContent(), '原文')
-          const answerBorder = await mainPage.locator('.entry:last-child .translation-answer')
-            .evaluate((node) => getComputedStyle(node).borderLeftWidth)
-          assert.notEqual(answerBorder, '0px', 'the primary translation must render as an emphasized answer block')
+          const head = mainPage.locator('.entry:last-child .entry-head')
+          await head.press('Space')
+          assert.equal(await head.getAttribute('aria-expanded'), 'false')
+          assert.equal(await mainPage.locator('.entry:last-child .entry-body').isVisible(), false)
+          await head.press('Space')
+          assert.equal(await head.getAttribute('aria-expanded'), 'true')
+          assert.equal(await mainPage.locator('.entry:last-child .translation-answer').isVisible(), true)
           await delay(300)
           await shot(mainPage, 'main-dictionary-card')
         } finally {

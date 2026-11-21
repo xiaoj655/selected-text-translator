@@ -76,6 +76,12 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
     focus(headingEl)
   }
 
+  function showProgress(message) {
+    const statusEl = el('p', 'tutor-detail', message)
+    statusEl.setAttribute('role', 'status')
+    setCard(statusEl)
+  }
+
   function showPlan(errorMessage = '') {
     const source = plan.source
     if (!source) {
@@ -115,7 +121,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
 
   async function loadPlan(showLoading = true) {
     const request = ++planRequest
-    if (showLoading) setCard(el('p', 'tutor-detail', '正在读取查词记录…'))
+    if (showLoading) showProgress('正在读取查词记录…')
     try {
       const nextPlan = await api.getPlan()
       if (request !== planRequest) return
@@ -131,7 +137,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
     if (isStarting || !plan?.source || !plan.isConfigured) return
     isStarting = true
     planRequest++
-    setCard(el('p', 'tutor-detail', '正在为这条查词记录出题…'))
+    showProgress('正在出题…')
     try {
       lesson = await api.startLesson(plan.source.id)
       answers = []
@@ -150,7 +156,9 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
     const question = lesson.questions[position]
     const headingEl = el('h3', '', KIND_LABELS[plan.source.kind])
     headingEl.tabIndex = -1
-    const counterEl = el('p', 'tutor-detail', `第 ${position + 1} / ${lesson.questions.length} 题`)
+    const counterEl = el('p', 'tutor-step', `第 ${position + 1} / ${lesson.questions.length} 题`)
+    const questionHead = el('header', 'tutor-question-head')
+    questionHead.append(headingEl, counterEl)
     const sentenceEl = englishText('p', 'tutor-sentence', question.sentence)
     const promptEl = el('p', 'tutor-prompt', question.prompt)
     promptEl.id = 'tutor-prompt'
@@ -173,7 +181,7 @@ export function createTutorWorkspace({ rootEl, api, onOpenSettings }) {
     hintButtonEl.setAttribute('aria-controls', hintEl.id)
     hintButtonEl.setAttribute('aria-expanded', 'false')
 
-    const cardEl = setCard(counterEl, headingEl, sentenceEl, promptEl, hintButtonEl, hintEl, optionsEl)
+    const cardEl = setCard(questionHead, sentenceEl, promptEl, hintButtonEl, hintEl, optionsEl)
     const choicesEl = question.choices.map((choice, index) => button(choice, '', () => {
       if (answers[position]) return
       answers[position] = { correct: index === question.correctIndex, hinted: usedHint }

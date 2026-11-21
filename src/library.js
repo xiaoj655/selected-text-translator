@@ -28,6 +28,26 @@ const state = { entries: [], mode: 'all', visibleCount: 30, reviewQueue: [], rev
   reviewEntryId: '', lastRemovedEntry: null, isUndoBusy: false, draft: null, editorEl: null, draftNoticeEl: null }
 const libraryAudio = createLibraryAudio({ send, onChange: updateSpeechControls, onStatus: setStatus })
 
+if (window.sttDesktop) {
+  const style = document.createElement('link')
+  style.rel = 'stylesheet'
+  style.href = new URL('../../app/library.css', import.meta.url).href
+  document.head.append(style)
+  document.querySelector('.intro-row h1').textContent = '我的表达本'
+  const applyAppearance = (prefs = {}) => {
+    document.documentElement.dataset.theme = prefs?.theme || 'system'
+    document.documentElement.dataset.font = prefs?.font || 'normal'
+    document.documentElement.dataset.accent = prefs?.accent || 'neutral'
+    document.documentElement.dataset.motion = prefs?.reducedMotion ? 'reduced' : 'full'
+  }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.desktop_prefs) applyAppearance(changes.desktop_prefs.newValue)
+  })
+  void chrome.storage.sync.get('desktop_prefs')
+    .then(({ desktop_prefs }) => applyAppearance(desktop_prefs))
+    .catch(() => {})
+}
+
 void init()
 
 function createEl(tag, className, text) {

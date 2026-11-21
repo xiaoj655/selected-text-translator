@@ -1,0 +1,81 @@
+@import './tokens.css';
+
+:root {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+body.library { max-width: 880px; padding-block: 24px; font-size: var(--fs-base); }
+.library a { color: var(--accent-text); }
+.library :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.library button { border-radius: var(--r-pill); background: var(--primary); color: var(--on-primary); }
+.library button.secondary { background: var(--surface); color: var(--text); }
+.library button.text-button { color: var(--accent-text); background: transparent; }
+
+.library-header { gap: 12px; }
+.library-header .brand { gap: 8px; }
+.library-header .brand-mark { width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font: 600 14px var(--font-ui); }
+.library-header .brand-name { font: 600 14px var(--font-ui); letter-spacing: normal; }
+.library :is(.brand-note, .eyebrow, .library-intro, .empty-symbol) { display: none; }
+.intro-row { margin-top: 32px; }
+.intro-row h1 { font-size: clamp(25px, 4vw, 30px); font-weight: 650; }
+.library-count { color: var(--text-2); }
+
+.study-progress { margin-top: 16px; padding: 14px 16px; border-color: var(--border); border-radius: var(--r-md); background: var(--surface); }
+.study-progress-num { color: var(--text); font: 600 22px/1.2 var(--font-ui); font-variant-numeric: tabular-nums; }
+.today-review-reminder { border-color: var(--border); }
+.today-review-reminder strong { color: var(--text); }
+.library .today-review-reminder button { background: var(--primary); color: var(--on-primary); }
+
+.library-tabs { margin-top: 20px; border-radius: var(--r-pill); background: var(--surface); }
+.library-tabs button { background: transparent; color: var(--text-2); }
+.library-tabs button[aria-pressed=true] { background: var(--bg); color: var(--text); box-shadow: var(--shadow-1); }
+.library-status { min-height: 0; color: var(--text-2); }
+.library-status:not(:empty) { margin-block: 10px; }
+
+.library :is(input:not([type=checkbox]), textarea) {
+  border-color: var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--r-sm);
+}
+.library input::placeholder { color: var(--text-3); }
+.search-label { margin-top: 14px; }
+.search-label > span { font-size: 12px; }
+
+.library :is(.undo-notice, .draft-notice, .review-panel, .empty-state, .entry-card) {
+  border-color: var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  box-shadow: none;
+}
+.library :is(.undo-notice, .draft-notice, .empty-state) { background: var(--surface); }
+
+.entry-list { gap: 0; border-top: 1px solid var(--border); }
+.library .entry-card { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.entry-card > summary { padding-inline: 4px; }
+.entry-card > summary:hover { background: var(--surface); }
+.entry-card > summary:focus-visible { outline-offset: -2px; }
+.entry-card[open] > summary { border: 0; }
+.entry-card > summary::after { color: var(--text-2); }
+.entry-body { padding-inline: 4px; }
+.entry-context { color: var(--text-2); border-color: var(--border-strong); font: inherit; line-height: 1.7; }
+.context-target { color: var(--accent-text); background: var(--accent-soft); }
+.context-full > summary::marker { color: var(--text-3); }
+.library .library-speech-button[aria-pressed=true] { color: var(--on-primary); background: var(--primary); }
+
+.entry-title, .draft-notice-title, .review-word { color: var(--text); font: 600 calc(var(--fs-result) + 3px)/1.4 var(--font-reading); }
+.review-word { font-size: calc(var(--fs-result) + 9px); }
+.entry-example { font: inherit; line-height: 1.7; }
+.entry-meta { font-family: inherit; font-size: 11px; }
+.context-label, .answer-label, .review-progress { font-size: 12px; letter-spacing: normal; }
+.library :is(.study-progress-label, .today-review-reminder, .undo-notice, .search-label > span, .entry-meta, .entry-phonetic,
+  .context-label, .answer-label, .context-location-note, .context-full > summary, .entry-explanation, .entry-usage, .entry-example,
+  .editor-help, .editor-field, .editor-limit, .editor-advanced > summary, .editor-message, .draft-notice, .draft-notice-label,
+  .review-help, .review-shortcuts, .review-progress, .empty-state p, .library-footer) { color: var(--text-2); }
+.library :is(.empty-state h2, .entry-meaning, .entry-editor h3) { color: var(--text); }
+.library :is(.entry-editor, .review-answer, .library-footer) { border-color: var(--border); }
+.library :is(.library-status, .editor-message)[data-tone=error] { color: var(--danger); }
+.library .editor-field [aria-invalid=true] { border-color: var(--danger); }
+.library .review-shortcuts kbd { color: var(--text); background: var(--surface); border-color: var(--border); }

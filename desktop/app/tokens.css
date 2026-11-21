@@ -1,34 +1,33 @@
 /*
- * Native, restrained design tokens.
- * One neutral surface ramp + a single accent, light/dark via light-dark().
- * Both windows import this file so they stay in lockstep.
+ * Shared surfaces, type and controls for the workspaces and floating card.
  */
 :root {
   color-scheme: light dark;
 
   /* surfaces & ink */
-  --bg: light-dark(#ffffff, #15171b);
-  --surface: light-dark(#f6f7f9, #1d2026);
-  --surface-2: light-dark(#eceef2, #262a32);
-  --surface-3: light-dark(#e2e5eb, #30353f);
-  --text: light-dark(#1b1f27, #eceef3);
-  --text-2: light-dark(#5d6675, #a2abba);
-  --text-3: light-dark(#8a93a3, #798394);
-  --border: light-dark(#dfe3e9, #333945);
-  --border-strong: light-dark(#cbd1da, #454c59);
+  --bg: light-dark(#ffffff, #212121);
+  --surface: light-dark(#f7f7f6, #2b2b2b);
+  --surface-2: light-dark(#efefee, #353535);
+  --surface-3: light-dark(#e6e6e5, #414141);
+  --text: light-dark(#20201f, #f3f3f2);
+  --text-2: light-dark(#595957, #c4c4c2);
+  --text-3: light-dark(#6e6e6b, #a4a4a2);
+  --border: light-dark(#e6e6e5, #3d3d3b);
+  --border-strong: light-dark(#cdcdca, #555553);
+  --primary: light-dark(#20201f, #f3f3f2);
+  --primary-hover: light-dark(#393937, #d9d9d7);
+  --on-primary: light-dark(#ffffff, #212121);
+  --scrim: rgb(0 0 0 / 34%);
 
   /* accent (overridden by data-accent) */
-  --accent: #4f6ef7;
-  --accent-hover: #3d5ce8;
-  --accent-soft: light-dark(#eef1ff, #232c4a);
-  --accent-text: light-dark(#2b41b8, #b3c0ff);
-  --on-accent: #ffffff;
-  --grad: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #a855f7));
+  --accent: light-dark(#595957, #a4a4a2);
+  --accent-soft: var(--surface-2);
+  --accent-text: var(--text);
 
   /* semantics */
-  --danger: #d3453f;
+  --danger: light-dark(#b32828, #f4948f);
   --danger-soft: light-dark(#fdecea, #3a2322);
-  --success: #1f9361;
+  --success: light-dark(#21704d, #84caa5);
   --success-soft: light-dark(#e8f6ef, #1c3529);
 
   /* shape */
@@ -40,20 +39,21 @@
   /* floating card: transparent frame pads the shadow so it never clips into a dark ring.
      card margin must exceed the shadow's blur + offset for the alpha to reach 0 at the window edge. */
   --card-pad: 18px;
-  --shadow-card: 0 6px 16px rgba(18, 24, 40, .16);
+  --shadow-card: 0 4px 12px rgb(0 0 0 / 16%);
 
   /* elevation (opaque surfaces) */
-  --shadow-1: 0 1px 2px rgba(18, 24, 40, .06), 0 1px 3px rgba(18, 24, 40, .05);
-  --shadow-2: 0 4px 14px rgba(18, 24, 40, .10);
-  --shadow-3: 0 12px 32px rgba(18, 24, 40, .18);
+  --shadow-1: 0 2px 5px rgb(0 0 0 / 6%);
+  --shadow-2: 0 4px 14px rgb(0 0 0 / 10%);
+  --shadow-3: 0 12px 32px rgb(0 0 0 / 18%);
 
   /* type */
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
   --font-reading: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --fs-base: 14px;
   --fs-result: 16px;
-  --lh-result: 1.85;
-  --measure: 62ch;
+  --lh-result: 1.75;
+  --measure: 70ch;
+  --workspace-width: 744px;
 
   /* motion */
   --t: 160ms;
@@ -68,31 +68,26 @@
 
 :root[data-accent="indigo"] {
   --accent: #4f6ef7;
-  --accent-hover: #3d5ce8;
   --accent-soft: light-dark(#eef1ff, #232c4a);
   --accent-text: light-dark(#2b41b8, #b3c0ff);
 }
 :root[data-accent="ocean"] {
   --accent: #0e8aa6;
-  --accent-hover: #0a7391;
   --accent-soft: light-dark(#e6f6fa, #15323c);
   --accent-text: light-dark(#0a6479, #8fd6e8);
 }
 :root[data-accent="emerald"] {
   --accent: #17865c;
-  --accent-hover: #126f4c;
   --accent-soft: light-dark(#e7f5ee, #173026);
   --accent-text: light-dark(#116a49, #8cd6b4);
 }
 :root[data-accent="rose"] {
   --accent: #cf4f79;
-  --accent-hover: #b84067;
   --accent-soft: light-dark(#fceef3, #3a2330);
   --accent-text: light-dark(#a83259, #f0a8c1);
 }
 :root[data-accent="amber"] {
   --accent: #b9821a;
-  --accent-hover: #9c6d13;
   --accent-soft: light-dark(#fdf3e2, #352b18);
   --accent-text: light-dark(#8a5f0d, #e8c684);
 }
@@ -106,6 +101,10 @@
   scroll-behavior: auto !important;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :root { --t: 0ms; }
+}
+
 ::selection { background: var(--accent-soft); color: var(--accent-text); }
 
 @media (forced-colors: active) {
@@ -115,7 +114,11 @@
     --surface-2: Canvas;
     --text: CanvasText;
     --text-2: CanvasText;
+    --text-3: CanvasText;
     --border: CanvasText;
+    --primary: ButtonText;
+    --primary-hover: ButtonText;
+    --on-primary: ButtonFace;
     --accent: Highlight;
     --accent-soft: Canvas;
     --accent-text: Highlight;
