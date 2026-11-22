@@ -2,6 +2,11 @@ import { button, coachErrorText, createReviewWorkspace, el, englishText } from '
 import { createReadingLookup } from './reading-lookup.js'
 
 export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }) {
+  const shell = el('div', 'tutor-shell')
+  const lookupDock = el('div', 'reading-lookup-dock')
+  lookupDock.hidden = true
+  rootEl.before(shell)
+  shell.append(rootEl, lookupDock)
   const frame = el('div', 'tutor-frame')
   const title = el('h2', 'sr-only', 'English Coach')
   title.id = 'tutor-title'
@@ -13,7 +18,7 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
   reviewPanel.id = 'tutor-review-panel'
   reviewPanel.hidden = true
 
-  const reading = createReadingWorkspace({ rootEl: readingPanel, api: readingApi, onOpenSettings,
+  const reading = createReadingWorkspace({ rootEl: readingPanel, scroller: rootEl, lookupDock, api: readingApi, onOpenSettings,
     onLookup: (lookup) => api.recordLookup(lookup) })
   const review = createReviewWorkspace({ rootEl: reviewPanel, api, onOpenSettings })
   const readingButton = button('Article reading', 'tutor-reading-mode', () => setMode(false))
@@ -61,22 +66,25 @@ function readingAnchor(scroller) {
   const top = scroller.getBoundingClientRect().top + 1
   for (const material of scroller.querySelectorAll('.reading-preview')) {
     const bounds = material.getBoundingClientRect()
-    const text = material.firstChild
-    if (bounds.top > top || bounds.bottom <= top || text?.nodeType !== Node.TEXT_NODE) continue
-    // The prose is one text node. Find the first visible line without hit testing the Settings overlay.
+    if (bounds.top > top || bounds.bottom <= top) continue
+    const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
     const range = document.createRange()
-    let start = 0
-    let end = text.length
-    while (start < end) {
-      const middle = Math.floor((start + end) / 2)
-      range.setStart(text, middle)
+    for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+      range.selectNodeContents(text)
+      if (range.getBoundingClientRect().bottom <= top) continue
+      let start = 0
+      let end = text.length
+      while (start < end) {
+        const middle = Math.floor((start + end) / 2)
+        range.setStart(text, middle)
+        range.collapse(true)
+        if (range.getBoundingClientRect().bottom <= top) start = middle + 1
+        else end = middle
+      }
+      range.setStart(text, start)
       range.collapse(true)
-      if (range.getBoundingClientRect().bottom <= top) start = middle + 1
-      else end = middle
+      return { range, top: range.getBoundingClientRect().top }
     }
-    range.setStart(text, start)
-    range.collapse(true)
-    return { range, top: range.getBoundingClientRect().top }
   }
   return null
 }
@@ -100,8 +108,8 @@ function attribution({ source, publishedAt }) {
   return meta
 }
 
-function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
-  const lookup = createReadingLookup({ rootEl, onOpenSettings, onLookup })
+function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSettings, onLookup }) {
+  const lookup = createReadingLookup({ rootEl, scroller, dock: lookupDock, onOpenSettings, onLookup })
   const index = el('div')
   const header = el('header', 'reading-header')
   const heading = el('h3', 'reading-heading', 'Choose an article')

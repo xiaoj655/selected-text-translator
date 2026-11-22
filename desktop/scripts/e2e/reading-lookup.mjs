@@ -6,7 +6,9 @@ const RACE_PASSAGE = 'The orchard stands beside the harbor. A meadow lies beyond
 const LONG_PASSAGE = 'A record keeps earlier decisions available. '
   + 'Background information gives readers more detail about the project. '.repeat(55)
   + '\n\nWe will record a new interview at the end of this article.'
+const DRAG_SENTENCE = 'The editor’s well-known method for gradually moving the release back until the testing team is ready helps engineers avoid mistakes.'
 const MODE_KEY = 'desktop_reading_lookup_mode'
+const needsStructure = (body) => body.messages[0].content.includes('Return only a JSON object with the key "structure"')
 
 function deferred() {
   let resolve
@@ -169,11 +171,94 @@ async function withState(page, run) {
 }
 
 export async function verifyReadingLookup({ app, page, mock, check, shot, readingFeeds }) {
+  await check('article lookup: backward cross-line word snap and persistent sentence lookup', async () => {
+    const inputs = []
+    const sentenceResponse = deferred()
+    let previousBounds
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const data = sourceData(body)
+      if (!data) return defaultResponse({ body, res })
+      if (needsStructure(body)) return reply(res, { structure: [] })
+      inputs.push(data)
+      if (data.selectedText === DRAG_SENTENCE) await sentenceResponse.promise
+      reply(res, { translation: `Meaning of ${data.selectedText}` })
+    })
+    try {
+      await withState(page, async () => {
+        await openPastedText(page, `${DRAG_SENTENCE}\n\n${LONG_PASSAGE}`)
+        previousBounds = await app.evaluate(({ BrowserWindow }) => {
+          const win = BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes('index.html'))
+          const bounds = win.getBounds()
+          win.setContentSize(620, 520)
+          return bounds
+        })
+        await page.waitForFunction(() => innerWidth === 620 && innerHeight === 520)
+
+        const firstWord = await textRange(page, 'well-known')
+        const lastWord = await textRange(page, 'helps')
+        assert.ok(lastWord.y > firstWord.y, 'the drag must cross two lines')
+        await page.mouse.move(lastWord.x, lastWord.y)
+        await page.mouse.down()
+        await page.mouse.move(firstWord.x, firstWord.y, { steps: 8 })
+        assert.equal(inputs.length, 0, 'dragging does not ask the model before release')
+        await page.mouse.up()
+        const snapped = 'well-known method for gradually moving the release back until the testing team is ready helps'
+        await page.waitForFunction((text) => document.querySelector('#reading-lookup-text')?.textContent === text, snapped)
+        await until(() => inputs.length === 1, 'the snapped lookup request')
+        assert.equal(inputs[0].selectedText, snapped)
+        assert.equal(inputs[0].surroundingContext.slice(inputs[0].contextStart, inputs[0].contextEnd), snapped)
+        await page.locator('#reading-lookup-close').click()
+
+        const point = await textRange(page, 'engineers')
+        const articlePosition = point.y
+        await page.mouse.move(point.x, point.y)
+        await page.getByRole('button', { name: 'Look up sentence' }).click()
+        await until(() => inputs.length === 2, 'the sentence lookup request')
+        assert.equal(inputs[1].selectedText, DRAG_SENTENCE)
+        assert.ok(Math.abs((await textRange(page, 'engineers')).y - articlePosition) < 36,
+          'opening the short translation should keep the original sentence near its previous position')
+
+        const afterScroll = await page.locator('#tutor-workspace').evaluate((node) => {
+          const before = node.scrollTop
+          node.scrollTop += 475
+          return node.scrollTop - before
+        })
+        assert.ok(afterScroll > 0, 'the reading viewport must actually scroll while waiting for the sentence')
+        sentenceResponse.resolve()
+        await page.waitForFunction(() => document.querySelector('#reading-lookup-result .translation-text')?.textContent.startsWith('Meaning of'))
+        assert.equal(await page.locator('#reading-lookup-text').textContent(), DRAG_SENTENCE)
+        await page.locator('#reading-lookup-reopen').click()
+        assert.equal(await page.locator('#reading-lookup').getAttribute('data-placement'), 'inline')
+        const geometry = await page.evaluate(() => ({
+          viewport: document.querySelector('#tutor-workspace').getBoundingClientRect().top,
+          source: [...CSS.highlights.get('reading-lookup-selection')][0].getBoundingClientRect().toJSON(),
+          result: document.querySelector('#reading-lookup').getBoundingClientRect().toJSON(),
+        }))
+        assert.ok(geometry.source.top >= geometry.viewport, 'reopening inline should return to the sentence')
+        assert.ok(geometry.result.top >= geometry.source.bottom - 1, 'the inline result should not cover source text')
+        await shot?.(page, 'main-article-lookup-inline')
+        await page.locator('#reading-lookup-expand').click()
+        await page.locator('#reading-lookup[data-placement="bottom"]').waitFor()
+        await page.locator('#reading-lookup-minimize').click()
+        await page.locator('#reading-lookup-reopen').click()
+        await page.locator('#reading-lookup[data-placement="bottom"]').waitFor()
+        assert.equal(inputs.filter(({ selectedText }) => selectedText === DRAG_SENTENCE).length, 1)
+      })
+    } finally {
+      sentenceResponse.resolve()
+      if (previousBounds) await app.evaluate(({ BrowserWindow }, bounds) => {
+        BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes('index.html')).setBounds(bounds)
+      }, previousBounds)
+      mock.resetHandler()
+    }
+  })
+
   await check('article lookup: exact word context, native selection, both modes and saved source', async () => {
     const inputs = []
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       const data = sourceData(body)
       if (!data) return defaultResponse({ body, res })
+      if (needsStructure(body)) return reply(res, { structure: guide(data).structure || [] })
       const isGuide = body.messages[0].content.includes('You are a patient reading tutor.')
       inputs.push({ data, isGuide })
       reply(res, isGuide ? guide(data) : { translation: translation(data) })
@@ -237,8 +322,8 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         await shot?.(page, 'main-article-sentence-structure')
         await page.locator('#reading-lookup-translate').click()
         await page.locator('#reading-lookup-result').getByText(`Meaning of ${SENTENCE}`, { exact: true }).waitFor()
-        assert.deepEqual(await articleHighlights(), { selection: [SENTENCE] })
-        assert.equal(await legend.count(), 0)
+        await legend.waitFor()
+        assert.deepEqual(await articleHighlights(), { subject: ['We'], verb: ['will record', 'keep'], object: ['the interview', 'a record'] })
         await page.locator('#reading-lookup-guide').click()
         await legend.waitFor()
 
@@ -461,6 +546,7 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         })
         await page.waitForFunction(() => innerWidth === 620 && innerHeight === 500)
         await clickWord(page, 'record')
+        if (await page.locator('#reading-lookup-expand').isVisible()) await page.locator('#reading-lookup-expand').click()
         await page.locator('#reading-lookup-result .lexical-details summary').click()
         await page.locator('#reading-lookup-result .definitions').waitFor({ state: 'visible' })
         await page.waitForFunction(() => {

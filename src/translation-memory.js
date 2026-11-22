@@ -37,6 +37,7 @@ export function writeMemoryEntry(memory, key, result, maxEntries = MEMORY_MAX_EN
     translatedText: String(result?.translatedText || ''),
     lexical: result?.lexical || null,
     guide: result?.guide || null,
+    ...(Array.isArray(result?.structure) && result.structure.length ? { structure: result.structure } : {}),
     savedAt: Math.max(now, newest + 1),
   }
   return pruneMemory(next, { maxEntries })

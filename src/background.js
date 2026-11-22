@@ -17,7 +17,8 @@ import {
   usesStructuredOutputForModel,
 } from './translation-contracts.js'
 import { readProviderSettings } from './provider-settings.js'
-import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings } from './reading-support.js'
+import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings,
+  supportsTranslationStructure } from './reading-support.js'
 import { handleSpeechMessage } from './speech.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from './translation-memory.js'
 import { isRateLimited, planRetry, sleepAbortable } from './retry-policy.js'
@@ -118,6 +119,22 @@ function releaseCacheWrite(lease) {
   if (!lease.state.users && inflightCacheStates.get(lease.key) === lease.state) inflightCacheStates.delete(lease.key)
 }
 
+async function translateSentenceStructure({ settings, endpoint, text, signal }) {
+  const reading = await readReadingSettings()
+  const model = getLearningModel(settings.model, reading.learningModel)
+  if (!model || signal.aborted) return []
+  const fetchProvider = chrome.providerFetch?.('guidance') ?? fetch
+  const response = await fetchProvider(endpoint, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildReadingRequest({ model, text, kind: 'structure' })),
+    signal,
+  })
+  if (!response.ok) return []
+  const content = readNonStreamMessageContent((await response.json())?.choices?.[0])
+  return parseReadingResponse(content, 'structure', { text })
+}
+
 async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const selectionId = String(payload?.selectionId || '')
   const requestId = String(payload?.requestId || '')
@@ -213,11 +230,27 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     } catch { }
     if (controller.signal.aborted || activeRequests.get(key) !== active) return
     const canUseCache = Boolean(cacheKey && requestEpoch === cacheEpoch)
+    const wantsStructure = !IS_EXTENSION_SERVICE_WORKER && payload?.includeSentenceStructure === true
+      && kind === 'translate' && supportsTranslationStructure(text, payload?.sourceLanguage)
+    const enrich = async (result) => {
+      if (!wantsStructure || result.structure || !result.translatedText || !isActive()) return
+      try {
+        const structure = await translateSentenceStructure({ settings, endpoint, text, signal: controller.signal })
+        if (!isActive()) return
+        if (structure.length) emit({ status: 'structure', structure }, false)
+        if (canUseCache && requestEpoch === cacheEpoch && resultCache.get(cacheKey) === result) {
+          resultCache.set(cacheKey, { ...result, structure })
+        }
+      } catch {
+        // The translation is already complete. An optional analysis failure does not affect it.
+      }
+    }
     if (canUseCache && payload?.forceRefresh === true) resultCache.delete(cacheKey)
     const cached = payload?.forceRefresh !== true && canUseCache && resultCache.get(cacheKey)
     if (cached) {
       emit(cached, false)
       debugLog('result_reused', { selectionId, requestId, kind, elapsedMs: Date.now() - startedAt })
+      await enrich(cached)
       return
     }
     if (canUseCache) cacheLease = acquireCacheWrite(cacheKey, payload?.forceRefresh === true)
@@ -279,8 +312,9 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
           content: streamedContent ?? await readGenericResponseContent({ response, selectionId, requestId }),
           selectionId, requestId, sourceText: text,
         })
-    emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
-      translatedText: translationResult.translation, lexicalDetails: translationResult.lexicalDetails })
+    const result = { status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
+      translatedText: translationResult.translation, lexicalDetails: translationResult.lexicalDetails }
+    emit(result)
     if (useMemory) {
       await rememberTranslation(memory, memoryKey, {
         translatedText: translationResult.translation, lexical: translationResult.lexicalDetails,
@@ -289,6 +323,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     debugLog('request_success', { selectionId, requestId, elapsedMs: Date.now() - startedAt,
       translatedLength: translationResult.translation.length,
       lexicalFields: summarizeLexicalDetails(translationResult.lexicalDetails) })
+    await enrich(result)
   } catch (error) {
     if (activeRequests.get(key) !== active) return
     if (controller.signal.aborted && controller.signal.reason?.message !== 'timeout') return

@@ -207,6 +207,53 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     }
   })
 
+  await check('sentence structure: direct translation displays before its optional analysis', async () => {
+    const sentence = 'The team approved the new budget after a short discussion.'
+    const translation = `译文:${sentence}`
+    const savedLookups = await page.evaluate(() => chrome.storage.local.get('desktop_tutor_v1'))
+    const structure = [
+      { role: 'subject', text: 'The team' },
+      { role: 'verb', text: 'approved' },
+      { role: 'object', text: 'the new budget' },
+    ]
+    let finishAnalysis
+    const analysisGate = new Promise((resolve) => { finishAnalysis = resolve })
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const input = body.messages.at(-1).content
+      if (!input.startsWith('{') || JSON.parse(input).selectedText !== sentence) return defaultResponse({ body, res })
+      await analysisGate
+      if (res.destroyed) return
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ structure }) } }] }))
+    })
+    try {
+      await page.locator('.mode[data-mode=translate]').click()
+      await paste(page, sentence)
+      const entry = page.locator('.entry:last-child')
+      const source = entry.locator('.entry-source')
+      await entry.getByText(translation, { exact: true }).waitFor()
+      assert.equal(await source.locator('mark').count(), 0, 'optional analysis must not delay the translation')
+      finishAnalysis()
+      await source.locator('mark').first().waitFor()
+      assert.deepEqual(await source.locator('mark').allTextContents(), structure.map(({ text }) => text))
+      assert.equal(await source.locator('.bubble').textContent(), sentence)
+      await entry.getByText(translation, { exact: true }).waitFor()
+      await page.waitForFunction(async (text) => {
+        const { desktop_tutor_v1: lookups } = await chrome.storage.local.get('desktop_tutor_v1')
+        return lookups?.some((lookup) => lookup.text === text)
+      }, sentence)
+      await shot?.(page, 'main-direct-sentence-structure')
+    } finally {
+      finishAnalysis()
+      mock.resetHandler()
+      await clearHistory(page)
+      await page.evaluate(async (saved) => {
+        if (Object.hasOwn(saved, 'desktop_tutor_v1')) await chrome.storage.local.set(saved)
+        else await chrome.storage.local.remove('desktop_tutor_v1')
+      }, savedLookups)
+    }
+  })
+
   await check('request debug: opt in, inspect the outbound payload, copy, clear and disable', async () => {
     const debug = page.getByRole('dialog', { name: 'Request Debugger' })
     const record = debug.getByRole('checkbox', { name: 'Record requests' })

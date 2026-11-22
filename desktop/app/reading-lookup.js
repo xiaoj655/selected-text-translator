@@ -1,9 +1,10 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderGuidePreview, renderTranslation, sentenceStructure } from './translation-result.js'
+import { renderGuide, renderGuidePreview, renderSentenceLegend, renderTranslation, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
-import { readingSelection, readingStructureRanges, readingWordAt } from './reading-selection.js'
+import { installReadingSelection, readingStructureRanges } from './reading-selection.js'
+import { createReadingLookupLayout } from './reading-lookup-layout.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
@@ -20,11 +21,10 @@ function sameRange(a, b) {
     && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
 }
 
-export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
+export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup }) {
   const popover = el('section', 'reading-lookup')
   popover.id = 'reading-lookup'
   popover.hidden = true
-  popover.setAttribute('popover', 'manual')
   popover.setAttribute('aria-label', 'Look up selected text')
   const header = el('header', 'reading-lookup-header')
   const title = el('strong', 'reading-lookup-text')
@@ -32,7 +32,16 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   title.lang = 'en'
   const dismiss = button('×', 'reading-lookup-close', close, 'reading-lookup-close')
   dismiss.setAttribute('aria-label', 'Close lookup')
-  header.append(title, dismiss)
+  const expand = button('Expand', 'reading-lookup-expand', () => layout.expand())
+  const collapse = button('Minimize', 'reading-lookup-minimize', () => layout.collapse())
+  const jump = button('Back to source', 'reading-lookup-original', () => {
+    const bounds = scroller.getBoundingClientRect()
+    const rect = entry?.range.getClientRects()[0]
+    if (rect) scroller.scrollTop += rect.top - bounds.top - 18
+  })
+  const headerActions = el('div', 'reading-lookup-header-actions')
+  headerActions.append(jump, expand, collapse, dismiss)
+  header.append(title, headerActions)
   const modes = el('div', 'reading-lookup-modes')
   const translate = button('Translate', 'reading-lookup-translate', () => selectMode('translate'))
   const guide = button('Guided Reading', 'reading-lookup-guide', () => selectMode('guide'))
@@ -52,15 +61,13 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   const settings = button('Open settings', 'reading-lookup-settings', () => { close(); onOpenSettings?.() })
   actions.append(copy, speak, save, stop, retry, settings)
   popover.append(header, modes, body, actions)
-  document.body.append(popover)
+  dock.append(popover)
+  const layout = createReadingLookupLayout({ panel: popover, scroller, dock })
 
   const articles = new WeakMap()
   let entry = null
   let counter = 0
   let lastMode
-  let wordTimer = 0
-  let selectionBeforePointer = null
-  let selectionBeforeShift
   let speechId = null
   const id = () => `reading-${Date.now()}-${++counter}`
   const modeReady = chrome.storage.sync.get(MODE_KEY).then(
@@ -68,16 +75,13 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     () => { lastMode ??= 'translate' },
   )
 
-  function clearWordTimer() {
-    clearTimeout(wordTimer)
-    wordTimer = 0
-  }
+  const selection = installReadingSelection(rootEl, open, scroller)
 
   function cancel() {
     if (!entry?.requestId) return
     const requestId = entry.requestId
     entry.requestId = null
-    if (ACTIVE.has(entry.status)) {
+    if (ACTIVE.has(entry.status) || (entry.mode === 'translate' && entry.status === 'done')) {
       void chrome.runtime.sendMessage({ type: 'CANCEL_TRANSLATION', payload: { requestId, requestScope: 'reading' } }).catch(() => {})
     }
   }
@@ -117,26 +121,14 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   }
 
   function close() {
-    clearWordTimer()
+    selection.clearPending()
+    selection.hideSentence()
     cancel()
     stopSpeech()
     entry = null
-    if (popover.matches(':popover-open')) popover.hidePopover()
-    popover.hidden = true
+    layout.close()
     CSS.highlights?.delete(SELECTION_HIGHLIGHT)
     clearStructureHighlights()
-  }
-
-  function position() {
-    if (!entry || popover.hidden) return
-    const rect = entry.range.getBoundingClientRect()
-    const width = popover.offsetWidth
-    const height = popover.offsetHeight
-    const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left))
-    const below = rect.bottom + 9
-    const top = below + height <= window.innerHeight - 12 ? below : rect.top - height - 9
-    popover.style.left = `${Math.round(left)}px`
-    popover.style.top = `${Math.round(Math.max(12, Math.min(window.innerHeight - height - 12, top)))}px`
   }
 
   function render() {
@@ -159,7 +151,10 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
       }))
     } else if (entry.mode === 'guide' && entry.previewHint) {
       result.append(renderGuidePreview(entry.previewHint))
-    } else if (entry.translatedText) result.append(renderTranslation(entry))
+    } else if (entry.translatedText) {
+      result.append(renderTranslation(entry))
+      if (hasHighlights) result.append(renderSentenceLegend(sentenceStructure(entry)))
+    }
     else result.textContent = 'Waiting for the model…'
     const done = entry.status === 'done'
     copy.disabled = !done
@@ -168,11 +163,15 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     retry.hidden = !['error', 'cancelled'].includes(entry.status)
     settings.hidden = entry.status !== 'error'
     body.scrollTop = scrollTop
-    position()
+    popover.classList.toggle('is-detailed', entry.mode === 'guide' || entry.status === 'error' || entry.status === 'cancelled')
+    layout.position()
   }
 
   function open(selection) {
-    if (entry?.material === selection.material && sameRange(entry.range, selection.range)) return
+    if (entry?.material === selection.material && sameRange(entry.range, selection.range)) {
+      layout.reopen()
+      return
+    }
     close()
     const current = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending' }
     entry = current
@@ -182,8 +181,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     save.textContent = 'Save'
     copy.textContent = 'Copy result'
     copy.classList.remove('is-done')
-    popover.hidden = false
-    popover.showPopover()
+    layout.open(current)
     if (lastMode) void request(lastMode)
     else {
       render()
@@ -208,8 +206,9 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     cancel()
     const current = entry
     const requestId = id()
-    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, previewHint: '',
+    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
+    if (mode === 'guide') layout.expand()
     feedback.textContent = ''
     save.textContent = 'Save'
     render()
@@ -220,6 +219,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
         type: 'START_TRANSLATION',
         payload: {
           selectionId: current.id, requestId, requestScope: 'reading', kind: mode, forceRefresh,
+          includeSentenceStructure: true,
           text: current.text, context: current.context, contextStart: current.contextStart, contextEnd: current.contextEnd,
           sourceLanguage: 'english', targetLanguage: values.desktop_target_language || 'auto', glossary: values.desktop_glossary || [],
         },
@@ -328,12 +328,17 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
         entry.guide = payload.result || null
+        entry.structure = payload.structure || null
         entry.status = (entry.mode === 'guide' ? entry.guide : entry.translatedText) ? 'done' : 'error'
         entry.error = entry.mode === 'guide' ? 'No guidance was generated. Try again.' : 'No translation was generated. Try again.'
         if (entry.status === 'done' && /\s/u.test(entry.text)) {
           void Promise.resolve(onLookup?.({ id: entry.id, text: entry.text, sourceLanguage: 'english',
             guideType: entry.guide?.guideType, createdAt: entry.createdAt })).catch(() => {})
         }
+        break
+      case 'structure':
+        if (entry.mode !== 'translate' || entry.status !== 'done') return
+        entry.structure = payload.structure
         break
       case 'error':
       case 'missing-configuration': entry.status = 'error'; entry.error = localizeErrorMessage(payload); break
@@ -342,62 +347,13 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     render()
   })
 
-  rootEl.addEventListener('mouseup', (event) => {
-    if (event.button !== 0) return
-    clearWordTimer()
-    const material = event.target.closest?.('.reading-preview[data-reading-selectable]')
-    if (!material) return
-    const selection = readingSelection(rootEl)
-    if (selection?.material === material && (event.detail > 1 || !sameRange(selection.range, selectionBeforePointer))) open(selection)
-  })
-  rootEl.addEventListener('click', (event) => {
-    if (event.detail !== 1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
-    const selection = readingSelection(rootEl)
-    if (selection && !sameRange(selection.range, selectionBeforePointer)) return
-    clearWordTimer()
-    const word = readingWordAt(rootEl, event.clientX, event.clientY)
-    if (!word) return
-    // Chromium may leave a prior native selection in place until the click completes.
-    if (selection) window.getSelection().removeAllRanges()
-    wordTimer = setTimeout(() => {
-      wordTimer = 0
-      if (word.material.isConnected && !word.material.closest('[hidden]')) open(word)
-    }, 280)
-  })
-  rootEl.addEventListener('keydown', (event) => {
-    if (event.key === 'Shift' && !event.repeat) selectionBeforeShift = readingSelection(rootEl)?.range || null
-  })
-  document.addEventListener('keyup', (event) => {
-    // Shift+Arrow can change the range repeatedly while Shift is held.
-    if (event.key !== 'Shift') return
-    const previous = selectionBeforeShift
-    selectionBeforeShift = undefined
-    if (previous === undefined || !rootEl.contains(event.target)) return
-    if (event.target.closest?.('input, textarea, button, a, summary')) return
-    const selection = readingSelection(rootEl)
-    if (selection && !sameRange(selection.range, previous)) open(selection)
-  })
-  document.addEventListener('pointerdown', (event) => {
-    clearWordTimer()
-    selectionBeforePointer = null
-    if (event.button === 0 && rootEl.contains(event.target)) {
-      const selection = window.getSelection()
-      if (selection?.rangeCount === 1 && !selection.isCollapsed) selectionBeforePointer = selection.getRangeAt(0).cloneRange()
-    }
-    if (!popover.hidden && !popover.contains(event.target)) close()
-  })
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || event.isComposing || (popover.hidden && !wordTimer)) return
+    if (event.key !== 'Escape' || event.isComposing || (!entry && !selection.hasPending())) return
     event.preventDefault()
     event.stopImmediatePropagation()
     close()
   }, true)
-  document.addEventListener('scroll', (event) => {
-    if (!popover.contains(event.target)) close()
-  }, true)
-  window.addEventListener('resize', position)
-  new ResizeObserver(position).observe(popover)
-  document.addEventListener('visibilitychange', () => { if (document.hidden) close() })
+  scroller.addEventListener('scroll', selection.clearPending)
 
   return {
     bindMaterial(material, article) {

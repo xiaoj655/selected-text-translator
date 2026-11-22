@@ -1,5 +1,10 @@
+.tutor-shell { flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; }
+.tutor-shell:has(> #tutor-workspace[hidden]) { display: none; }
+.tutor-shell:has(> .reading-lookup-dock[data-placement="side"]:not([hidden])) { flex-direction: row; }
 #tutor-workspace {
   flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable both-edges;
@@ -188,28 +193,67 @@
 .reading-material summary { width: fit-content; padding: 5px 0; cursor: pointer; color: var(--text-2); }
 .reading-material .reading-preview { margin-block-start: 8px; }
 .reading-preview[data-reading-selectable] { cursor: text; }
+.reading-sentence-trigger {
+  position: fixed;
+  z-index: 2;
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text-2);
+}
+.reading-sentence-trigger:hover { color: var(--text); }
 ::highlight(reading-lookup-selection) { background: var(--accent-soft); color: var(--text); }
 ::highlight(reading-lookup-subject) { background-color: var(--sentence-subject); }
 ::highlight(reading-lookup-verb) { background-color: var(--sentence-verb); }
 ::highlight(reading-lookup-object) { background-color: var(--sentence-object); }
 ::highlight(reading-lookup-complement) { background-color: var(--sentence-complement); }
 
-.reading-lookup {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(540px, calc(100dvh - 24px));
-  padding: 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
+.reading-lookup-space { display: block; pointer-events: none; }
+.reading-lookup-dock:not([hidden]) {
+  flex: 0 0 auto;
+  min-height: 0;
   background: var(--bg);
-  color: var(--text);
-  box-shadow: 0 10px 36px rgb(0 0 0 / .14);
-  overflow: hidden;
+  border-block-start: 1px solid var(--border);
 }
-.reading-lookup:popover-open { display: flex; flex-direction: column; gap: 12px; }
-.reading-lookup-header { display: flex; align-items: start; gap: 12px; }
+.reading-lookup-dock[data-placement="collapsed"] { padding: 4px var(--workspace-gutter); }
+.reading-lookup-dock[data-placement="side"] {
+  width: clamp(310px, 29vw, 384px);
+  display: flex;
+  border-block-start: 0;
+  border-inline-start: 1px solid var(--border);
+}
+.reading-lookup-dock[data-placement="bottom"] { max-height: min(46%, 420px); display: flex; }
+.reading-lookup:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.reading-lookup[data-placement="inline"] {
+  position: absolute;
+  z-index: 1;
+  background: var(--bg);
+  padding: 8px 12px;
+  border-inline-start: 2px solid var(--accent);
+  border-block: 1px solid var(--border);
+}
+.reading-lookup[data-placement="inline"] .reading-lookup-text,
+.reading-lookup[data-placement="inline"] #reading-lookup-original,
+.reading-lookup[data-placement="inline"] .lexical-details,
+.reading-lookup[data-placement="inline"]:not(.is-detailed) .reading-lookup-actions:not(:has(#reading-lookup-stop:not([hidden]))) {
+  display: none;
+}
+.reading-lookup[data-placement="inline"] .reading-lookup-body { max-height: 8em; }
+.reading-lookup:not([data-placement="inline"]) #reading-lookup-expand { display: none; }
+.reading-lookup-header { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.reading-lookup-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.reading-lookup-header-actions button { font-size: 13px; min-height: 26px; padding: 2px 8px; }
+.reading-lookup-header-actions #reading-lookup-close { margin-inline-start: auto; font-size: 20px; }
 .reading-lookup-text {
   flex: 1;
   min-width: 0;
@@ -224,7 +268,7 @@
 .reading-lookup-modes { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; }
 .reading-lookup-modes button { background: transparent; border-color: transparent; }
 .reading-lookup-modes button[aria-pressed="true"] { background: var(--surface); border-color: var(--border-strong); font-weight: 600; }
-.reading-lookup-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.reading-lookup-body { min-height: min(32px, 100%); overflow: auto; overscroll-behavior: contain; }
 .reading-lookup .result { padding: 0; font-size: var(--fs-result); line-height: var(--lh-result); overflow-wrap: anywhere; }
 .reading-lookup .translation-answer { margin: 0; padding: 0; border: 0; background: transparent; }
 .reading-lookup .guide-tools { flex-wrap: wrap; }

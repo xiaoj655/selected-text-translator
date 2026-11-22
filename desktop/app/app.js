@@ -11,7 +11,7 @@ import { bindRequestDebug } from './request-debug.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
-import { supportsSentenceStructure } from '../vendor/src/reading-support.js'
+import { supportsSentenceStructure, supportsTranslationStructure } from '../vendor/src/reading-support.js'
 import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
@@ -1193,6 +1193,7 @@ function sendRequest(entry, forceRefresh = false) {
         selectionId: entry.id,
         requestId: entry.requestId,
         kind: entry.mode,
+        includeSentenceStructure: true,
         forceRefresh,
         text: entry.text,
         context: '',
@@ -1276,9 +1277,10 @@ function scheduleLiveTranslate() {
 }
 
 function workbenchMemoryKey(text, mode) {
-  const withStructure = mode === 'guide' && supportsSentenceStructure(text, state.sourceLanguage)
+  const withStructure = mode === 'guide' ? supportsSentenceStructure(text, state.sourceLanguage)
+    : supportsTranslationStructure(text, state.sourceLanguage)
   const key = makeMemoryKey({
-    text: withStructure ? '' : text, mode: withStructure ? 'guide-structure' : mode,
+    text: withStructure ? '' : text, mode: withStructure ? `${mode}-structure` : mode,
     targetLanguage: state.targetLanguage, sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary,
   })
   // Highlights are offsets into the verbatim input. The ordinary memory key folds whitespace.
@@ -1341,6 +1343,7 @@ function submit(options = {}) {
     entry.translatedText = cached.translatedText || ''
     entry.lexical = cached.lexical || null
     entry.guide = cached.guide || null
+    entry.structure = cached.structure || null
     entry.fromMemory = true
     state.lastElapsed = 0
   }
@@ -1381,6 +1384,7 @@ function handleTranslationEvent(payload) {
       else {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
+        entry.structure = payload.structure || null
         if (!entry.translatedText) {
           entry.status = 'error'
           entry.error = 'The model returned no translation. Try again or choose another model.'
@@ -1400,12 +1404,21 @@ function handleTranslationEvent(payload) {
           translatedText: entry.translatedText,
           lexical: entry.lexical,
           guide: entry.guide,
+          structure: entry.structure,
         })
         try {
           Promise.resolve(chrome.storage.local.set({ translation_memory: state.translationMemory })).catch(() => {})
         } catch { }
       }
       void recordTutorLookup(entry)
+      break
+    case 'structure':
+      if (entry.mode !== 'translate' || entry.status !== 'done') return
+      entry.structure = payload.structure
+      if (entry.memoryKey && sentenceStructure(entry).length) {
+        state.translationMemory = writeMemoryEntry(state.translationMemory, entry.memoryKey, entry)
+        void chrome.storage.local.set({ translation_memory: state.translationMemory }).catch(() => {})
+      }
       break
     case 'missing-configuration':
     case 'error':
@@ -1600,6 +1613,7 @@ function startCompanionEntry(entry, mode) {
     companion.translatedText = cached.translatedText || ''
     companion.lexical = cached.lexical || null
     companion.guide = cached.guide || null
+    companion.structure = cached.structure || null
     companion.fromMemory = true
   }
   stopActiveSpeech()
@@ -1909,6 +1923,7 @@ function regenerate(entry) {
   entry.translatedText = ''
   entry.lexical = null
   entry.guide = null
+  entry.structure = null
   entry.error = ''
   entry.createdAt = Date.now()
   entry.hintCount = 1

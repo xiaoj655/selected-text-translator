@@ -70,6 +70,10 @@ export function supportsSentenceStructure(text, sourceLanguage = 'auto') {
     && getSentenceSegments(selectedText).length === 1
 }
 
+export function supportsTranslationStructure(text, sourceLanguage) {
+  return classifyReadingSelection(text) === 'passage' && supportsSentenceStructure(text, sourceLanguage)
+}
+
 function getSelectionOccurrence(context, text, contextStart, contextEnd) {
   if (!Number.isInteger(contextStart) || !Number.isInteger(contextEnd)) return {}
   if (contextStart < 0 || contextEnd <= contextStart || contextEnd > context.length) return {}
@@ -92,7 +96,12 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
   const selectedText = String(text || '').slice(0, 12000)
   const surroundingContext = String(context || '').slice(0, 2400)
   const selectionType = classifyReadingSelection(selectedText)
-  const task = kind === 'pronunciation'
+  const task = kind === 'structure'
+    ? [
+        'Return only a JSON object with the key "structure". Use an empty array if the source is not a complete English sentence.',
+        ...SENTENCE_STRUCTURE_INSTRUCTIONS,
+      ]
+    : kind === 'pronunciation'
     ? [
         'Return {"phonetic":"..."} only, with the pronunciation of the selected word in this exact context.',
         'Use American IPA for English, tone-marked Pinyin for Chinese. Never include definitions or translations.',
@@ -139,8 +148,7 @@ const SENTENCE_STRUCTURE_INSTRUCTIONS = [
   'In linking-verb clauses use "complement" for the description of the subject. Preserve passive voice and questions in original order.',
   'Leave implicit subjects and absent objects out. Keep the fragments disjoint and in source order.',
   'Omit structure for a word, phrase, excerpt without a complete main clause, or a selection with multiple sentences.',
-  'Omit structure if the main-clause parts cannot be identified reliably. Always keep the first main-action hint for fallback.',
-  'When another hint helps, make it explain which words a clause modifies or what relationship a connecting phrase adds.',
+  'Omit structure if the main-clause parts cannot be identified reliably.',
 ]
 
 function buildGuideInstructions(includeSentenceStructure, stream) {
@@ -190,7 +198,11 @@ function buildGuideInstructions(includeSentenceStructure, stream) {
     'Do not leave out the main event to explain a grammar pattern. Keep explanation under 60 words.',
     'Omit phonetic, usage, and example for sentence guides.',
     'If context is absent or ambiguous, say so briefly. Do not invent a source sentence or pretend a guess is certain.',
-    ...(includeSentenceStructure ? SENTENCE_STRUCTURE_INSTRUCTIONS : []),
+    ...(includeSentenceStructure ? [
+      ...SENTENCE_STRUCTURE_INSTRUCTIONS,
+      'Always keep the first main-action hint for fallback.',
+      'When another hint helps, explain which words a clause modifies or what relationship a connecting phrase adds.',
+    ] : []),
     ...(stream ? [
       'Write the top-level "hints" field before "answer" and "structure".',
       ...(includeSentenceStructure ? [
@@ -242,6 +254,7 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
     if (!phonetic) throw new Error('The learning model did not return a pronunciation.')
     return { phonetic }
   }
+  if (kind === 'structure') return normalizeSentenceStructure(parsed?.structure, options.text || '')
   const hints = Array.isArray(parsed?.hints)
     ? parsed.hints.filter((hint) => typeof hint === 'string' && hint.trim()).map((hint) => hint.trim())
     : []

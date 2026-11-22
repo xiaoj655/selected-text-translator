@@ -9,9 +9,10 @@ function el(tag, className, text) {
 const SENTENCE_ROLES = { subject: 'Subject', verb: 'Verb', object: 'Object', complement: 'Complement' }
 
 export function sentenceStructure(entry) {
-  const structure = entry.guide?.structure
-  if (entry.mode !== 'guide' || entry.status !== 'done' || entry.guide?.guideType !== 'sentence'
-    || !Array.isArray(structure)) return []
+  if (entry.status !== 'done') return []
+  const structure = entry.mode === 'guide' && entry.guide?.guideType === 'sentence'
+    ? entry.guide.structure : entry.mode === 'translate' ? entry.structure : null
+  if (!Array.isArray(structure)) return []
 
   let previousEnd = 0
   for (const span of structure) {

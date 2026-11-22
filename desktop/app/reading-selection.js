@@ -1,3 +1,22 @@
+import { getSentenceSegments } from '../vendor/src/context-sentence.js'
+
+const indexes = new WeakMap()
+
+function textIndex(material) {
+  const text = material.textContent
+  const previous = indexes.get(material)
+  if (previous?.text === text) return previous
+  const index = {
+    text,
+    words: Array.from(text.matchAll(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’\-‐‑][\p{L}\p{M}\p{N}]+)*/gu), ({ 0: word, index: start }) =>
+      ({ start, end: start + word.length })),
+    sentences: getSentenceSegments(text).map(({ index: start, segment }) =>
+      ({ start, end: start + segment.trimEnd().length })),
+  }
+  indexes.set(material, index)
+  return index
+}
+
 // Keep the original text and UTF-16 offsets used by the shared translation API.
 function materialFor(node, root) {
   const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
@@ -15,30 +34,79 @@ export function readingSelection(root) {
 }
 
 export function readingWordAt(root, x, y) {
-  const range = document.caretRangeFromPoint(x, y)
-  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null
-  const material = materialFor(range.startContainer, root)
-  if (!material) return null
-  const node = range.startContainer
-  const offset = range.startOffset
-  for (const match of node.textContent.matchAll(/\p{L}[\p{L}\p{N}]*(?:['’\-‐‑][\p{L}\p{N}]+)*/gu)) {
-    if (offset < match.index || offset > match.index + match[0].length) continue
-    const word = document.createRange()
-    word.setStart(node, match.index)
-    word.setEnd(node, match.index + match[0].length)
-    // A caret in whitespace can resolve to the end of the preceding word.
-    if (![...word.getClientRects()].some((rect) => x >= rect.left - 1 && x <= rect.right + 1
-      && y >= rect.top && y <= rect.bottom)) continue
-    return selectionFromRange(material, word)
-  }
-  return null
+  const hit = wordAtPoint(root, x, y)
+  return hit && selectionFromRange(hit.material, hit.range)
 }
 
-function selectionStart(material, range, raw) {
+function offsetBefore(material, range) {
+  if (range.startContainer === material.firstChild && range.startContainer.nodeType === Node.TEXT_NODE) return range.startOffset
   const before = range.cloneRange()
   before.selectNodeContents(material)
   before.setEnd(range.startContainer, range.startOffset)
-  return before.toString().length + raw.length - raw.trimStart().length
+  return before.toString().length
+}
+
+function offsetBoundaries(material) {
+  const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+  let nodeStart = 0
+  return (offset) => {
+    while (node && offset > nodeStart + node.length) {
+      nodeStart += node.length
+      node = walker.nextNode()
+    }
+    return node ? [node, offset - nodeStart] : null
+  }
+}
+
+export function rangeForOffsets(material, start, end = start) {
+  const boundaryAt = offsetBoundaries(material)
+  const from = boundaryAt(start)
+  const to = boundaryAt(end)
+  if (!from || !to) return null
+  const range = document.createRange()
+  range.setStart(...from)
+  range.setEnd(...to)
+  return range
+}
+
+// The binary search also gives the closest words on either side of whitespace.
+function firstEndingAtOrAfter(spans, offset) {
+  let from = 0
+  let to = spans.length
+  while (from < to) {
+    const middle = Math.floor((from + to) / 2)
+    if (spans[middle].end < offset) from = middle + 1
+    else to = middle
+  }
+  return from
+}
+
+function wordAtPoint(root, x, y, dragStart = null) {
+  const caret = document.caretRangeFromPoint(x, y)
+  const material = caret && materialFor(caret.startContainer, root)
+  if (!material || (dragStart && material !== dragStart.material)) return null
+  const offset = offsetBefore(material, caret)
+  const { words } = textIndex(material)
+  const index = firstEndingAtOrAfter(words, offset)
+  if (dragStart) {
+    // Crossing punctuation or spaces as part of a drag still resolves to a whole word.
+    const next = words[index]
+    const previous = words[index - 1]
+    return offset < dragStart.start && next?.start > offset ? previous || next : next || previous
+  }
+  const word = words[index]
+  if (!word || word.start > offset) return null
+  const range = rangeForOffsets(material, word.start, word.end)
+  // A caret in whitespace can resolve to the end of the preceding word.
+  const rect = [...range.getClientRects()].find((rect) => x >= rect.left - 1 && x <= rect.right + 1
+    && y >= rect.top && y <= rect.bottom)
+  return rect ? { material, ...word, range, rect } : null
+}
+
+function sentenceAt(material, offset) {
+  const { sentences } = textIndex(material)
+  return sentences[firstEndingAtOrAfter(sentences, offset)]
 }
 
 export function readingStructureRanges({ material, range, text }, spans) {
@@ -46,18 +114,8 @@ export function readingStructureRanges({ material, range, text }, spans) {
     || !material.contains(range.endContainer)) return []
   const raw = range.toString()
   if (raw.trim() !== text) return []
-  const base = selectionStart(material, range, raw)
-  const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
-  let node = walker.nextNode()
-  let nodeStart = 0
-
-  function boundaryAt(offset) {
-    while (node && offset > nodeStart + node.length) {
-      nodeStart += node.length
-      node = walker.nextNode()
-    }
-    return node ? [node, offset - nodeStart] : null
-  }
+  const base = offsetBefore(material, range) + raw.length - raw.trimStart().length
+  const boundaryAt = offsetBoundaries(material)
 
   const ranges = []
   for (const { role, start, end } of spans) {
@@ -77,7 +135,7 @@ function selectionFromRange(material, originalRange) {
   const raw = originalRange.toString()
   const text = raw.trim()
   if (!text || text.length > 12000) return null
-  const start = selectionStart(material, originalRange, raw)
+  const start = offsetBefore(material, originalRange) + raw.length - raw.trimStart().length
   const end = start + text.length
   const fullText = material.textContent
   if (fullText.slice(start, end) !== text) return null
@@ -91,9 +149,213 @@ function selectionFromRange(material, originalRange) {
   const hasContext = text.length <= 2400 && end <= windowEnd
   const range = originalRange.cloneRange()
   return {
-    material, range, text,
+    material, range, text, start, end, sentenceEnd: Math.max(end, sentenceAt(material, end)?.end || 0),
     context: hasContext ? fullText.slice(windowStart, windowEnd) : '',
     contextStart: hasContext ? start - windowStart : null,
     contextEnd: hasContext ? end - windowStart : null,
   }
+}
+
+function sameRange(a, b) {
+  return a && b && a.compareBoundaryPoints(Range.START_TO_START, b) === 0
+    && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
+}
+
+function hasModifier(event) {
+  return event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+}
+
+export function installReadingSelection(root, onSelect, scroller) {
+  const sentenceTrigger = document.createElement('button')
+  sentenceTrigger.type = 'button'
+  sentenceTrigger.className = 'reading-sentence-trigger'
+  sentenceTrigger.setAttribute('aria-label', 'Look up sentence')
+  sentenceTrigger.title = 'Look up sentence'
+  sentenceTrigger.textContent = '↳'
+  sentenceTrigger.hidden = true
+  root.append(sentenceTrigger)
+
+  let wordTimer = 0
+  let sentenceTimer = 0
+  let hideTimer = 0
+  let hoveredSentence = null
+  let selectionBeforePointer = null
+  let selectionBeforeShift
+  let drag = null
+  let ignoreClick = false
+
+  function clearWord() {
+    clearTimeout(wordTimer)
+    wordTimer = 0
+  }
+
+  function hideSentence() {
+    clearTimeout(sentenceTimer)
+    clearTimeout(hideTimer)
+    sentenceTimer = 0
+    hideTimer = 0
+    hoveredSentence = null
+    sentenceTrigger.hidden = true
+  }
+
+  function clearPending() {
+    clearWord()
+    hideSentence()
+    selectionBeforeShift = undefined
+    drag = null
+  }
+
+  function scheduleHideSentence() {
+    clearTimeout(sentenceTimer)
+    sentenceTimer = 0
+    if (hoveredSentence && !hideTimer) hideTimer = setTimeout(hideSentence, 320)
+  }
+
+  function showSentence(word, sentence) {
+    if (!word.material.isConnected || word.material.closest('[hidden]')) return
+    const bounds = scroller.getBoundingClientRect()
+    const anchor = [...word.range.getClientRects()].find((rect) => rect.top === word.rect.top) || word.rect
+    if (anchor.top < bounds.top || anchor.bottom > bounds.bottom) return
+    hoveredSentence = { material: word.material, ...sentence }
+    sentenceTrigger.hidden = false
+    const left = Math.min(word.material.getBoundingClientRect().right + 1, bounds.right - sentenceTrigger.offsetWidth - 2)
+    const top = Math.max(bounds.top, Math.min((anchor.top + anchor.bottom - sentenceTrigger.offsetHeight) / 2,
+      bounds.bottom - sentenceTrigger.offsetHeight))
+    sentenceTrigger.style.left = `${Math.round(left)}px`
+    sentenceTrigger.style.top = `${Math.round(top)}px`
+  }
+
+  function hover(event) {
+    const word = wordAtPoint(root, event.clientX, event.clientY)
+    const sentence = word && sentenceAt(word.material, word.start)
+    if (!sentence || sentence.end - sentence.start > 12000) {
+      scheduleHideSentence()
+      return
+    }
+    clearTimeout(hideTimer)
+    hideTimer = 0
+    clearTimeout(sentenceTimer)
+    sentenceTimer = 0
+    if (hoveredSentence?.material === word.material && hoveredSentence.start === sentence.start) return
+    sentenceTimer = setTimeout(() => {
+      sentenceTimer = 0
+      showSentence(word, sentence)
+    }, 150)
+  }
+
+  sentenceTrigger.addEventListener('pointerenter', () => {
+    clearTimeout(hideTimer)
+    clearTimeout(sentenceTimer)
+    hideTimer = 0
+    sentenceTimer = 0
+  })
+  sentenceTrigger.addEventListener('pointerleave', scheduleHideSentence)
+  sentenceTrigger.addEventListener('click', () => {
+    const target = hoveredSentence
+    hideSentence()
+    if (!target?.material.isConnected) return
+    const range = rangeForOffsets(target.material, target.start, target.end)
+    const selection = range && selectionFromRange(target.material, range)
+    if (selection) {
+      window.getSelection()?.removeAllRanges()
+      onSelect(selection)
+    }
+  })
+
+  document.addEventListener('pointerdown', (event) => {
+    clearWord()
+    drag = null
+    ignoreClick = false
+    selectionBeforePointer = null
+    if (sentenceTrigger.contains(event.target)) return
+    hideSentence()
+    if (event.button === 0 && root.contains(event.target)) selectionBeforePointer = readingSelection(root)?.range || null
+  }, true)
+
+  root.addEventListener('mousedown', (event) => {
+    if (event.button !== 0 || event.detail !== 1 || hasModifier(event) || !materialFor(event.target, root)) return
+    const word = wordAtPoint(root, event.clientX, event.clientY)
+    if (!word) return
+    drag = { ...word, x: event.clientX, y: event.clientY, active: false }
+    // Prevent partial words during a plain drag. Modified and repeated clicks remain native.
+    event.preventDefault()
+  })
+
+  function moveDrag(event) {
+    if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return
+    drag.active = true
+    const target = wordAtPoint(root, event.clientX, event.clientY, drag)
+    if (!target || !drag.material.isConnected) return
+    const start = Math.min(drag.start, target.start)
+    const end = Math.max(drag.end, target.end)
+    if (drag.selection?.start === start && drag.selection.end === end) return
+    const range = rangeForOffsets(drag.material, start, end)
+    if (!range) return
+    drag.selection = selectionFromRange(drag.material, range)
+    const native = window.getSelection()
+    if (target.start < drag.start) {
+      native.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset)
+    } else {
+      native.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+    }
+  }
+
+  document.addEventListener('pointermove', (event) => {
+    if (event.buttons === 1 && drag) {
+      moveDrag(event)
+      return
+    }
+    if (event.pointerType !== 'mouse' || event.buttons || sentenceTrigger.contains(event.target)) return
+    if (root.contains(event.target)) hover(event)
+    else scheduleHideSentence()
+  })
+  document.addEventListener('pointercancel', () => { drag = null })
+
+  document.addEventListener('mouseup', (event) => {
+    if (event.button !== 0) return
+    clearWord()
+    const current = drag
+    drag = null
+    if (current?.active) {
+      ignoreClick = true
+      if (current.selection && current.material.isConnected) onSelect(current.selection)
+      return
+    }
+    const material = materialFor(event.target, root)
+    if (!material) return
+    const selection = readingSelection(root)
+    if (selection?.material === material && (event.detail > 1 || !sameRange(selection.range, selectionBeforePointer))) onSelect(selection)
+  })
+
+  root.addEventListener('click', (event) => {
+    if (ignoreClick || event.detail !== 1 || hasModifier(event) || !materialFor(event.target, root)) return
+    const selection = readingSelection(root)
+    if (selection && !sameRange(selection.range, selectionBeforePointer)) return
+    clearWord()
+    const word = readingWordAt(root, event.clientX, event.clientY)
+    if (!word) return
+    if (selection) window.getSelection()?.removeAllRanges()
+    wordTimer = setTimeout(() => {
+      wordTimer = 0
+      if (word.material.isConnected && !word.material.closest('[hidden]')) onSelect(word)
+    }, 280)
+  })
+
+  root.addEventListener('keydown', (event) => {
+    if (event.key === 'Shift' && !event.repeat) selectionBeforeShift = readingSelection(root)?.range || null
+  })
+  document.addEventListener('keyup', (event) => {
+    // Shift+Arrow can change the range repeatedly while Shift is held.
+    if (event.key !== 'Shift') return
+    const previous = selectionBeforeShift
+    selectionBeforeShift = undefined
+    if (previous === undefined || !root.contains(event.target)) return
+    if (event.target.closest?.('input, textarea, button, a, summary')) return
+    const selection = readingSelection(root)
+    if (selection && !sameRange(selection.range, previous)) onSelect(selection)
+  })
+
+  document.addEventListener('scroll', hideSentence, true)
+  window.addEventListener('resize', hideSentence)
+  return { clearPending, hideSentence, hasPending: () => Boolean(wordTimer || sentenceTimer || hoveredSentence || drag) }
 }
