@@ -932,14 +932,27 @@ function clearSavedDraft() {
   void chrome.storage.local.remove('desktop_input_draft')
 }
 
-function openSettings() {
+function selectSettingsSection(headingId) {
+  const heading = $(headingId)
+  const page = heading.closest('.settings-page')
+  for (const section of document.querySelectorAll('.settings-page')) section.hidden = section !== page
+  for (const link of document.querySelectorAll('.settings-nav a')) {
+    if ($(link.hash.slice(1)).closest('.settings-page') === page) link.setAttribute('aria-current', 'page')
+    else link.removeAttribute('aria-current')
+  }
+  $('settings-panel').querySelector('.drawer-body').scrollTop = 0
+  heading.scrollIntoView({ block: 'start' })
+  heading.focus({ preventScroll: true })
+}
+
+function openSettings(headingId = 'settings-model-heading') {
   closeTransientPanels()
   $('settings-backdrop').hidden = false
   $('settings-panel').hidden = false
+  selectSettingsSection(typeof headingId === 'string' ? headingId : 'settings-model-heading')
   void loadSettings()
   void loadFlags()
   renderDiagnostics()
-  $('cfg-base-url').focus()
 }
 
 function closeSettings() {
@@ -968,7 +981,7 @@ async function loadSettings() {
   try {
     const values = await chrome.storage.sync.get([
       'base_url', 'api_key', 'model', 'learning_model', 'speech_rate',
-      'desktop_tts_cloud', 'desktop_tts_api_key',
+      'desktop_tts_cloud', 'desktop_tts_api_key', 'desktop_iqs_api_key',
     ])
     const rate = Number(values?.speech_rate)
     const safeRate = Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9
@@ -976,6 +989,7 @@ async function loadSettings() {
     $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
     $('opt-cloud-speech').checked = values?.desktop_tts_cloud === true
     $('cfg-cloud-speech-key').value = String(values?.desktop_tts_api_key || '')
+    $('cfg-iqs-key').value = String(values?.desktop_iqs_api_key || '')
     $('cfg-base-url').value = String(values?.base_url || '')
     $('cfg-api-key').value = String(values?.api_key || '')
     $('cfg-model').value = String(values?.model || '')
@@ -1002,6 +1016,21 @@ async function saveSpeechSettings(event) {
     statusEl.textContent = 'Speech settings saved.'
   } catch {
     statusEl.textContent = 'Could not save speech settings. Try again.'
+  } finally {
+    button.disabled = false
+  }
+}
+
+async function saveWebImportSettings(event) {
+  event.preventDefault()
+  const button = $('btn-save-web-import')
+  const statusEl = $('web-import-settings-status')
+  button.disabled = true
+  try {
+    await chrome.storage.sync.set({ desktop_iqs_api_key: $('cfg-iqs-key').value.trim() })
+    statusEl.textContent = 'Web import settings saved.'
+  } catch {
+    statusEl.textContent = 'Could not save web import settings. Try again.'
   } finally {
     button.disabled = false
   }
@@ -1981,9 +2010,7 @@ function bind() {
     const link = event.target.closest('a')
     if (!link) return
     event.preventDefault()
-    const heading = $(link.hash.slice(1))
-    heading.scrollIntoView({ block: 'start' })
-    heading.focus({ preventScroll: true })
+    selectSettingsSection(link.hash.slice(1))
   })
   $('model-settings-form').addEventListener('submit', (event) => {
     event.preventDefault()
@@ -2133,6 +2160,25 @@ function bind() {
     void chrome.storage.sync.set({ speech_rate: rate })
   })
   $('speech-settings-form').addEventListener('submit', (event) => void saveSpeechSettings(event))
+  $('web-import-settings-form').addEventListener('submit', (event) => void saveWebImportSettings(event))
+  $('iqs-console-link').addEventListener('click', async (event) => {
+    event.preventDefault()
+    try {
+      await window.sttDesktop.reading.openConsole()
+    } catch {
+      $('web-import-settings-status').textContent = 'Could not open the IQS console. Copy the link to open it in your browser.'
+    }
+  })
+  for (const link of document.querySelectorAll('.bailian-console-link')) {
+    link.addEventListener('click', async (event) => {
+      event.preventDefault()
+      try {
+        await window.sttDesktop.openBailianConsole()
+      } catch {
+        showNotice('Could not open the Model Studio console. Copy the link to open it in your browser.', 'error', null, true)
+      }
+    })
+  }
   $('btn-preview-speech').addEventListener('click', () => {
     toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT })
   })

@@ -29,7 +29,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  padding: 0 16px 10px;
+  padding: 4px 16px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -38,11 +38,13 @@
   padding: 6px 9px;
   border-radius: var(--r-sm);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 13px;
   text-decoration: none;
 }
 
 .settings-nav a:hover { background: var(--surface-2); color: var(--text); }
+.settings-nav a[aria-current="page"] { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.settings-page[hidden] { display: none; }
 
 .drawer-body {
   flex: 1;
@@ -70,6 +72,7 @@
 .settings-field label { font-size: 13px; font-weight: 550; }
 .settings-field label span { color: var(--text-2); font-weight: 400; }
 .settings-field .drawer-tip { margin: 0; }
+.settings-field > a { width: fit-content; color: var(--text-2); font-size: 12px; text-underline-offset: 3px; }
 
 .settings-field input, .settings-row select {
   display: block;
@@ -136,8 +139,7 @@
 .settings-row select { width: auto; max-width: 66%; }
 .speech-rate-field input, .article-width-field input { flex: 1; max-width: 200px; min-width: 0; margin-inline-start: auto; accent-color: var(--primary); }
 .speech-rate-value, .article-width-field output { min-width: 3ch; color: var(--text-2); text-align: end; font-variant-numeric: tabular-nums; }
-.article-appearance { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
-.article-appearance-head h4 { margin: 0; font-size: 14px; font-weight: 650; }
+.article-appearance-head h4 { margin: 0; font-size: 15px; font-weight: 650; }
 .article-appearance-head button { border-color: transparent; color: var(--text-2); }
 .article-width-field output { min-width: 7ch; }
 

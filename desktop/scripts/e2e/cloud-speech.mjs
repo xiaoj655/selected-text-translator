@@ -81,6 +81,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
     await installSpeechMock(app, key)
     try {
       await page.locator('#btn-settings').click()
+      await page.locator('.settings-nav').getByRole('link', { name: 'Reading', exact: true }).click()
       await page.waitForFunction(() => Boolean(document.getElementById('cfg-api-key').value))
       assert.equal(await toggle.isChecked(), false)
       assert.equal(await keyInput.getAttribute('type'), 'password')
@@ -96,6 +97,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
       await toggle.evaluate((control) => { control.checked = false })
       await keyInput.evaluate((input) => { input.value = '' })
       await page.locator('#btn-settings').click()
+      await page.locator('.settings-nav').getByRole('link', { name: 'Reading', exact: true }).click()
       await page.waitForFunction(() => document.getElementById('opt-cloud-speech').checked)
       assert.ok((await keyInput.inputValue()) === key, 'the cloud credential must persist in the settings form')
 

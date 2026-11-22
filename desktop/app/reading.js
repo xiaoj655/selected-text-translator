@@ -223,6 +223,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
 
   function openImport() {
     const form = el('form', 'reading-paste-form')
+    form.noValidate = true
     const label = el('label', '', 'Article link')
     const input = englishText('input', 'reading-input')
     input.id = 'reading-import-url'
@@ -234,13 +235,23 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
     const submit = el('button', 'primary', 'Import article')
     submit.type = 'submit'
     const status = el('span', 'reading-meta')
+    status.id = 'reading-import-status'
     status.setAttribute('role', 'status')
     const fallback = button('Paste text', '', openPaste)
     fallback.hidden = true
-    form.append(backButton(importLink), label, input, submit, status, fallback)
+    const settings = button('Web import settings', 'reading-import-settings', () => {
+      onOpenSettings('web-import-settings-heading')
+      document.getElementById('cfg-iqs-key').focus({ preventScroll: true })
+    })
+    form.append(backButton(importLink), label, input, submit, status, fallback, settings)
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
       if (submit.disabled) return
+      if (!input.value.trim()) {
+        status.textContent = 'Enter a public HTTPS article link.'
+        input.focus()
+        return
+      }
       input.readOnly = true
       submit.disabled = true
       fallback.hidden = true

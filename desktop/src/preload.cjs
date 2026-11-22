@@ -160,9 +160,11 @@ window.sttDesktop = {
     recordLookup: (lookup) => ipcRenderer.invoke('stt:tutor-lookup', lookup),
     recordResult: (result) => ipcRenderer.invoke('stt:tutor-result', result),
   },
+  openBailianConsole: () => ipcRenderer.invoke('stt:open-bailian-console'),
   reading: {
     discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
     importPage: (url) => ipcRenderer.invoke('stt:reading-import', url),
+    openConsole: () => ipcRenderer.invoke('stt:reading-console'),
     discuss: (input) => ipcRenderer.invoke('stt:reading-discuss', input),
     openArticle: (id) => ipcRenderer.invoke('stt:reading-open', id),
   },

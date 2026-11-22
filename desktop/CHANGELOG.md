@@ -1,5 +1,11 @@
 # 桌面端更新记录
 
+## 0.9.78 · 2026-11-22
+
+- 「Settings → Reading → Web import」可保存阿里云 IQS API Key，并直接打开 Key 获取页面。配置后，「Open link」使用阿里云网页解析增强版提取文章正文。
+- 网页导入支持 Markdown 链接。空链接、格式错误、网络失败、Key 无效和服务拒绝会显示原因，并可修改后重试。
+- 设置改为「Models、Reading、Preferences、Data」四个分区，每次显示一组设置。网页导入、朗读和文章排版集中在 Reading，模型和朗读配置都能直接打开百炼北京 API Key 获取页。
+
 ## 0.9.77 · 2026-11-22
 
 - English Coach 的「Article reading」新增「Open link」。粘贴公开网页的 HTTPS 链接即可提取正文，在应用内点词、划选和带读，也可以打开原文。

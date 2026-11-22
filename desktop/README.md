@@ -14,6 +14,8 @@
 
 「Article reading」拉取公开订阅源中的近期科技新闻、工程博客和技术思考。选一篇文章可以查看来源、时间和英文节选，或打开原文。点击「Read with Coach」了解背景和主要观点，然后自由追问作者的论据、技术细节或英文表达。订阅源提供的文本长度各异，也可以用「Paste text」带读自己选的段落。对话保留在当前应用会话中。
 
+点击「Open link」可以导入公开网页，支持直接粘贴 URL 或 Markdown 链接。在「Settings → Reading → Web import」保存 IQS API Key 后，导入使用阿里云网页解析增强版，设置中可直接打开 Key 获取页。未配置 Key 时在本机提取，导入失败会显示原因并提供重试和粘贴入口。目前每篇最多导入 12,000 字符，超过时可打开原文继续阅读。[IQS Key 获取页面](https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape)
+
 在文章正文中单击单词可原地查询；拖选短语或句子后，选择「Translate」或「Guided Reading」。文章查询会带上附近原文和选中位置，并记住上次使用的模式。浮层可逐条展开提示、查看答案、复制结果、朗读原文和收藏；收藏包含原句及可用的来源链接。点击浮层外或按 `Esc` 收起，滚动文章或切换页面也会关闭当前查询。文章查询与翻译工作台各自管理请求。
 
 「Review」继续使用查过的英文短语和句子生成练习，每组围绕一个阅读难点。练习结果和下次复练时间保存在本机。
@@ -22,9 +24,9 @@ English Coach使用已配置的通用学习模型。翻译模型为通用模型�
 
 ## 设置与版本
 
-在右上角「Settings」可以修改模型连接、原文和目标语言、术语表、朗读、输入后自动翻译、窗口和外观偏好。已经开启自动翻译的设置会保留，新安装默认由粘贴或手动提交触发。
+右上角「Settings」按用途分为四组，每次只显示一组。Models 配置翻译和学习模型，Reading 配置网页导入、朗读和文章排版，Preferences 管理语言、输入、窗口和外观，Data 管理术语表和学习档案。模型和朗读配置均提供 [百炼北京 API Key 获取链接](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key)。新安装默认由粘贴或手动提交触发翻译。
 
-在「Settings → Speech」勾选「Read English aloud with Alibaba Cloud」，保存后点「Preview voice」。百炼北京的翻译密钥可以直接复用，其他翻译服务请填单独的百炼北京 API Key。点击朗读时，英文文本会发给百炼，按输入字符计费。其他语言、超过 600 字符的内容和云服务不可用时使用系统语音。[百炼音色试听](https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list) · [计费说明](https://help.aliyun.com/zh/model-studio/model-pricing)
+在「Settings → Reading → Speech」勾选「Read English aloud with Alibaba Cloud」，保存后点「Preview voice」。百炼北京的翻译密钥可以直接复用，其他翻译服务请填单独的百炼北京 API Key。点击朗读时，英文文本会发给百炼，按输入字符计费。其他语言、超过 600 字符的内容和云服务不可用时使用系统语音。[百炼音色试听](https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list) · [计费说明](https://help.aliyun.com/zh/model-studio/model-pricing)
 
 在右上角「More actions」可以看当前软件版本并打开 GitHub 发布页，也可打开表达本或日志。
 

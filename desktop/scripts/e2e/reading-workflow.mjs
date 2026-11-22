@@ -23,6 +23,7 @@ const WEB_URL = 'https://reader.example.org/articles/rollbacks'
 const WEB_TITLE = 'Preparing for a rollback'
 const WEB_TEXT = 'A rollback can restore the previous application version, but it cannot reliably undo a database migration. Fields added during a release may still be present when an older application starts running again. Test both directions before relying on a rollback to restore service.'
 const WEB_SECOND_PARAGRAPH = 'One useful rehearsal is to deploy the new version, write a fresh record and then return to the old version. Verify that the record is still readable and that any background jobs can continue safely.'
+const WEB_CLOUD_TEXT = `${WEB_TEXT}\n\n${WEB_SECOND_PARAGRAPH}\n\nCloud parsing retains paragraphs.`
 
 function rss({ title, text, url, publishedAt }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -62,8 +63,17 @@ export async function installReadingFeeds(app) {
       }
     }
   }
-  await app.evaluate(({ session, net }, feeds) => {
-    session.defaultSession.protocol.handle('https', (request) => {
+  await app.evaluate(({ session, net }, { feeds, cloudText, cloudTitle }) => {
+    session.defaultSession.protocol.handle('https', async (request) => {
+      if (request.url === 'https://cloud-iqs.aliyuncs.com/readpage/scrape') {
+        const key = request.headers.get('X-API-Key')
+        if (key === 'iqs-invalid-test-key') {
+          return Response.json({ errorCode: 'InvalidAccessKeyId.NotFound' }, { status: 403 })
+        }
+        if (key !== 'iqs-mock-key') throw new Error('Unexpected IQS test key')
+        const input = await request.json()
+        return Response.json({ data: { statusCode: 200, text: cloudText, metadata: { title: cloudTitle, url: input.url } } })
+      }
       const feed = feeds[request.url]
       if (!feed) return net.fetch(request, { bypassCustomProtocolHandlers: true })
       if (feed.failFirst) {
@@ -72,7 +82,7 @@ export async function installReadingFeeds(app) {
       }
       return new Response(feed.body, { headers: { 'Content-Type': feed.type } })
     })
-  }, responses)
+  }, { feeds: responses, cloudText: WEB_CLOUD_TEXT, cloudTitle: WEB_TITLE })
   await app.evaluate((_electron, { url, html }) => {
     const https = process.getBuiltinModule('node:https')
     const { Readable } = process.getBuiltinModule('node:stream')
@@ -179,11 +189,16 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       await page.locator('#reading-import').click()
       const importUrl = page.locator('#reading-import-url')
       const importArticle = page.getByRole('button', { name: 'Import article' })
+      await importArticle.click()
+      await page.getByText('Enter a public HTTPS article link.').waitFor()
+      await importUrl.fill('this is not a URL')
+      await importArticle.click()
+      await page.getByText('Enter a public HTTPS article link.').waitFor()
       await importUrl.fill('http://reader.example.org/articles/rollbacks')
       await importArticle.click()
       await page.getByText('Enter a public HTTPS article link.').waitFor()
       await page.getByRole('button', { name: 'Paste text', exact: true }).waitFor()
-      await importUrl.fill(WEB_URL)
+      await importUrl.fill(`[Read this article](${WEB_URL})`)
       await importArticle.click()
       await detail.getByRole('heading', { name: WEB_TITLE }).waitFor()
       assert.equal(await detail.locator('.reading-preview[data-reading-selectable]').textContent(),
@@ -196,7 +211,37 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       assert.equal(inputs[3].article.kind, 'web_article')
       assert.equal(inputs[3].article.text, `${WEB_TEXT}\n\n${WEB_SECOND_PARAGRAPH}`)
       assert.equal(inputs[3].article.url, WEB_URL)
+
+      await page.locator('#reading-back').click()
+      await page.locator('#reading-import').click()
+      await page.locator('#reading-import-settings').click()
+      assert.equal(await page.locator('#iqs-console-link').getAttribute('href'),
+        'https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape')
+      await page.locator('#cfg-iqs-key').fill('iqs-invalid-test-key')
+      await page.locator('#btn-save-web-import').click()
+      await page.getByText('Web import settings saved.', { exact: true }).waitFor()
+      await page.locator('#btn-close-settings').click()
+      await importUrl.fill(WEB_URL)
+      await importArticle.click()
+      await page.locator('#reading-import-status').getByText('Alibaba Cloud rejected the IQS API key.', { exact: false }).waitFor()
+      await shot?.(page, 'main-tutor-import-error')
+      assert.equal(await importArticle.isEnabled(), true)
+      await page.locator('#reading-import-settings').click()
+      assert.equal(await page.locator('#cfg-iqs-key').inputValue(), 'iqs-invalid-test-key')
+      assert.equal(await page.locator('#cfg-iqs-key').getAttribute('type'), 'password')
+      await page.locator('#cfg-iqs-key').fill('iqs-mock-key')
+      await page.locator('#btn-save-web-import').click()
+      await page.waitForFunction(async () => (await chrome.storage.sync.get('desktop_iqs_api_key')).desktop_iqs_api_key === 'iqs-mock-key')
+      await page.locator('#btn-close-settings').click()
+      await importArticle.click()
+      await detail.getByRole('heading', { name: WEB_TITLE }).waitFor()
+      assert.equal(await detail.locator('.reading-preview').textContent(), WEB_CLOUD_TEXT)
+      assert.equal(inputs.length, 4, 'cloud parsing must not ask the learning model')
+      await page.locator('#reading-start').click()
+      await thread.getByText(INTRO, { exact: true }).waitFor()
+      assert.equal(inputs[4].article.text, WEB_CLOUD_TEXT)
     } finally {
+      await page.evaluate(() => chrome.storage.sync.remove('desktop_iqs_api_key'))
       releaseFollowup()
       mock.resetHandler()
       await translate.click()

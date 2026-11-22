@@ -13,6 +13,7 @@ import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
 import { verifyCloudSpeech } from './cloud-speech.mjs'
 import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
 import { verifyReadingLookup } from './reading-lookup.mjs'
+import { verifySettings } from './settings.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -212,6 +213,7 @@ async function openSettings(page) {
   const hidden = await page.locator('#settings-panel').evaluate((el) => el.hidden)
   if (hidden) await page.locator('#btn-settings').click()
   await page.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+  await page.locator('.settings-nav').getByRole('link', { name: 'Preferences', exact: true }).click()
 }
 
 export async function runE2E(mode = 'core') {
@@ -305,6 +307,7 @@ export async function runE2E(mode = 'core') {
     }
 
     if (mode === 'core' || mode === 'all') {
+      await verifySettings({ app, page: mainPage, check, shot })
       await verifyCloudSpeech({ app, page: mainPage, check })
       await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
@@ -866,6 +869,7 @@ export async function runE2E(mode = 'core') {
         })
         try {
           await ensureSettings()
+          await mainPage.locator('.settings-nav').getByRole('link', { name: 'Preferences', exact: true }).click()
           await mainPage.locator('#opt-target-language').selectOption('Japanese')
           const saved = await mainPage.evaluate(() => chrome.storage.sync.get('desktop_target_language'))
           assert.equal(saved.desktop_target_language, 'Japanese')
@@ -899,6 +903,7 @@ export async function runE2E(mode = 'core') {
         } finally {
           mock.resetHandler()
           await ensureSettings()
+          await mainPage.locator('.settings-nav').getByRole('link', { name: 'Preferences', exact: true }).click()
           await mainPage.locator('#opt-target-language').selectOption('auto')
           await mainPage.locator('#btn-close-settings').click()
           await setConfig(mainPage, { model: 'qwen-mt-flash' })
@@ -924,6 +929,7 @@ export async function runE2E(mode = 'core') {
         try {
           await mainPage.evaluate(() => chrome.storage.sync.set({ desktop_glossary: [] }))
           await ensureSettings()
+          await mainPage.locator('.settings-nav').getByRole('link', { name: 'Data', exact: true }).click()
           await mainPage.locator('#glossary-source').fill('Apple')
           await mainPage.locator('#glossary-target').fill('苹果公司')
           await mainPage.locator('#glossary-add').click()
@@ -1216,6 +1222,7 @@ export async function runE2E(mode = 'core') {
 
           await mainPage.locator('#btn-settings').click()
           await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+          await mainPage.locator('.settings-nav').getByRole('link', { name: 'Data', exact: true }).click()
           await mainPage.evaluate(() => {
             window.__archiveCaptured = ''
             const original = URL.createObjectURL.bind(URL)
@@ -1313,6 +1320,7 @@ export async function runE2E(mode = 'core') {
           }
           await mainPage.locator('#btn-settings').click()
           await mainPage.waitForFunction(() => !document.getElementById('settings-panel').hidden)
+          await mainPage.locator('.settings-nav').getByRole('link', { name: 'Data', exact: true }).click()
           await mainPage.locator('#archive-file').setInputFiles({
             name: 'conflicting.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)),
           })

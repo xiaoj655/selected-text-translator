@@ -23,7 +23,9 @@ const vendorDir = join(desktopDir, 'vendor', 'src')
 const MAIN_WINDOW_URL = pathToFileURL(join(desktopDir, 'app', 'index.html')).href
 const RELEASES_URL = 'https://github.com/xiaoj655/selected-text-translator/releases'
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
-const API_CREDENTIAL_KEYS = ['api_key', 'desktop_tts_api_key']
+const API_CREDENTIAL_KEYS = ['api_key', 'desktop_tts_api_key', 'desktop_iqs_api_key']
+const IQS_CONSOLE_URL = 'https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape'
+const BAILIAN_CONSOLE_URL = 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key'
 
 let logFile = ''
 let windows
@@ -118,9 +120,13 @@ function installReadingIpc(storage, fetcher) {
       return result
     },
     async 'stt:reading-import'(url) {
-      const article = await importReadingPage(url)
+      const saved = await storage.sync.get('desktop_iqs_api_key')
+      const article = await importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch })
       rememberArticle(article)
       return article
+    },
+    'stt:reading-console'() {
+      return shell.openExternal(IQS_CONSOLE_URL)
     },
     'stt:reading-discuss'({ articleId, pastedText, question, history } = {}) {
       const article = articleId
@@ -152,6 +158,10 @@ function installIpc(storage, history, requestDebug) {
   ipcMain.handle('stt:history-clear', () => history.clear())
   ipcMain.handle('stt:app-version', () => app.getVersion())
   ipcMain.handle('stt:open-releases', () => shell.openExternal(RELEASES_URL))
+  ipcMain.handle('stt:open-bailian-console', (event) => {
+    if (!isMainWindowEvent(event)) throw new Error('Open Settings in the main window.')
+    return shell.openExternal(BAILIAN_CONSOLE_URL)
+  })
   ipcMain.handle('stt:tutor-plan', () => tutor.getPlan())
   ipcMain.handle('stt:tutor-lesson', (_event, sourceId) => tutor.startLesson(sourceId))
   ipcMain.handle('stt:tutor-lookup', (_event, lookup) => tutor.recordLookup(lookup))

@@ -10,13 +10,16 @@ import { coachError } from './tutor.js'
 const MAX_URL_LENGTH = 4096
 const MAX_HTML_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_LENGTH = 12000
+const IQS_SCRAPE_URL = 'https://cloud-iqs.aliyuncs.com/readpage/scrape'
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
 const INVALID_URL = 'Enter a public HTTPS article link.'
 const NO_ARTICLE = 'Couldn’t find article text on this page. Open it in your browser and paste the text.'
 
 function articleUrl(value, base) {
   if (typeof value !== 'string' || value.length > MAX_URL_LENGTH) throw coachError(INVALID_URL)
-  const url = URL.parse(value.trim(), base)
+  const link = value.trim()
+  const markdownUrl = /^\[[^\]\n]*\]\((https:\/\/[^\s]+)\)$/u.exec(link)?.[1]
+  const url = URL.parse(markdownUrl || link.replace(/^<(https:\/\/[^\s]+)>$/u, '$1'), base)
   const host = url?.hostname.replace(/\.$/u, '')
   if (!url || url.protocol !== 'https:' || url.username || url.password || url.port
     || !host.includes('.') || isIP(host) || /\.(?:localhost|local|internal|test|invalid|example)$/u.test(host)
@@ -123,8 +126,74 @@ function extractArticle(html, url) {
   return { ...article, id: createHash('sha256').update(JSON.stringify(article)).digest('hex') }
 }
 
-export async function importReadingPage(value) {
+function iqsError(status, code) {
+  if (status === 401 || code === 'InvalidAccessKeyId.NotFound') {
+    return coachError('Alibaba Cloud rejected the IQS API key. Check it in Settings → Reading → Web import.')
+  }
+  if (code === 'Retrieval.NotActivate' || code === 'Retrieval.NotAuthorised') {
+    return coachError('Enable webpage parsing and check the API key permissions in the Alibaba Cloud console.')
+  }
+  if (code === 'ReadPage.SecurityRestrict') {
+    return coachError('Alibaba Cloud could not access this page under the site’s access rules. Paste the article text instead.')
+  }
+  if (status === 429) return coachError('Alibaba Cloud is receiving too many requests. Wait a moment and try again.')
+  if (code === 'ReadPage.RequestTimeout') return coachError('Alibaba Cloud timed out while opening the page. Try again or paste the text.')
+  return coachError(`Alibaba Cloud webpage parsing failed (HTTP ${status}). Check your IQS key and service status, then try again.`)
+}
+
+async function importIqsPage(url, { apiKey, fetchImpl }) {
+  const signal = AbortSignal.timeout(60000)
+  try {
+    const response = await fetchImpl(IQS_SCRAPE_URL, {
+      method: 'POST',
+      credentials: 'omit',
+      redirect: 'error',
+      signal,
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url.href, maxAge: 0, formats: ['text'], readability: { readabilityMode: 'article' } }),
+    })
+    const chunks = []
+    let bytes = 0
+    for await (const chunk of response.body || []) {
+      bytes += chunk.byteLength
+      if (bytes > MAX_HTML_BYTES) throw coachError('The webpage parsing response is too large. Paste the article text instead.')
+      chunks.push(chunk)
+    }
+    let result
+    try {
+      result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    } catch {
+      if (!response.ok) throw iqsError(response.status)
+      throw coachError('Alibaba Cloud returned an unreadable response. Try again.')
+    }
+    if (!response.ok || result?.errorCode) throw iqsError(response.status, result?.errorCode)
+    const data = result?.data
+    if (data?.statusCode < 200 || data?.statusCode >= 300 || data?.errorMessage) {
+      throw coachError('Alibaba Cloud couldn’t open the target page. Try another link or paste the article text.')
+    }
+    const text = typeof data?.text === 'string' ? data.text.replace(/\r\n?/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim() : ''
+    if (text.length < 80) throw coachError(NO_ARTICLE)
+    const metadata = data.metadata || {}
+    const title = typeof metadata.title === 'string' ? metadata.title.trim().slice(0, 300).toWellFormed() : ''
+    const article = {
+      title: title || url.hostname,
+      source: url.hostname,
+      url: url.href,
+      text: text.slice(0, MAX_TEXT_LENGTH).trimEnd().toWellFormed(),
+      textTruncated: text.length > MAX_TEXT_LENGTH,
+      kind: 'web_article',
+    }
+    return { ...article, id: createHash('sha256').update(JSON.stringify(article)).digest('hex') }
+  } catch (error) {
+    if (error.message?.startsWith('[english-coach] ')) throw error
+    if (signal.aborted) throw coachError('Alibaba Cloud took too long to parse the page. Try again or paste the text.')
+    throw coachError('Couldn’t connect to Alibaba Cloud webpage parsing. Check your network and try again.')
+  }
+}
+
+export async function importReadingPage(value, { apiKey = '', fetchImpl = globalThis.fetch } = {}) {
   const inputUrl = articleUrl(value)
+  if (apiKey.trim()) return importIqsPage(inputUrl, { apiKey: apiKey.trim(), fetchImpl })
   try {
     const { url, contentType, bytes } = await fetchPage(inputUrl)
     return extractArticle(decodePage(bytes, contentType), url)

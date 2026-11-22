@@ -29,6 +29,7 @@ execFileSync(process.execPath, [join(root, 'scripts', 'smoke.mjs')], { stdio: 'p
 execFileSync(process.execPath, [join(root, 'scripts', 'verify-icons.mjs')], { stdio: 'pipe' })
 execFileSync(process.execPath, [
   '--test', join(root, 'scripts', 'tutor-smoke.mjs'), join(root, 'scripts', 'reading-sources.test.mjs'),
+  join(root, 'scripts', 'reading-web.test.mjs'),
 ], { stdio: 'pipe' })
 
 const appSource = readFileSync(join(root, 'app', 'app.js'), 'utf8')
