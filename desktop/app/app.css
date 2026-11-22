@@ -250,6 +250,16 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
   white-space: nowrap;
   border: 0;
 }
+.entry-source.has-sentence-structure {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 0 14px;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+.entry-source.has-sentence-structure .source-label { display: none; }
 .source-label {
   flex: none;
   font-size: 11px;
@@ -270,6 +280,30 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
   cursor: pointer;
 }
 .bubble:hover { color: var(--text); }
+.has-sentence-structure .bubble { color: var(--text); font-size: var(--fs-result); }
+.sentence-mark, .sentence-swatch { background-color: var(--sentence-color); }
+.sentence-mark {
+  color: inherit;
+  border-radius: 3px;
+  padding-block: .1em;
+  box-decoration-break: clone;
+}
+:is(.sentence-mark, .sentence-swatch)[data-role="subject"] { --sentence-color: var(--sentence-subject); }
+:is(.sentence-mark, .sentence-swatch)[data-role="verb"] { --sentence-color: var(--sentence-verb); }
+:is(.sentence-mark, .sentence-swatch)[data-role="object"] { --sentence-color: var(--sentence-object); }
+:is(.sentence-mark, .sentence-swatch)[data-role="complement"] { --sentence-color: var(--sentence-complement); }
+.sentence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font: 12px/1.5 var(--font-ui);
+}
+.sentence-legend li { display: flex; align-items: center; gap: 5px; }
+.sentence-swatch { width: 10px; height: 10px; border-radius: 2px; }
 .entry-card { border-top: 1px solid var(--border); }
 .entry-head {
   display: flex;

@@ -1,6 +1,9 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
-import { renderLexical, renderGuide, renderTranslation, revealedHints, hintNode } from './translation-result.js'
+import {
+  renderLexical, renderGuide, renderTranslation, revealedHints, hintNode,
+  sentenceStructure, markSentence, renderSentenceLegend,
+} from './translation-result.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './reading.js'
 import { bindUpdateMenu } from './update-menu.js'
@@ -8,6 +11,7 @@ import { bindRequestDebug } from './request-debug.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
+import { supportsSentenceStructure } from '../vendor/src/reading-support.js'
 import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
@@ -1242,6 +1246,16 @@ function scheduleLiveTranslate() {
   }, 850)
 }
 
+function workbenchMemoryKey(text, mode) {
+  const withStructure = mode === 'guide' && supportsSentenceStructure(text, state.sourceLanguage)
+  const key = makeMemoryKey({
+    text: withStructure ? '' : text, mode: withStructure ? 'guide-structure' : mode,
+    targetLanguage: state.targetLanguage, sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary,
+  })
+  // Highlights are offsets into the verbatim input. The ordinary memory key folds whitespace.
+  return withStructure ? `${key}\u0000${text}` : key
+}
+
 function submit(options = {}) {
   if (state.isComposing || state.workspace !== 'translate') return
   clearTimeout(state.liveTimer)
@@ -1258,8 +1272,7 @@ function submit(options = {}) {
     setStatus('Set up a translation model first')
     return
   }
-  const memoryKey = makeMemoryKey({ text, mode: state.mode, targetLanguage: state.targetLanguage,
-    sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary })
+  const memoryKey = workbenchMemoryKey(text, state.mode)
   const recent = state.entries[state.entries.length - 1]
   if (recent && recent.memoryKey === memoryKey && ['pending', 'loading', 'streaming'].includes(recent.status)
     && Date.now() - recent.createdAt < 2000) {
@@ -1547,8 +1560,7 @@ function startCompanionEntry(entry, mode) {
     sourceLanguage: state.sourceLanguage,
     lookupExcluded: entry.lookupExcluded,
     lookup: entry.lookup,
-    memoryKey: makeMemoryKey({ text: entry.text, mode, targetLanguage: state.targetLanguage,
-      sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary }),
+    memoryKey: workbenchMemoryKey(entry.text, mode),
   }
   const cached = readMemoryEntry(state.translationMemory, companion.memoryKey)
   if (cached) {
@@ -1733,6 +1745,12 @@ function renderEntryEl(entry) {
     $('input').focus()
   })
   source.append(bubble)
+  const structure = sentenceStructure(entry)
+  if (structure.length) {
+    source.classList.add('has-sentence-structure')
+    markSentence(bubble, entry.text, structure)
+    source.append(renderSentenceLegend(structure))
+  }
   wrapper.append(source)
 
   const card = el('div', 'entry-card')

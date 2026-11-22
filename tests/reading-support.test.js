@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings,
-  saveReadingSettings, classifyReadingSelection } from '../src/reading-support.js'
+  saveReadingSettings, classifyReadingSelection, supportsSentenceStructure } from '../src/reading-support.js'
 import { matchesUrlPattern } from '../src/url-patterns.js'
 
 const guide = {
@@ -125,6 +125,87 @@ test('sentence guides use the model scope even when a sentence without punctuati
     phonetic: '',
     answer: { ...sentenceGuide.answer, example: '' },
   })
+})
+
+test('structure requests are opt-in and suited to a single English sentence', () => {
+  const prompt = (text, options) => buildReadingRequest({ model: 'generic', text, ...options }).messages[0].content
+  for (const text of ['She could stay', 'Dr. Rao is ready.', 'The rate is 2.5 percent.']) {
+    assert.equal(supportsSentenceStructure(text), true)
+    assert.doesNotMatch(prompt(text), /"structure" array/)
+    assert.match(prompt(text, { includeSentenceStructure: true }), /"structure" array/)
+  }
+  for (const text of ['record', 'She left. We stayed.', '她接受了建议。']) {
+    assert.equal(supportsSentenceStructure(text), false)
+    assert.doesNotMatch(prompt(text, { includeSentenceStructure: true }), /"structure" array/)
+  }
+  assert.doesNotMatch(prompt('She left.', { sourceLanguage: 'French', includeSentenceStructure: true }), /"structure" array/)
+  assert.doesNotMatch(prompt('She left.', { kind: 'pronunciation', includeSentenceStructure: true }), /"structure" array/)
+})
+
+function parseSentenceStructure(text, structure, options = {}) {
+  return parseReadingResponse(JSON.stringify({ ...sentenceGuide, structure }), 'guide', {
+    text, includeSentenceStructure: true, ...options,
+  })
+}
+
+test('sentence guides sort grounded UTF-16 spans and lead with the clause hint', () => {
+  const text = '🙂 Why didn’t they call me?'
+  const result = parseSentenceStructure(text, [
+    { role: 'object', text: 'me' },
+    { role: 'subject', text: 'they' },
+    { role: 'verb', text: 'call' },
+    { role: 'verb', text: 'didn’t' },
+  ])
+  assert.deepEqual(result.structure, [
+    { role: 'verb', start: 7, end: 13 },
+    { role: 'subject', start: 14, end: 18 },
+    { role: 'verb', start: 19, end: 23 },
+    { role: 'object', start: 24, end: 26 },
+  ])
+  assert.deepEqual(result.hints, sentenceGuide.hints.slice(1))
+  assert.equal(result.answer.meaning, sentenceGuide.answer.meaning)
+})
+
+test('main clauses retain real grammatical roles without forcing a subject or object', () => {
+  for (const [text, parts] of [
+    ['The change was approved', [['subject', 'The change'], ['verb', 'was approved']]],
+    ['The change is ready.', [['subject', 'The change'], ['verb', 'is'], ['complement', 'ready']]],
+    ["She'll wait.", [['subject', 'She'], ['verb', "'ll wait"]]],
+    ['Sit down.', [['verb', 'Sit down']]],
+  ]) {
+    const structure = parts.map(([role, fragment]) => ({ role, text: fragment }))
+    assert.deepEqual(parseSentenceStructure(text, structure).structure
+      .map(({ role, start, end }) => [role, text.slice(start, end)]), parts)
+  }
+})
+
+test('repeated fragments need a valid whole-span occurrence in the selected sentence', () => {
+  const text = 'They record what others record.'
+  const subject = { role: 'subject', text: 'They' }
+  const verb = { role: 'verb', text: 'record' }
+  assert.deepEqual(parseSentenceStructure(text, [subject, { ...verb, occurrence: 1 }]).structure, [
+    { role: 'subject', start: 0, end: 4 },
+    { role: 'verb', start: 5, end: 11 },
+  ])
+  for (const occurrence of [undefined, 0, 3, '1']) {
+    const result = parseSentenceStructure(text, [subject, { ...verb, occurrence }])
+    assert.deepEqual(result.structure, [])
+    assert.deepEqual(result.hints, sentenceGuide.hints)
+  }
+})
+
+test('corrupt or missing structure falls back to the existing guide', () => {
+  const text = 'She rushed home.'
+  const verb = { role: 'verb', text: 'rushed' }
+  for (const structure of [undefined, [null, verb], [{ ...verb, text: 'rush' }], [{ ...verb, text: 'Rushed' }],
+    [verb, { role: 'object', text: 'rushed home' }], [verb, { role: 'predicate', text: 'home' }],
+    [{ role: 'subject', text: 'She' }]]) {
+    const result = parseSentenceStructure(text, structure)
+    assert.deepEqual(result.structure, [])
+    assert.deepEqual(result.hints, sentenceGuide.hints)
+  }
+  assert.equal('structure' in parseSentenceStructure(text, [verb], { includeSentenceStructure: false }), false)
+  assert.equal('structure' in parseSentenceStructure('She rushed home. They stayed.', [verb]), false)
 })
 
 test('sentence guides accept one to three useful hints without requiring an example', () => {

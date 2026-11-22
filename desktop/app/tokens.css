@@ -29,6 +29,10 @@
   --danger-soft: light-dark(#fdecea, #3a2322);
   --success: light-dark(#21704d, #84caa5);
   --success-soft: light-dark(#e8f6ef, #1c3529);
+  --sentence-subject: light-dark(#dceaff, #263e64);
+  --sentence-verb: light-dark(#fae7be, #58411d);
+  --sentence-object: light-dark(#daeee3, #284c3b);
+  --sentence-complement: light-dark(#ebdff7, #483757);
 
   /* shape */
   --r-sm: 8px;

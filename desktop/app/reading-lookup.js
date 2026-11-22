@@ -1,12 +1,19 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderTranslation } from './translation-result.js'
+import { renderGuide, renderTranslation, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
-import { readingSelection, readingWordAt } from './reading-selection.js'
+import { readingSelection, readingStructureRanges, readingWordAt } from './reading-selection.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
+const SELECTION_HIGHLIGHT = 'reading-lookup-selection'
+const STRUCTURE_HIGHLIGHTS = {
+  subject: 'reading-lookup-subject',
+  verb: 'reading-lookup-verb',
+  object: 'reading-lookup-object',
+  complement: 'reading-lookup-complement',
+}
 
 export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   const popover = el('section', 'reading-lookup')
@@ -76,6 +83,36 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     void chrome.runtime.sendMessage({ type: 'STOP_SPEECH', payload: { speechId: previous } }).catch(() => {})
   }
 
+  function clearStructureHighlights() {
+    for (const name of Object.values(STRUCTURE_HIGHLIGHTS)) CSS.highlights?.delete(name)
+  }
+
+  function renderHighlights() {
+    if (!CSS.highlights || typeof Highlight !== 'function') return false
+    clearStructureHighlights()
+    const ranges = readingStructureRanges(entry, sentenceStructure(entry))
+    if (!ranges.length) {
+      CSS.highlights.set(SELECTION_HIGHLIGHT, new Highlight(entry.range))
+      return false
+    }
+
+    CSS.highlights.delete(SELECTION_HIGHLIGHT)
+    for (const { role, range } of ranges) {
+      const name = STRUCTURE_HIGHLIGHTS[role]
+      if (!CSS.highlights.has(name)) CSS.highlights.set(name, new Highlight())
+      CSS.highlights.get(name).add(range)
+    }
+    // The native selection paints over the role colors. Clear it only if it is
+    // still the selection that opened this lookup.
+    const selection = window.getSelection()
+    if (selection?.rangeCount === 1) {
+      const nativeRange = selection.getRangeAt(0)
+      if (entry.range.compareBoundaryPoints(Range.START_TO_START, nativeRange) === 0
+        && entry.range.compareBoundaryPoints(Range.END_TO_END, nativeRange) === 0) selection.removeAllRanges()
+    }
+    return true
+  }
+
   function close() {
     clearWordTimer()
     cancel()
@@ -83,7 +120,8 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     entry = null
     if (popover.matches(':popover-open')) popover.hidePopover()
     popover.hidden = true
-    CSS.highlights?.delete('reading-lookup-selection')
+    CSS.highlights?.delete(SELECTION_HIGHLIGHT)
+    clearStructureHighlights()
   }
 
   function position() {
@@ -100,6 +138,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
 
   function render() {
     if (!entry) return
+    const hasHighlights = renderHighlights()
     const scrollTop = body.scrollTop
     translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
     guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
@@ -112,6 +151,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
       result.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
       result.append(renderGuide(entry, {
+        showSentenceLegend: hasHighlights,
         onRevealHint(current) { current.hintCount += 1; render() },
         onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; render() },
       }))
@@ -138,9 +178,6 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     copy.classList.remove('is-done')
     popover.hidden = false
     popover.showPopover()
-    if (CSS.highlights && typeof Highlight === 'function') {
-      CSS.highlights.set('reading-lookup-selection', new Highlight(entry.range))
-    }
     render()
     if (autoRequest) void request(lastMode)
   }

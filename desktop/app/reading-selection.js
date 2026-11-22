@@ -34,14 +34,50 @@ export function readingWordAt(root, x, y) {
   return null
 }
 
+function selectionStart(material, range, raw) {
+  const before = range.cloneRange()
+  before.selectNodeContents(material)
+  before.setEnd(range.startContainer, range.startOffset)
+  return before.toString().length + raw.length - raw.trimStart().length
+}
+
+export function readingStructureRanges({ material, range, text }, spans) {
+  if (!spans.length || !material.isConnected || !material.contains(range.startContainer)
+    || !material.contains(range.endContainer)) return []
+  const raw = range.toString()
+  if (raw.trim() !== text) return []
+  const base = selectionStart(material, range, raw)
+  const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+  let nodeStart = 0
+
+  function boundaryAt(offset) {
+    while (node && offset > nodeStart + node.length) {
+      nodeStart += node.length
+      node = walker.nextNode()
+    }
+    return node ? [node, offset - nodeStart] : null
+  }
+
+  const ranges = []
+  for (const { role, start, end } of spans) {
+    const from = boundaryAt(base + start)
+    const to = boundaryAt(base + end)
+    if (!from || !to) return []
+    const part = document.createRange()
+    part.setStart(...from)
+    part.setEnd(...to)
+    if (part.toString() !== text.slice(start, end)) return []
+    ranges.push({ role, range: part })
+  }
+  return ranges
+}
+
 function selectionFromRange(material, originalRange) {
   const raw = originalRange.toString()
   const text = raw.trim()
   if (!text || text.length > 12000) return null
-  const before = document.createRange()
-  before.selectNodeContents(material)
-  before.setEnd(originalRange.startContainer, originalRange.startOffset)
-  const start = before.toString().length + raw.length - raw.trimStart().length
+  const start = selectionStart(material, originalRange, raw)
   const end = start + text.length
   const fullText = material.textContent
   if (fullText.slice(start, end) !== text) return null

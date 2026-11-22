@@ -6,6 +6,52 @@ function el(tag, className, text) {
   return node
 }
 
+const SENTENCE_ROLES = { subject: 'Subject', verb: 'Verb', object: 'Object', complement: 'Complement' }
+
+export function sentenceStructure(entry) {
+  const structure = entry.guide?.structure
+  if (entry.mode !== 'guide' || entry.status !== 'done' || entry.guide?.guideType !== 'sentence'
+    || !Array.isArray(structure)) return []
+
+  let previousEnd = 0
+  for (const span of structure) {
+    if (!span || typeof span.role !== 'string' || !Object.hasOwn(SENTENCE_ROLES, span.role)
+      || !Number.isInteger(span.start) || !Number.isInteger(span.end)
+      || span.start < previousEnd || span.end <= span.start || span.end > entry.text.length) return []
+    previousEnd = span.end
+  }
+  return structure
+}
+
+export function markSentence(node, text, structure) {
+  const fragment = document.createDocumentFragment()
+  let offset = 0
+  for (const { role, start, end } of structure) {
+    fragment.append(text.slice(offset, start))
+    const mark = el('mark', 'sentence-mark', text.slice(start, end))
+    mark.dataset.role = role
+    fragment.append(mark)
+    offset = end
+  }
+  fragment.append(text.slice(offset))
+  node.replaceChildren(fragment)
+}
+
+export function renderSentenceLegend(structure) {
+  const roles = new Set(structure.map(({ role }) => role))
+  const legend = el('ul', 'sentence-legend')
+  legend.setAttribute('aria-label', 'Sentence structure')
+  for (const [role, label] of Object.entries(SENTENCE_ROLES)) {
+    if (!roles.has(role)) continue
+    const item = el('li')
+    const swatch = el('span', 'sentence-swatch')
+    swatch.dataset.role = role
+    item.append(swatch, label)
+    legend.append(item)
+  }
+  return legend
+}
+
 export function renderLexical(entry) {
   const lexical = entry.lexical
   if (!lexical) return null
@@ -63,11 +109,13 @@ export function hintNode(hint, index, isNew) {
   return node
 }
 
-export function renderGuide(entry, { onRevealHint, onToggleAnswer } = {}) {
+export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceLegend = false } = {}) {
   const guide = entry.guide
   if (!guide) return null
   const box = document.createDocumentFragment()
   const tools = el('div', 'guide-tools')
+  const structure = showSentenceLegend ? sentenceStructure(entry) : []
+  if (structure.length) box.append(renderSentenceLegend(structure))
   if (guide.phonetic) box.append(lexicalRow('Pronunciation', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
     const hints = el('div', 'hints')

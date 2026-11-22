@@ -47,8 +47,12 @@ function guide(data) {
   return {
     guideType: sentence ? 'sentence' : 'term',
     hints: sentence
-      ? ['“We will record” gives the main action.']
+      ? ['“We will record” gives the main action.', '“then” puts the second action after the first.']
       : ['Notice the action near this expression.', 'Look at what happens to the release.', 'Think of moving a plan to a later day.'],
+    ...(sentence && { structure: [
+      { role: 'subject', text: 'We' }, { role: 'verb', text: 'will record' }, { role: 'object', text: 'the interview' },
+      { role: 'verb', text: 'keep' }, { role: 'object', text: 'a record' },
+    ] }),
     answer: sentence
       ? { meaning: 'We will save the interview and keep a copy for our team.', explanation: 'The two uses of record describe an action and its result.' }
       : { meaning: 'to delay a planned action', explanation: 'The release will happen later.', example: 'We put off the meeting until Monday.', usage: 'put off + activity' },
@@ -215,11 +219,28 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(sources.some((item) => item.text === 'record'), false, 'single words must not become Review exercises')
         await selectText(page, SENTENCE)
         await page.locator('#reading-lookup-guide').click()
-        await page.locator('#reading-lookup-result').getByText('“We will record” gives the main action.', { exact: true }).waitFor()
+        await page.locator('#reading-lookup-result').getByText('“then” puts the second action after the first.', { exact: true }).waitFor()
         assert.equal(inputs.at(-1).isGuide, true)
         assert.equal(inputs.at(-1).data.selectedText, SENTENCE)
+        const articleHighlights = () => page.evaluate(() => Object.fromEntries(
+          ['selection', 'subject', 'verb', 'object', 'complement'].flatMap((role) => {
+            const ranges = CSS.highlights.get(`reading-lookup-${role}`)
+            return ranges ? [[role, [...ranges].map((range) => range.toString())]] : []
+          }),
+        ))
+        assert.deepEqual(await articleHighlights(), { subject: ['We'], verb: ['will record', 'keep'], object: ['the interview', 'a record'] })
+        const legend = page.locator('#reading-lookup-result .sentence-legend')
+        assert.deepEqual(await legend.locator('li').allTextContents(), ['Subject', 'Verb', 'Object'])
+        await shot?.(page, 'main-article-sentence-structure')
+        await page.locator('#reading-lookup-translate').click()
+        await page.locator('#reading-lookup-result').getByText(`Meaning of ${SENTENCE}`, { exact: true }).waitFor()
+        assert.deepEqual(await articleHighlights(), { selection: [SENTENCE] })
+        assert.equal(await legend.count(), 0)
+        await page.locator('#reading-lookup-guide').click()
+        await legend.waitFor()
 
         await page.locator('#reading-lookup-close').click()
+        assert.deepEqual(await articleHighlights(), {})
         await page.locator('#reading-back').click()
         await page.locator('#reading-category-news').click()
         await page.locator('#reading-articles').getByRole('button', { name: readingFeeds.news.title, exact: false }).first().click()

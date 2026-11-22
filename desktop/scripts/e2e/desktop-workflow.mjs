@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { makeMemoryKey } from '../../../src/translation-memory.js'
 
 const SOURCE = 'The supplier put off the launch because the packaging was delayed.'
 const QUESTIONS = [
@@ -103,6 +104,78 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       assert.deepEqual(mock.requests.slice(count).map(({ text }) => text), [first, second])
     } finally {
       await clearHistory(page)
+    }
+  })
+
+  await check('sentence structure: workbench marks the source, with fresh and verbatim cache entries', async () => {
+    const sentence = 'The changes that the team proposed last month could reduce costs without affecting quality.'
+    const spaced = sentence.replace('last month', 'last  month')
+    const relationship = '“that the team proposed last month” tells you which changes.'
+    const answer = { meaning: 'The proposed changes may lower costs while keeping quality.', explanation: relationship }
+    const guide = { guideType: 'sentence', hints: ['These changes may lower costs.', relationship], answer }
+    const structure = [
+      { role: 'subject', text: 'The changes' }, { role: 'verb', text: 'could reduce' }, { role: 'object', text: 'costs' },
+    ]
+    const config = await page.evaluate(() => chrome.storage.sync.get(['model', 'desktop_source_language',
+      'desktop_target_language', 'desktop_glossary']))
+    const legacyKey = makeMemoryKey({ text: sentence, mode: 'guide', model: config.model,
+      sourceLanguage: config.desktop_source_language, targetLanguage: config.desktop_target_language,
+      glossary: config.desktop_glossary })
+    const localKeys = ['translation_memory', 'desktop_tutor_v1']
+    const savedLocal = await page.evaluate(async ({ key, guide, localKeys }) => {
+      const saved = await chrome.storage.local.get(localKeys)
+      await chrome.storage.local.set({ translation_memory: {
+        ...saved.translation_memory, [key]: { guide, translatedText: '', lexical: null, savedAt: Date.now() },
+      } })
+      return saved
+    }, { key: legacyKey, guide, localKeys })
+    const requests = []
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const data = JSON.parse(body.messages.at(-1).content)
+      if (![sentence, spaced].includes(data.selectedText)) return defaultResponse({ body, res })
+      requests.push(data.selectedText)
+      const hints = guide.hints.map((hint) => data.selectedText === spaced ? hint.replace('last month', 'last  month') : hint)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ...guide, hints, structure }) } }] }))
+    })
+    try {
+      await page.reload()
+      await page.waitForFunction(() => document.getElementById('installed-version').textContent.startsWith('v'))
+      await page.locator('.mode[data-mode=guide]').click()
+      await paste(page, sentence)
+      const source = page.locator('.entry-source.has-sentence-structure')
+      await source.waitFor()
+      const marks = source.locator('mark')
+      assert.deepEqual(await marks.allTextContents(), structure.map(({ text }) => text))
+      assert.equal(await source.locator('.bubble').textContent(), sentence)
+      assert.deepEqual(await source.locator('.sentence-legend li').allTextContents(), ['Subject', 'Verb', 'Object'])
+      assert.equal(await page.locator('.result .hint-text').first().textContent(), relationship)
+      assert.equal(await page.locator('.result .answer').count(), 0)
+      await shot?.(page, 'main-sentence-structure')
+      await page.locator('.result').getByRole('button', { name: 'Reveal answer' }).click()
+      await page.locator('.result .answer').getByText(answer.meaning, { exact: false }).waitFor()
+      await paste(page, spaced)
+      assert.equal(await source.locator('.bubble').textContent(), spaced)
+      assert.deepEqual(await marks.allTextContents(), structure.map(({ text }) => text))
+      await paste(page, sentence)
+      assert.equal(await page.locator('#statusbar').textContent(), 'From translation memory')
+      assert.deepEqual(await marks.allTextContents(), structure.map(({ text }) => text))
+      assert.deepEqual(requests, [sentence, spaced])
+      const lastLookupId = await page.locator('.entry').getAttribute('data-entry-id')
+      await page.waitForFunction(async (lookupId) => {
+        const { desktop_tutor_v1: lookups } = await chrome.storage.local.get('desktop_tutor_v1')
+        return lookups?.some((lookup) => lookup.lastLookupId === lookupId)
+      }, lastLookupId)
+    } finally {
+      mock.resetHandler()
+      await clearHistory(page)
+      await page.locator('.mode[data-mode=translate]').click()
+      await page.evaluate(async ({ saved, keys }) => {
+        await chrome.storage.local.remove(keys.filter((key) => !Object.hasOwn(saved, key)))
+        await chrome.storage.local.set(saved)
+      }, { saved: savedLocal, keys: localKeys })
+      await page.reload()
+      await page.waitForFunction(() => document.getElementById('installed-version').textContent.startsWith('v'))
     }
   })
 

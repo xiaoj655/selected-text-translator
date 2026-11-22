@@ -1,4 +1,6 @@
 import { buildGenericRequest, isQwenMtModel } from './translation-contracts.js'
+import { getSentenceSegments } from './context-sentence.js'
+import { detectSourceLanguage } from './source-language.js'
 
 export const READING_STORAGE_KEYS = Object.freeze({
   LEARNING_MODEL: 'learning_model',
@@ -60,6 +62,14 @@ export function classifyReadingSelection(text) {
   return 'passage'
 }
 
+export function supportsSentenceStructure(text, sourceLanguage = 'auto') {
+  const selectedText = String(text || '').trim()
+  const language = String(sourceLanguage || 'auto').trim().toLowerCase() || 'auto'
+  return Boolean(selectedText) && classifyReadingSelection(selectedText) !== 'word'
+    && (language === 'auto' ? detectSourceLanguage(selectedText) : language) === 'english'
+    && getSentenceSegments(selectedText).length === 1
+}
+
 function getSelectionOccurrence(context, text, contextStart, contextEnd) {
   if (!Number.isInteger(contextStart) || !Number.isInteger(contextEnd)) return {}
   if (contextStart < 0 || contextEnd <= contextStart || contextEnd > context.length) return {}
@@ -75,7 +85,8 @@ function getSelectionOccurrence(context, text, contextStart, contextEnd) {
   }
 }
 
-export function buildReadingRequest({ model, text, context = '', kind = 'guide', contextStart, contextEnd }) {
+export function buildReadingRequest({ model, text, context = '', kind = 'guide', contextStart, contextEnd,
+  includeSentenceStructure = false, sourceLanguage }) {
   const request = buildGenericRequest({ model, text: '' })
   const selectedText = String(text || '').slice(0, 12000)
   const surroundingContext = String(context || '').slice(0, 2400)
@@ -86,7 +97,7 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
         'Use American IPA for English, tone-marked Pinyin for Chinese. Never include definitions or translations.',
         'For words such as record, read, lead, or wind, use the grammar and meaning of the selected occurrence.',
       ]
-    : buildGuideInstructions()
+    : buildGuideInstructions(includeSentenceStructure && supportsSentenceStructure(selectedText, sourceLanguage))
   request.messages = [
     {
       role: 'system',
@@ -112,7 +123,25 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
   return request
 }
 
-function buildGuideInstructions() {
+const SENTENCE_STRUCTURE_INSTRUCTIONS = [
+  'For exactly one complete English sentence, including a complete sentence with no final punctuation, add a top-level',
+  '"structure" array of objects with "role" and "text", such as {"role":"verb","text":"could reduce"}.',
+  'Only use the roles "subject", "verb", "object", and "complement" for the main clause or coordinated main clauses.',
+  'Copy each text fragment verbatim from selectedText. Preserve casing and spacing and never include surrounding whitespace.',
+  'When the same whole fragment occurs more than once with identical casing, add "occurrence": the 1-based index',
+  'of the intended whole-fragment match in selectedText. Never use relative positions in the surrounding context.',
+  'Use concise main-clause spans without incidental modifiers or embedded relative clauses. Keep auxiliaries, modals,',
+  'negation, and essential particles with the main verb, using separate fragments for a role when they are not contiguous.',
+  'For example, in "The changes that the team proposed could reduce costs.", the subject fragment is "The changes",',
+  'the verb fragment is "could reduce", and the object fragment is "costs".',
+  'In linking-verb clauses use "complement" for the description of the subject. Preserve passive voice and questions in original order.',
+  'Leave implicit subjects and absent objects out. Keep the fragments disjoint and in source order.',
+  'Omit structure for a word, phrase, excerpt without a complete main clause, or a selection with multiple sentences.',
+  'Omit structure if the main-clause parts cannot be identified reliably. Always keep the first main-action hint for fallback.',
+  'When another hint helps, make it explain which words a clause modifies or what relationship a connecting phrase adds.',
+]
+
+function buildGuideInstructions(includeSentenceStructure) {
   return [
     'Help an English learner understand the selected word, phrase, or passage through contextual clues.',
     'Write all hints and explanations in clear, accessible English. Do not translate into Chinese.',
@@ -159,7 +188,36 @@ function buildGuideInstructions() {
     'Do not leave out the main event to explain a grammar pattern. Keep explanation under 60 words.',
     'Omit phonetic, usage, and example for sentence guides.',
     'If context is absent or ambiguous, say so briefly. Do not invent a source sentence or pretend a guess is certain.',
+    ...(includeSentenceStructure ? SENTENCE_STRUCTURE_INSTRUCTIONS : []),
   ]
+}
+
+const STRUCTURE_ROLES = new Set(['subject', 'verb', 'object', 'complement'])
+const WORD_CHARACTER = '[\\p{L}\\p{M}\\p{N}]'
+
+function locateStructureFragment(text, fragment, occurrence) {
+  const exact = fragment.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const before = /^[\p{L}\p{M}\p{N}]/u.test(fragment) ? `(?<!${WORD_CHARACTER})` : ''
+  const after = /[\p{L}\p{M}\p{N}]$/u.test(fragment) ? `(?!${WORD_CHARACTER})` : ''
+  const matches = [...text.matchAll(new RegExp(`${before}(?=${exact}${after})`, 'gu'))]
+  if (occurrence === undefined && matches.length === 1) return matches[0].index
+  if (Number.isInteger(occurrence) && occurrence >= 1) return matches[occurrence - 1]?.index
+  return undefined
+}
+
+function normalizeSentenceStructure(parts, text) {
+  if (!Array.isArray(parts) || !parts.some((part) => part?.role === 'verb')) return []
+  const structure = []
+  for (const part of parts) {
+    const { role, text: fragment, occurrence } = part || {}
+    if (!STRUCTURE_ROLES.has(role) || typeof fragment !== 'string' || !fragment
+      || fragment.length > text.length || fragment !== fragment.trim()) return []
+    const start = locateStructureFragment(text, fragment, occurrence)
+    if (start === undefined) return []
+    structure.push({ role, start, end: start + fragment.length })
+  }
+  structure.sort((left, right) => left.start - right.start)
+  return structure.some((part, index) => index > 0 && structure[index - 1].end > part.start) ? [] : structure
 }
 
 export function parseReadingResponse(content, kind = 'guide', options = {}) {
@@ -192,6 +250,11 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
   const normalizedAnswer = Object.fromEntries(answerFields.map((key) => [key, answer[key].trim()]))
   if (isSentence) {
     normalizedAnswer.example = typeof answer.example === 'string' ? answer.example.trim() : ''
+    if (options.includeSentenceStructure && supportsSentenceStructure(options.text, options.sourceLanguage)) {
+      const structure = normalizeSentenceStructure(parsed.structure, options.text)
+      const visibleHints = structure.length && hints.length > 1 ? hints.slice(1) : hints
+      return { guideType: 'sentence', phonetic: '', hints: visibleHints, answer: normalizedAnswer, structure }
+    }
     return { guideType: 'sentence', phonetic: '', hints, answer: normalizedAnswer }
   }
   if (selectionType !== 'passage' && typeof answer.usage === 'string' && answer.usage.trim()) {

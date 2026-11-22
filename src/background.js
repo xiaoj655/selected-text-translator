@@ -122,6 +122,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const requestId = String(payload?.requestId || '')
   const text = String(payload?.text || '').trim()
   const kind = ['guide', 'pronunciation'].includes(payload?.kind) ? payload.kind : 'translate'
+  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage, includeSentenceStructure: !IS_EXTENSION_SERVICE_WORKER }
   const contextSentence = getContextSentence({ text, context: payload?.context,
     contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
   const controller = new AbortController()
@@ -191,7 +192,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     const qwenScope = isQwenMtRequest ? createQwenTranslationScope({ text, context: payload?.context,
       contextStart: payload?.contextStart, contextEnd: payload?.contextEnd }) : null
     const requestBody = kind !== 'translate'
-      ? buildReadingRequest({ model, text, context: payload?.context,
+      ? buildReadingRequest({ model, ...readingOptions, context: payload?.context,
           contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind })
       : isQwenMtRequest
         ? buildQwenMtRequest({ model, text, context: payload?.context,
@@ -250,7 +251,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     if (kind !== 'translate') {
       const json = await response.json()
       const content = readNonStreamMessageContent(json?.choices?.[0])
-      const result = parseReadingResponse(content, kind, { text })
+      const result = parseReadingResponse(content, kind, readingOptions)
       emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, kind, result })
       return
     }

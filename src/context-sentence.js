@@ -30,7 +30,7 @@ function getSelectionLocation(text, context, start, end) {
   return { start, end }
 }
 
-function getSentenceSegments(text) {
+export function getSentenceSegments(text) {
   let segments
   try {
     const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' })

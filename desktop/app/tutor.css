@@ -189,6 +189,10 @@
 .reading-material .reading-preview { margin-block-start: 8px; }
 .reading-preview[data-reading-selectable] { cursor: text; }
 ::highlight(reading-lookup-selection) { background: var(--accent-soft); color: var(--text); }
+::highlight(reading-lookup-subject) { background-color: var(--sentence-subject); }
+::highlight(reading-lookup-verb) { background-color: var(--sentence-verb); }
+::highlight(reading-lookup-object) { background-color: var(--sentence-object); }
+::highlight(reading-lookup-complement) { background-color: var(--sentence-complement); }
 
 .reading-lookup {
   position: fixed;
