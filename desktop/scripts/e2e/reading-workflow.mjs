@@ -19,6 +19,10 @@ const INTRO = 'The article follows battery materials from mining to refining and
 const QUESTION = 'Why can battery materials run short even if mines produce enough?'
 const EXPLANATION = 'The minerals have to be refined before they can go into batteries. “Even when” shows that the shortage can happen despite a good supply from mines, because refineries can only process so much.'
 const PASTE_REPLY = 'When the cache expires, all those requests reach the database at once. That is how one otherwise hidden slow query can become a bottleneck.'
+const WEB_URL = 'https://reader.example.org/articles/rollbacks'
+const WEB_TITLE = 'Preparing for a rollback'
+const WEB_TEXT = 'A rollback can restore the previous application version, but it cannot reliably undo a database migration. Fields added during a release may still be present when an older application starts running again. Test both directions before relying on a rollback to restore service.'
+const WEB_SECOND_PARAGRAPH = 'One useful rehearsal is to deploy the new version, write a fresh record and then return to the old version. Verify that the record is still readable and that any background jobs can continue safely.'
 
 function rss({ title, text, url, publishedAt }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -69,6 +73,21 @@ export async function installReadingFeeds(app) {
       return new Response(feed.body, { headers: { 'Content-Type': feed.type } })
     })
   }, responses)
+  await app.evaluate((_electron, { url, html }) => {
+    const https = process.getBuiltinModule('node:https')
+    const { Readable } = process.getBuiltinModule('node:stream')
+    const originalGet = https.get
+    https.get = (target, options, callback) => {
+      if (target.href !== url) return originalGet(target, options, callback)
+      const response = Object.assign(Readable.from([Buffer.from(html)]), {
+        statusCode: 200, headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+      queueMicrotask(() => callback(response))
+      return response
+    }
+  }, { url: WEB_URL, html: `<!doctype html><html><head><title>${WEB_TITLE}</title></head><body>
+    <nav>Site navigation</nav><article><h1>${WEB_TITLE}</h1><p>${WEB_TEXT}</p>
+    <p>${WEB_SECOND_PARAGRAPH}</p></article></body></html>` })
   return articles
 }
 
@@ -155,6 +174,28 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       assert.equal(inputs[2].article.kind, 'pasted_text')
       assert.equal(inputs[2].article.text, PASTED_TEXT)
       assert.deepEqual(inputs[2].history, [], 'pasted material should start a fresh conversation')
+
+      await page.locator('#reading-back').click()
+      await page.locator('#reading-import').click()
+      const importUrl = page.locator('#reading-import-url')
+      const importArticle = page.getByRole('button', { name: 'Import article' })
+      await importUrl.fill('http://reader.example.org/articles/rollbacks')
+      await importArticle.click()
+      await page.getByText('Enter a public HTTPS article link.').waitFor()
+      await page.getByRole('button', { name: 'Paste text', exact: true }).waitFor()
+      await importUrl.fill(WEB_URL)
+      await importArticle.click()
+      await detail.getByRole('heading', { name: WEB_TITLE }).waitFor()
+      assert.equal(await detail.locator('.reading-preview[data-reading-selectable]').textContent(),
+        `${WEB_TEXT}\n\n${WEB_SECOND_PARAGRAPH}`)
+      assert.equal(await page.locator('#reading-original').getAttribute('href'), WEB_URL)
+      assert.equal(inputs.length, 3, 'importing a webpage must not ask the learning model')
+      await shot?.(page, 'main-tutor-web-article')
+      await page.locator('#reading-start').click()
+      await thread.getByText(INTRO, { exact: true }).waitFor()
+      assert.equal(inputs[3].article.kind, 'web_article')
+      assert.equal(inputs[3].article.text, `${WEB_TEXT}\n\n${WEB_SECOND_PARAGRAPH}`)
+      assert.equal(inputs[3].article.url, WEB_URL)
     } finally {
       releaseFollowup()
       mock.resetHandler()

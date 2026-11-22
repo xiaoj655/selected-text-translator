@@ -1,6 +1,6 @@
 {
   "name": "selected-text-translator-desktop",
-  "version": "0.9.76",
+  "version": "0.9.77",
   "private": true,
   "type": "module",
   "description": "Desktop build of the selected text reading assistant",
@@ -24,7 +24,10 @@
     "dist:dir": "electron-builder --dir"
   },
   "dependencies": {
-    "electron-updater": "^6.8.12"
+    "@mozilla/readability": "^0.6.0",
+    "electron-updater": "^6.8.12",
+    "ipaddr.js": "^2.5.0",
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",

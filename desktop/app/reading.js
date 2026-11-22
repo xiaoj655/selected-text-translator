@@ -109,7 +109,8 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
   const tools = el('div', 'reading-tools')
   const refresh = button('Refresh', 'reading-refresh', () => void loadArticles())
   const paste = button('Paste text', 'reading-paste', openPaste)
-  tools.append(paste, refresh)
+  const importLink = button('Open link', 'reading-import', openImport)
+  tools.append(importLink, paste, refresh)
   header.append(heading, tools)
   const filters = el('div', 'reading-filters')
   filters.setAttribute('role', 'group')
@@ -220,6 +221,45 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
     input.focus()
   }
 
+  function openImport() {
+    const form = el('form', 'reading-paste-form')
+    const label = el('label', '', 'Article link')
+    const input = englishText('input', 'reading-input')
+    input.id = 'reading-import-url'
+    input.type = 'url'
+    input.required = true
+    input.maxLength = 4096
+    input.placeholder = 'https://'
+    label.htmlFor = input.id
+    const submit = el('button', 'primary', 'Import article')
+    submit.type = 'submit'
+    const status = el('span', 'reading-meta')
+    status.setAttribute('role', 'status')
+    const fallback = button('Paste text', '', openPaste)
+    fallback.hidden = true
+    form.append(backButton(importLink), label, input, submit, status, fallback)
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      if (submit.disabled) return
+      input.readOnly = true
+      submit.disabled = true
+      fallback.hidden = true
+      status.textContent = 'Importing article…'
+      try {
+        const article = await api.importPage(input.value.trim())
+        if (activePanel === form) openArticle(article, importLink)
+      } catch (error) {
+        status.textContent = coachErrorText(error, 'Couldn’t import this page. Try again or paste the text.')
+        fallback.hidden = false
+      } finally {
+        input.readOnly = false
+        submit.disabled = false
+      }
+    })
+    showPanel(form)
+    input.focus()
+  }
+
   function openArticle(article, origin, pastedText) {
     const existing = sessions.get(article.id)
     if (existing) {
@@ -246,7 +286,12 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
       panel.append(meta)
     }
     const excerpt = article.excerpt || article.text
-    if (excerpt) {
+    if (article.kind === 'web_article') {
+      const material = englishText('p', 'reading-preview', article.text)
+      lookup.bindMaterial(material, article)
+      panel.append(material)
+      if (article.textTruncated) panel.append(el('p', 'reading-meta', 'Open the original to continue reading.'))
+    } else if (excerpt) {
       const limit = 620
       const preview = excerpt.length > limit ? `${excerpt.slice(0, limit).trimEnd()}…` : excerpt
       const previewEl = englishText('p', 'reading-preview', preview)
@@ -379,7 +424,7 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
   return {
     close() { lookup.close() },
     open() {
-      const target = activePanel?.querySelector('h3, textarea') || heading
+      const target = activePanel?.querySelector('h3, textarea, input') || heading
       target.focus()
       if (!activePanel && !feeds.has(category)) void loadArticles()
     },

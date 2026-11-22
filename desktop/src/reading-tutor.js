@@ -32,6 +32,7 @@ function articleContext(article) {
   const url = boundedText(article.url, 1600)
   let kind = 'pasted_text'
   if (url) kind = article.hasFullText === true ? 'feed_article' : 'feed_excerpt'
+  if (article.kind === 'web_article') kind = 'web_article'
   return {
     title: boundedText(article.title, 400),
     source: boundedText(article.source, 120),

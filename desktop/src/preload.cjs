@@ -162,6 +162,7 @@ window.sttDesktop = {
   },
   reading: {
     discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
+    importPage: (url) => ipcRenderer.invoke('stt:reading-import', url),
     discuss: (input) => ipcRenderer.invoke('stt:reading-discuss', input),
     openArticle: (id) => ipcRenderer.invoke('stt:reading-open', id),
   },

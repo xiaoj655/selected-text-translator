@@ -11,6 +11,7 @@ import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { coachError, createTutor } from './tutor.js'
 import { discoverReadingArticles } from './reading-sources.js'
+import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
 import { createRequestDebug } from './request-debug.js'
@@ -105,15 +106,21 @@ function installRequestDebugIpc(requestDebug) {
 function installReadingIpc(storage, fetcher) {
   const readingTutor = createReadingTutor({ storage, fetcher })
   const articles = new Map()
+  function rememberArticle(article) {
+    articles.delete(article.id)
+    articles.set(article.id, article)
+    while (articles.size > 150) articles.delete(articles.keys().next().value)
+  }
   const handlers = {
     async 'stt:reading-discover'(category) {
       const result = await discoverReadingArticles(category, { fetchImpl: net.fetch })
-      for (const article of result.articles) {
-        articles.delete(article.id)
-        articles.set(article.id, article)
-      }
-      while (articles.size > 150) articles.delete(articles.keys().next().value)
+      for (const article of result.articles) rememberArticle(article)
       return result
+    },
+    async 'stt:reading-import'(url) {
+      const article = await importReadingPage(url)
+      rememberArticle(article)
+      return article
     },
     'stt:reading-discuss'({ articleId, pastedText, question, history } = {}) {
       const article = articleId

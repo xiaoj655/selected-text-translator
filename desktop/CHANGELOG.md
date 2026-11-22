@@ -1,5 +1,9 @@
 # 桌面端更新记录
 
+## 0.9.77 · 2026-11-22
+
+- English Coach 的「Article reading」新增「Open link」。粘贴公开网页的 HTTPS 链接即可提取正文，在应用内点词、划选和带读，也可以打开原文。
+
 ## 0.9.76 · 2026-11-22
 
 - English Coach 点词、双击或划选短语和句子时，自动沿用上次选择的「Translate」或「Guided Reading」，仍可在浮层中随时切换。
