@@ -144,6 +144,12 @@ test('structure requests are opt-in and support complete English sentences withi
   assert.doesNotMatch(prompt('She left.', { kind: 'pronunciation', includeSentenceStructure: true }), /"structure" array/)
 })
 
+test('independent sentence analysis distinguishes a missing response contract from a valid empty analysis', () => {
+  const options = { text: 'To be ready', includeSentenceAnalysis: true, requireStructure: true }
+  assert.throws(() => parseReadingResponse('{}', 'structure', options), /incomplete sentence analysis/)
+  assert.deepEqual(parseReadingResponse('{"structure":[]}', 'structure', options).structure, [])
+})
+
 function parseSentenceStructure(text, structure, options = {}) {
   return parseReadingResponse(JSON.stringify({ ...sentenceGuide, structure }), 'guide', {
     text, includeSentenceStructure: true, ...options,

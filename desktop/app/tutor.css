@@ -242,11 +242,32 @@
 }
 .reading-lookup-dock[data-placement="collapsed"] { padding: 4px var(--workspace-gutter); }
 .reading-lookup-dock[data-placement="side"] {
-  width: clamp(310px, 29vw, 384px);
+  position: relative;
+  width: var(--reading-lookup-width, clamp(310px, 29vw, 384px));
   display: flex;
   border-block-start: 0;
   border-inline-start: 1px solid var(--border);
 }
+.reading-lookup-resize:not([hidden]) {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  inset-inline-start: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.reading-lookup-resize::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 4px;
+  width: 2px;
+}
+.reading-lookup-resize:hover::after,
+.reading-lookup-resize:focus-visible::after,
+.is-resizing-lookup .reading-lookup-resize::after { background: var(--border-strong); }
+.tutor-shell.is-resizing-lookup, .tutor-shell.is-resizing-lookup * { cursor: col-resize !important; user-select: none; }
 .reading-lookup-dock[data-placement="bottom"] { max-height: min(46%, 420px); display: flex; }
 .reading-lookup:not([hidden]) {
   display: flex;

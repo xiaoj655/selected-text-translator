@@ -13,6 +13,7 @@ import { coachError, createTutor } from './tutor.js'
 import { discoverReadingArticles } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
+import { createReadingHistory } from './reading-history.js'
 import { publicReadingUrl } from './reading-network.js'
 import { handleReadingMediaRequest } from './reading-media.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
@@ -112,6 +113,7 @@ function installRequestDebugIpc(requestDebug) {
 
 function installReadingIpc(storage, fetcher) {
   const readingTutor = createReadingTutor({ storage, fetcher })
+  const readingHistory = createReadingHistory(app.getPath('userData'))
   const articles = new Map()
   function rememberArticle(article) {
     articles.delete(article.id)
@@ -126,10 +128,29 @@ function installReadingIpc(storage, fetcher) {
     },
     async 'stt:reading-import'(url) {
       const saved = await storage.sync.get('desktop_iqs_api_key')
-      const article = await importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch })
+      const imported = await importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch })
+      const article = readingHistory.save(imported)
       rememberArticle(article)
       return article
     },
+    'stt:reading-paste'(value) {
+      if (typeof value !== 'string' || !value.trim()) throw coachError('Paste some English text to continue.')
+      const text = value.trim()
+      const title = text.split(/\r?\n/u).find((line) => line.trim())?.trim().slice(0, 100) || 'Pasted text'
+      const article = readingHistory.save({ id: `paste-${Date.now()}`, kind: 'pasted_text', title, text })
+      rememberArticle(article)
+      return article
+    },
+    'stt:reading-history'() { return readingHistory.list() },
+    'stt:reading-restore'(id) {
+      const article = readingHistory.restore(id)
+      if (!article) throw coachError('This article is no longer in reading history.')
+      rememberArticle(article)
+      return article
+    },
+    'stt:reading-history-remove'(id) { return readingHistory.remove(id) },
+    'stt:reading-history-clear'() { return readingHistory.clear() },
+    'stt:reading-position'({ id, position } = {}) { return readingHistory.savePosition(id, position) },
     'stt:reading-console'() {
       return shell.openExternal(IQS_CONSOLE_URL)
     },

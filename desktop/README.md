@@ -16,7 +16,11 @@
 
 点击「Open link」可以导入公开网页，支持直接粘贴 URL 或 Markdown 链接。在「Settings → Reading → Web import」保存 IQS API Key 后，导入使用阿里云网页解析增强版，设置中可直接打开 Key 获取页。未配置 Key 时在本机提取，导入失败会显示原因并提供重试和粘贴入口。正文保留标题、段落、列表、引用、表格、代码、图片和图注的结构及顺序，字号、宽度和配色使用应用的阅读设置。公开直连视频可用原生播放器播放；嵌入、格式或资源不支持时提供原文入口。请求超时和响应体积保护独立于正文长度，超限会明确报错。[IQS Key 获取页面](https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape)
 
+成功导入和粘贴的文章自动保存到「History」，按最近访问排序，重启后直接读取本地正文并恢复阅读位置。相同网址更新已有记录，正文变化时重置位置；支持单篇删除和清空。历史最多保存最近 100 篇、总计约 50 MB。导入期间离开表单，完成后仍会写入历史并提示打开。
+
 在文章正文中单击单词可原地查询；拖选短语或句子后，选择「Translate」或「Guided Reading」。查询带上选中内容所在的完整句子或多句、前后各一句及准确位置，并记住上次使用的模式。查询结果可逐条展开提示、查看答案、复制、朗读和收藏；收藏包含原句及可用的来源链接。滚动正文时结果继续保留，可收起面板或按 `Esc` 关闭。文章查询与翻译工作台各自管理请求。
+
+单词查询先显示词义，点击「Sentence structure」后分析所在完整句子；短语、半句和跨句选区自动分析覆盖的完整句子，译文仍只对应选中部分。主干同时标在正文和侧栏的完整原句上，从句细节可展开「Explore sentence」。分析等待和失败重试独立于译文；同句查询复用临时分析缓存。右侧分隔线可以拖动调宽，双击恢复默认，宽度偏好在本机保存。
 
 点击「Read with Coach」了解文章的背景和主要观点，然后追问论据、技术细节或英文表达。AI 上下文与阅读正文分开：预算内发送全文，长文章使用覆盖全篇或与问题、当前阅读位置相关的选段，并显示选段提示；正文预算为 12,000 字符，对话历史总预算为 8,000 字符。图片和视频不会自动发送给学习模型，打开文章和滚动不会调用学习模型。
 
@@ -65,14 +69,17 @@ npm ci
 npm run verify    # 语法 + smoke + 不变量 + 本地模拟 API 的 Electron E2E
 npm run test:e2e -- --input    # 仅检查输入法与发送快捷键
 npm run test:icons           # 用真实 Electron 检查源目录及 ASAR 内的图标
+STT_LIVE_CONFIG=/absolute/path/outside-repo/live-config.json npm run test:e2e:live:reading
 npm start
 ```
 
 Electron E2E 使用现有 Playwright 与 Xvfb,可验证窗口内交互、模拟输入、请求、结果与持久化;浏览器扩展的集成检查仍在仓库根目录运行 `npm test` 与 `npm run test:browser`。这些普通检查使用本地模拟 API。带 `live` 的入口才访问真实服务,需要单独配置仓库外凭据并可能产生费用。
 
+网页阅读真实测试的外部 JSON 配置使用 `baseUrl`、`apiKey`，可选 `iqsApiKey`；也可使用 `STT_BASE_URL`、`STT_API_KEY` 环境变量。`STT_TRANSLATION_MODEL` 和 `STT_LEARNING_MODEL` 可覆盖默认模型。测试使用临时用户目录，覆盖实际网页导入、词义与整句分析、跨段划选、侧栏拖宽及应用重启恢复，结束后删除临时配置数据。
+
 macOS 和 Windows 的安装、原生输入法和系统朗读需实机验收。Windows 下还应检查主窗口、设置和表达本没有出现默认菜单栏。
 
-数据都在 `app.getPath('userData')`:`sync.json`、`local.json`、`history.json`、`window-bounds.json`、`desktop.log`。API Key 在系统加密探针通过时用 `safeStorage` 加密,写成 `enc:v1:` 前缀的密文;当前探针失败时会跳过加密,不能将所有环境都视为已经加密。
+数据都在 `app.getPath('userData')`:`sync.json`、`local.json`、`history.json`、`reading-history.json`、`reading-positions.json`、`window-bounds.json`、`desktop.log`。正文快照与阅读进度分开保存，滚动时只更新进度文件。API Key 在系统加密探针通过时用 `safeStorage` 加密,写成 `enc:v1:` 前缀的密文;当前探针失败时会跳过加密,不能将所有环境都视为已经加密。
 
 ## 构建
 

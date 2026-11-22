@@ -14,6 +14,9 @@ import { verifyCloudSpeech } from './cloud-speech.mjs'
 import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
 import { verifyReadingLookup } from './reading-lookup.mjs'
 import { verifyRichReading } from './reading-rich.mjs'
+import { verifyReadingHistory } from './reading-history.mjs'
+import { verifyReadingLookupResize } from './reading-lookup-resize.mjs'
+import { verifyReadingSentenceScope } from './reading-sentence.mjs'
 import { verifySettings } from './settings.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -317,7 +320,10 @@ export async function runE2E(mode = 'core') {
       await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
       await verifyReadingLookup({ app, page: mainPage, mock, check, shot, readingFeeds })
+      await verifyReadingSentenceScope({ page: mainPage, mock, check, shot })
       await verifyRichReading({ app, page: mainPage, mock, check, shot })
+      await verifyReadingHistory({ app, page: mainPage, check, shot })
+      await verifyReadingLookupResize({ app, page: mainPage, check, shot })
     }
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {

@@ -344,6 +344,9 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
     return { phonetic }
   }
   if (kind === 'structure') {
+    if (options.requireStructure && !Array.isArray(parsed?.structure)) {
+      throw new Error('The learning model returned an incomplete sentence analysis. Please try again.')
+    }
     const text = options.text || ''
     const sentenceAnalysis = normalizeSentenceAnalysis(parsed?.sentenceAnalysis, text)
     const structure = mainSentenceStructure(parsed?.structure, text, sentenceAnalysis)

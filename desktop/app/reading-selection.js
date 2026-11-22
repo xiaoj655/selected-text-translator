@@ -2,7 +2,9 @@ import { getSentenceSegments } from '../vendor/src/context-sentence.js'
 
 const indexes = new WeakMap()
 const MAX_CONTEXT_LENGTH = 2400
+const MAX_STRUCTURE_LENGTH = 12000
 const INTERACTIVE_CONTENT = 'a, button, input, textarea, select, summary, video, audio, iframe'
+const SENTENCE_BLOCK = 'p, h1, h2, h3, h4, h5, h6, pre, li, dt, dd, blockquote, td, th, figcaption'
 
 function sentenceSpans(text) {
   return getSentenceSegments(text).flatMap(({ index, segment }) => {
@@ -11,6 +13,50 @@ function sentenceSpans(text) {
     const start = index + segment.length - segment.trimStart().length
     return [{ start, end: start + sentence.length }]
   })
+}
+
+// Keep structural paragraph boundaries even when an HTML author did not put
+// whitespace between adjacent blocks. Offsets still refer to exact DOM text.
+function materialSentenceSpans(material, text) {
+  const boundaries = [0]
+  const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
+  let previousBlock
+  let offset = 0
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const block = node.parentElement?.closest(SENTENCE_BLOCK)
+    if (offset && block !== previousBlock) boundaries.push(offset)
+    previousBlock = block
+    offset += node.length
+  }
+  boundaries.push(text.length)
+  return boundaries.flatMap((start, index) => {
+    const end = boundaries[index + 1]
+    if (end === undefined || end <= start) return []
+    return sentenceSpans(text.slice(start, end)).map((sentence) => ({
+      start: sentence.start + start, end: sentence.end + start,
+    }))
+  })
+}
+
+// Analysis deliberately covers exactly the touched sentences. Its separate
+// text has explicit separators, with a mapping back to each original sentence.
+export function readingSentenceScope(text, start, end, sentences = sentenceSpans(text)) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > text.length) {
+    return { text: '', sentences: [], unavailable: 'No sentence is available for this selection.' }
+  }
+  const covered = sentences.filter((sentence) => sentence.end > start && sentence.start < end)
+  if (!covered.length) return { text: '', sentences: [], unavailable: 'No sentence is available for this selection.' }
+  let source = ''
+  const mapped = covered.map((sentence) => {
+    if (source) source += '\n\n'
+    const analysisStart = source.length
+    source += text.slice(sentence.start, sentence.end)
+    return { ...sentence, analysisStart, analysisEnd: source.length }
+  })
+  if (source.length > MAX_STRUCTURE_LENGTH) {
+    return { text: '', sentences: [], unavailable: 'These sentences are too long to analyze together. Select a shorter passage.' }
+  }
+  return { text: source, sentences: mapped, unavailable: '' }
 }
 
 // Keep whole sentences around the selection. The length limit is only a
@@ -43,7 +89,7 @@ function textIndex(material) {
     text,
     words: Array.from(text.matchAll(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’\-‐‑][\p{L}\p{M}\p{N}]+)*/gu), ({ 0: word, index: start }) =>
       ({ start, end: start + word.length })),
-    sentences: sentenceSpans(text),
+    sentences: materialSentenceSpans(material, text),
   }
   indexes.set(material, index)
   return index
@@ -169,6 +215,22 @@ export function readingStructureRanges({ material, range, text }, spans) {
   return ranges
 }
 
+export function readingSentenceStructureRanges({ material, sentenceScope }, spans) {
+  if (!material?.isConnected || !sentenceScope?.text || !spans.length) return []
+  const ranges = []
+  for (const span of spans) {
+    const sentence = sentenceScope.sentences.find(({ analysisStart, analysisEnd }) =>
+      analysisStart <= span.start && analysisEnd >= span.end)
+    if (!sentence) return []
+    const start = sentence.start + span.start - sentence.analysisStart
+    const end = sentence.start + span.end - sentence.analysisStart
+    const range = rangeForOffsets(material, start, end)
+    if (!range || range.toString() !== sentenceScope.text.slice(span.start, span.end)) return []
+    ranges.push({ role: span.role, range })
+  }
+  return ranges
+}
+
 function selectionFromRange(material, originalRange) {
   const raw = originalRange.toString()
   const text = raw.trim()
@@ -178,9 +240,12 @@ function selectionFromRange(material, originalRange) {
   const fullText = material.textContent
   if (fullText.slice(start, end) !== text) return null
   const range = originalRange.cloneRange()
+  const { sentences } = textIndex(material)
+  const sentenceScope = readingSentenceScope(fullText, start, end, sentences)
+  const lastSentence = sentences.findLast((sentence) => sentence.end > start && sentence.start < end)
   return {
-    material, range, text, start, end, sentenceEnd: Math.max(end, sentenceAt(material, end)?.end || 0),
-    ...readingSentenceContext(fullText, start, end, textIndex(material).sentences),
+    material, range, text, start, end, sentenceScope, sentenceEnd: Math.max(end, lastSentence?.end || 0),
+    ...readingSentenceContext(fullText, start, end, sentences),
   }
 }
 

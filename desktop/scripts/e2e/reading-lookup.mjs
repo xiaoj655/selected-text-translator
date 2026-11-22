@@ -62,7 +62,7 @@ function guide(data) {
   }
 }
 
-async function openPastedText(page, text) {
+export async function openPastedText(page, text) {
   await page.locator('#btn-tutor-workspace').click()
   await page.locator('#tutor-reading-mode').click()
   if (await page.locator('#reading-back').isVisible()) await page.locator('#reading-back').click()
@@ -70,6 +70,8 @@ async function openPastedText(page, text) {
   await page.locator('#reading-paste-text').fill(text)
   await page.locator('#reading-paste-open').click()
   await page.locator('.reading-preview').first().waitFor()
+  // History can restore an existing article's position on the next frame.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
 // Return a real text range's rectangle, even if the renderer later wraps tokens.
@@ -117,7 +119,7 @@ async function textRange(page, text, occurrence = 0, select = false) {
   }, { text, occurrence, select })
 }
 
-async function clickWord(page, word, occurrence = 0) {
+export async function clickWord(page, word, occurrence = 0) {
   if (await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
   const point = await textRange(page, word, occurrence)
@@ -126,14 +128,14 @@ async function clickWord(page, word, occurrence = 0) {
   assert.equal(await page.locator('#reading-lookup-text').textContent(), word)
 }
 
-async function selectText(page, text, occurrence = 0) {
+export async function selectText(page, text, occurrence = 0) {
   if (await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
   await textRange(page, text, occurrence, true)
   await page.locator('#reading-lookup').waitFor({ state: 'visible' })
   assert.equal(await page.locator('#reading-lookup-text').textContent(), text)
 }
 
-async function withState(page, run) {
+export async function withState(page, run) {
   const snapshot = await page.evaluate(async () => ({
     sync: await chrome.storage.sync.get(['model', 'learning_model', 'desktop_live_translate', 'desktop_prefs', 'desktop_reading_lookup_mode']),
     local: await chrome.storage.local.get(['vocabulary_entries', 'desktop_tutor_v1']),
@@ -228,6 +230,10 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         sentenceResponse.resolve()
         await page.waitForFunction(() => document.querySelector('#reading-lookup-result .translation-text')?.textContent.startsWith('Meaning of'))
         assert.equal(await page.locator('#reading-lookup-text').textContent(), DRAG_SENTENCE)
+        await page.locator('#tutor-workspace').evaluate((node) => {
+          const panel = document.getElementById('reading-lookup')
+          node.scrollTop += Math.max(0, panel.getBoundingClientRect().bottom - node.getBoundingClientRect().top + 24)
+        })
         await page.locator('#reading-lookup-reopen').click()
         assert.equal(await page.locator('#reading-lookup').getAttribute('data-placement'), 'inline')
         const geometry = await page.evaluate(() => ({
@@ -308,9 +314,12 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(inputs.at(-1).data.selectedText, 'engineers')
         assert.equal(inputs.at(-1).isGuide, true)
         await selectText(page, SENTENCE)
+        await page.locator('#reading-lookup-result .hint').first().waitFor()
+        await page.locator('#reading-lookup-result').getByRole('button', { name: /Next hint/u }).click()
         await page.locator('#reading-lookup-result').getByText('“then” puts the second action after the first.', { exact: true }).waitFor()
         assert.equal(inputs.at(-1).isGuide, true)
         assert.equal(inputs.at(-1).data.selectedText, SENTENCE)
+        await page.locator('#reading-sentence-structure[data-status="done"]').waitFor()
         const articleHighlights = () => page.evaluate(() => Object.fromEntries(
           ['selection', 'subject', 'verb', 'object', 'complement'].flatMap((role) => {
             const ranges = CSS.highlights.get(`reading-lookup-${role}`)
@@ -394,10 +403,12 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
     }
   })
 
-  await check('article lookup: complete sentence with a trailing fragment keeps its main clause and optional clause detail', async () => {
+  await check('article lookup: partial final sentence is completed and both sentences keep their main clause and optional detail', async () => {
     const clause = "that you can't do well without thinking differently from your peers"
     const connection = 'The clause beginning with “that” identifies the work. “Can’t … without” makes a different way of thinking necessary.'
-    const fragment = 'This starts another sentence, but its main clause is not selected.'
+    const completeArticle = `${LAYERED_SELECTION}, you need to ask useful questions.`
+    const secondSentence = 'To be a successful scientist, you need to ask useful questions.'
+    const scopeText = completeArticle.replace('. To be', '.\n\nTo be')
     const meaning = 'Some kinds of work require thinking differently from your peers.'
     const analysisGate = deferred()
     const requests = []
@@ -406,6 +417,9 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         { role: 'subject', text: 'There' },
         { role: 'verb', text: 'are' },
         { role: 'complement', text: 'some kinds of work' },
+        { role: 'subject', text: 'you', occurrence: 2 },
+        { role: 'verb', text: 'need to ask' },
+        { role: 'object', text: 'useful questions' },
       ],
       sentenceAnalysis: {
         connections: [
@@ -417,16 +431,15 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
           explanation: '“You” is the subject; “can’t do” is the verb; “that” stands for the work and is its object.',
           structure: [
             { role: 'object', text: 'that' },
-            { role: 'subject', text: 'you' },
+            { role: 'subject', text: 'you', occurrence: 1 },
             { role: 'verb', text: "can't do" },
           ],
         }],
-        fragments: [{ text: 'To be a successful scientist', explanation: fragment }],
       },
     }
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       const data = sourceData(body)
-      if (data?.selectedText !== LAYERED_SELECTION) return defaultResponse({ body, res })
+      if (![LAYERED_SELECTION, scopeText].includes(data?.selectedText)) return defaultResponse({ body, res })
       const kind = needsStructure(body) ? 'structure'
         : body.messages[0].content.includes('You are a patient reading tutor.') ? 'guide' : 'translate'
       requests.push(kind)
@@ -448,10 +461,10 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         return ranges ? [[role, [...ranges].map((range) => range.toString())]] : []
       }),
     ))
-    const mainHighlights = { subject: ['There'], verb: ['are'], complement: ['some kinds of work'] }
+    const mainHighlights = { subject: ['There', 'you'], verb: ['are', 'need to ask'], object: ['useful questions'], complement: ['some kinds of work'] }
     try {
       await withState(page, async () => {
-        await openPastedText(page, `${LAYERED_SELECTION}, you need to ask useful questions.`)
+        await openPastedText(page, completeArticle)
         await selectText(page, LAYERED_SELECTION)
         await page.locator('#reading-lookup-translate').click()
         const result = page.locator('#reading-lookup-result')
@@ -461,9 +474,10 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.deepEqual(await articleHighlights(), { selection: [LAYERED_SELECTION] })
         analysisGate.resolve()
         await result.getByText(connection, { exact: true }).waitFor()
-        await result.getByText(fragment, { exact: true }).waitFor()
+        assert.equal(await result.locator('.reading-sentence-source').last().textContent(), secondSentence)
+        assert.equal(await result.locator('.sentence-fragment').count(), 0)
         assert.deepEqual(await articleHighlights(), mainHighlights)
-        assert.deepEqual(await result.locator('.sentence-legend').first().locator('li').allTextContents(), ['Subject', 'Verb', 'Complement'])
+        assert.deepEqual(await result.locator('.sentence-legend').first().locator('li').allTextContents(), ['Subject', 'Verb', 'Object', 'Complement'])
         const details = result.locator('details.sentence-explore')
         assert.equal(await details.evaluate((node) => node.open), false)
         await shot?.(page, 'main-article-layered-sentence')
@@ -479,7 +493,8 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
 
         await page.locator('#reading-lookup-guide').click()
         await result.locator('.hint').first().waitFor()
-        await result.getByText(fragment, { exact: true }).waitFor()
+        await result.locator('#reading-sentence-structure[data-status="done"]').waitFor()
+        assert.equal(await result.locator('.reading-sentence-source').last().textContent(), secondSentence)
         assert.deepEqual(await articleHighlights(), mainHighlights)
         const guideDetails = result.locator('details.sentence-explore')
         if (!await guideDetails.evaluate((node) => node.open)) await guideDetails.locator('summary').click()

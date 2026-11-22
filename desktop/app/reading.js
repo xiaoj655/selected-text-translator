@@ -119,34 +119,202 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   const refresh = button('Refresh', 'reading-refresh', () => void loadArticles())
   const paste = button('Paste text', 'reading-paste', openPaste)
   const importLink = button('Open link', 'reading-import', openImport)
-  tools.append(importLink, paste, refresh)
+  const historyButton = button('History', 'reading-history', () => void openHistory())
+  const clearHistory = button('Clear history', 'reading-history-clear', () => void removeAllHistory())
+  clearHistory.hidden = true
+  tools.append(importLink, paste, refresh, clearHistory)
   header.append(heading, tools)
   const filters = el('div', 'reading-filters')
   filters.setAttribute('role', 'group')
   filters.setAttribute('aria-label', 'Article categories')
   const categoryButtons = Object.entries(CATEGORIES).map(([id, label]) =>
     button(label, `reading-category-${id}`, () => selectCategory(id)))
-  filters.append(...categoryButtons)
+  filters.append(...categoryButtons, historyButton)
 
   const listStatus = el('p', 'reading-meta reading-list-status')
   listStatus.setAttribute('role', 'status')
   const list = el('ul', 'reading-list')
   list.id = 'reading-articles'
-  index.append(header, filters, listStatus, list)
-  rootEl.append(index)
+  const historyList = el('ul', 'reading-list reading-history-list')
+  historyList.id = 'reading-history-list'
+  historyList.hidden = true
+  index.append(header, filters, listStatus, list, historyList)
+  const notice = el('div', 'reading-import-notice')
+  notice.id = 'reading-import-notice'
+  notice.hidden = true
+  const noticeText = el('span')
+  noticeText.setAttribute('role', 'status')
+  const noticeOpen = button('Open article', 'reading-import-notice-open', () => void openSavedArticle(completedImport?.historyId, noticeOpen))
+  const noticeDismiss = button('×', 'reading-import-notice-dismiss', () => { notice.hidden = true })
+  noticeDismiss.setAttribute('aria-label', 'Dismiss import notification')
+  notice.append(noticeText, noticeOpen, noticeDismiss)
+  rootEl.append(notice, index)
 
   let category = 'news'
   let activePanel = null
+  let showingHistory = false
+  let completedImport = null
+  let positionTimer = 0
+  let restoringPosition = false
   const feeds = new Map()
   const sessions = new Map()
+  const panelStates = new WeakMap()
   const readingPositions = new WeakMap()
   scroller.addEventListener('scroll', () => {
-    if (!activePanel) return
+    if (!activePanel || activePanel.closest('[hidden]') || restoringPosition) return
     const focus = readingFocusText(activePanel, scroller)
     if (focus) readingPositions.set(activePanel, focus)
+    rememberPosition()
+    clearTimeout(positionTimer)
+    positionTimer = setTimeout(savePosition, 450)
   })
+  window.addEventListener('pagehide', savePosition)
+
+  function rememberPosition() {
+    const state = panelStates.get(activePanel)
+    if (!state || !activePanel.isConnected || activePanel.closest('[hidden]')) return
+    const material = activePanel.querySelector('.reading-preview')
+    if (!material) return
+    const anchor = readingAnchor(scroller)
+    let offset = 0
+    let top = material.getBoundingClientRect().top
+    if (anchor && material.contains(anchor.range.startContainer)) {
+      const before = anchor.range.cloneRange()
+      before.selectNodeContents(material)
+      before.setEnd(anchor.range.startContainer, anchor.range.startOffset)
+      offset = before.toString().length
+      top = anchor.top
+    }
+    state.position = { offset, top: top - scroller.getBoundingClientRect().top,
+      progress: material.textContent.length ? offset / material.textContent.length : 0 }
+  }
+
+  function savePosition() {
+    clearTimeout(positionTimer)
+    const state = panelStates.get(activePanel)
+    if (!state?.article.historyId || !state.position) return
+    void api.savePosition({ id: state.article.historyId, position: state.position }).catch(() => {})
+  }
+
+  function restorePosition(panel) {
+    if (!panel.isConnected || panel.closest('[hidden]')) return
+    const position = panelStates.get(panel)?.position
+    restoringPosition = true
+    scroller.scrollTop = 0
+    const apply = () => {
+      if (activePanel !== panel || !panel.isConnected || panel.closest('[hidden]')) return
+      const material = panel.querySelector('.reading-preview')
+      if (!material || !position) return
+      const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
+      let offset = position.offset
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (offset > node.length) { offset -= node.length; continue }
+        const range = document.createRange()
+        range.setStart(node, offset)
+        range.collapse(true)
+        scroller.scrollTop += range.getBoundingClientRect().top - scroller.getBoundingClientRect().top - position.top
+        break
+      }
+    }
+    apply()
+    requestAnimationFrame(() => {
+      apply()
+      requestAnimationFrame(() => { restoringPosition = false })
+    })
+  }
+
+  async function openSavedArticle(id, origin) {
+    if (!id) return
+    origin.disabled = true
+    try {
+      const article = await api.restore(id)
+      notice.hidden = true
+      openArticle(article, origin)
+    } catch (error) {
+      listStatus.textContent = coachErrorText(error, 'Couldn’t open this saved article. Try again.')
+    } finally { origin.disabled = false }
+  }
+
+  async function openHistory() {
+    showPanel(null)
+    showingHistory = true
+    heading.textContent = 'Reading history'
+    historyButton.setAttribute('aria-pressed', 'true')
+    refresh.hidden = true
+    clearHistory.hidden = false
+    filters.hidden = false
+    for (const categoryButton of categoryButtons) categoryButton.setAttribute('aria-pressed', 'false')
+    list.hidden = true
+    historyList.hidden = false
+    listStatus.textContent = 'Loading history…'
+    await renderHistory()
+    scroller.scrollTop = 0
+  }
+
+  async function renderHistory() {
+    try {
+      const history = await api.history()
+      if (!showingHistory) return
+      clearHistory.disabled = !history.length
+      listStatus.textContent = history.length ? 'Saved on this device. Open an article to continue reading.' : 'No imported articles yet. Open a link or paste text to start reading.'
+      historyList.replaceChildren(...history.map((article) => {
+        const item = el('li', 'reading-history-item')
+        const content = el('div', 'reading-history-content')
+        const open = button(article.title, '', () => void openSavedArticle(article.id, open), 'reading-article-title reading-history-open')
+        open.dataset.historyId = article.id
+        open.lang = 'en'
+        const details = el('p', 'reading-meta')
+        details.append(article.source || 'Pasted text', ' · ', dateFormat.format(new Date(article.lastOpenedAt)))
+        if (article.progress > 0.01) details.append(` · ${Math.round(article.progress * 100)}% read`)
+        const excerpt = englishText('p', 'reading-history-excerpt', article.excerpt.replace(/\s+/gu, ' '))
+        content.append(open, details, excerpt)
+        const remove = button('Remove', '', async () => {
+          remove.disabled = true
+          try {
+            await api.removeHistory(article.id)
+            forgetSessions(article.id)
+            if (completedImport?.historyId === article.id) notice.hidden = true
+            await renderHistory()
+          } catch { listStatus.textContent = 'Couldn’t remove the article. Try again.'; remove.disabled = false }
+        }, 'reading-history-remove')
+        remove.setAttribute('aria-label', `Remove ${article.title} from history`)
+        item.append(content, remove)
+        return item
+      }))
+    } catch { listStatus.textContent = 'Couldn’t load reading history. Try again.' }
+  }
+
+  function forgetSessions(historyId) {
+    for (const [id, panel] of sessions) {
+      if (!historyId || panelStates.get(panel)?.article.historyId === historyId) sessions.delete(id)
+    }
+  }
+
+  async function removeAllHistory() {
+    clearHistory.disabled = true
+    try {
+      await api.clearHistory()
+      forgetSessions()
+      notice.hidden = true
+      await renderHistory()
+    } catch { listStatus.textContent = 'Couldn’t clear reading history. Try again.'; clearHistory.disabled = false }
+  }
+
+  function importCompleted(article, form, origin) {
+    completedImport = article
+    if (activePanel === form && !form.closest('[hidden]')) {
+      notice.hidden = true
+      openArticle(article, origin)
+    } else {
+      noticeText.textContent = `Ready to read: ${article.title}`
+      noticeOpen.hidden = false
+      notice.hidden = false
+      if (showingHistory && !activePanel) void renderHistory()
+    }
+  }
 
   function renderIndex() {
+    if (showingHistory) return
     const feed = feeds.get(category)
     for (const [idx, id] of Object.keys(CATEGORIES).entries()) {
       categoryButtons[idx].setAttribute('aria-pressed', String(id === category))
@@ -192,19 +360,33 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   }
 
   function selectCategory(id) {
-    if (id === category) return
+    if (id === category && !showingHistory) return
+    showingHistory = false
+    heading.textContent = 'Choose an article'
+    historyButton.setAttribute('aria-pressed', 'false')
+    refresh.hidden = false
+    clearHistory.hidden = true
+    filters.hidden = false
+    list.hidden = false
+    historyList.hidden = true
     category = id
     if (feeds.has(id)) renderIndex()
     else void loadArticles()
   }
 
   function showPanel(panel) {
+    rememberPosition()
+    savePosition()
     lookup.close()
     for (const video of activePanel?.querySelectorAll('video') || []) video.pause()
     activePanel?.remove()
     activePanel = panel
     index.hidden = Boolean(panel)
     if (panel) rootEl.append(panel)
+    else {
+      filters.hidden = false
+      if (showingHistory) void renderHistory()
+    }
   }
 
   function backButton(origin) {
@@ -227,11 +409,21 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     submit.type = 'submit'
     submit.id = 'reading-paste-open'
     form.append(backButton(paste), label, input, submit)
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault()
       const pastedText = input.value.trim()
-      if (pastedText) openArticle({ title: 'Pasted text', text: pastedText }, paste, pastedText)
+      if (!pastedText || submit.disabled) return
+      submit.disabled = true
+      try {
+        const article = await api.paste(pastedText)
+        importCompleted(article, form, paste)
+      } catch (error) {
+        pasteStatus.textContent = coachErrorText(error, 'Couldn’t save this text. Try again.')
+      } finally { submit.disabled = false }
     })
+    const pasteStatus = el('p', 'reading-meta')
+    pasteStatus.setAttribute('role', 'status')
+    form.append(pasteStatus)
     showPanel(form)
     input.focus()
   }
@@ -273,10 +465,15 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       status.textContent = 'Importing article…'
       try {
         const article = await api.importPage(input.value.trim())
-        if (activePanel === form) openArticle(article, importLink)
+        importCompleted(article, form, importLink)
       } catch (error) {
         status.textContent = coachErrorText(error, 'Couldn’t import this page. Try again or paste the text.')
         fallback.hidden = false
+        if (activePanel !== form) {
+          noticeText.textContent = status.textContent
+          noticeOpen.hidden = true
+          notice.hidden = false
+        }
       } finally {
         input.readOnly = false
         submit.disabled = false
@@ -290,12 +487,14 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     const existing = sessions.get(article.id)
     if (existing) {
       showPanel(existing)
-      existing.querySelector('h3').focus()
+      existing.querySelector('h3').focus({ preventScroll: true })
+      restorePosition(existing)
       return
     }
     const state = { turns: [], draft: '', pending: false }
     const panel = el('article', 'reading-detail')
     panel.id = 'reading-detail'
+    panelStates.set(panel, { article, position: article.readingPosition })
     if (article.id) sessions.set(article.id, panel)
     const title = el('h3', 'reading-heading reading-title', article.title)
     if (article.id) title.lang = 'en'
@@ -314,7 +513,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     const excerpt = article.excerpt || article.text
     const materialOptions = { openLink: (url) => api.openLink(url),
       onError: () => { status.textContent = 'Couldn’t open the link. Try the original article.' } }
-    if (article.kind === 'web_article' || article.html || pastedText) {
+    if (article.kind === 'web_article' || article.kind === 'pasted_text' || article.html || pastedText) {
       const material = createReadingMaterial(article, materialOptions)
       lookup.bindMaterial(material, article)
       panel.append(material)
@@ -344,7 +543,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
         importStatus.textContent = 'Importing article…'
         try {
           const full = await api.importPage(article.url)
-          if (activePanel === panel) openArticle(full, origin)
+          importCompleted(full, panel, origin)
         } catch (error) {
           importStatus.textContent = coachErrorText(error, 'Couldn’t import the full article. Open the original to continue.')
         } finally { importFull.disabled = false }
@@ -464,14 +663,16 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
 
     updateActions()
     showPanel(panel)
-    title.focus()
+    title.focus({ preventScroll: true })
+    restorePosition(panel)
   }
 
   return {
-    close() { lookup.close() },
+    close() { rememberPosition(); savePosition(); lookup.close() },
     open() {
       const target = activePanel?.querySelector('h3, textarea, input') || heading
-      target.focus()
+      target.focus({ preventScroll: true })
+      if (panelStates.has(activePanel)) restorePosition(activePanel)
       if (!activePanel && !feeds.has(category)) void loadArticles()
     },
   }

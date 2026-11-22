@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readingSentenceContext } from '../app/reading-selection.js'
+import { readingSentenceContext, readingSentenceScope } from '../app/reading-selection.js'
 
 function contextFor(text, selected, occurrence = 0) {
   let start = -1
@@ -71,4 +71,54 @@ test('sentence context preserves exact UTF-16 offsets around Unicode text', () =
   const result = contextFor(text, 'author’s')
   assert.equal(result.context, text)
   assert.equal(result.contextStart, text.indexOf('author’s'))
+})
+
+test('sentence analysis expands a partial selection without analyzing untouched neighbours', () => {
+  const text = 'An introduction is available. The changes that the team proposed could reduce costs. A conclusion follows.'
+  const start = text.indexOf('the team proposed')
+  const scope = readingSentenceScope(text, start, start + 'the team proposed'.length)
+  assert.equal(scope.text, 'The changes that the team proposed could reduce costs.')
+  assert.equal(scope.sentences.length, 1)
+  const sentence = scope.sentences[0]
+  assert.equal(text.slice(sentence.start, sentence.end), scope.text.slice(sentence.analysisStart, sentence.analysisEnd))
+})
+
+test('analysis includes both complete boundary sentences for a cross-sentence partial selection', () => {
+  const text = 'An introduction. Dr. Brown recorded the result. The team shared it. An unrelated conclusion.'
+  const scope = readingSentenceScope(text, text.indexOf('recorded'), text.indexOf('shared') + 'shared'.length)
+  assert.equal(scope.text, 'Dr. Brown recorded the result.\n\nThe team shared it.')
+  assert.equal(scope.sentences.length, 2)
+  for (const sentence of scope.sentences) {
+    assert.equal(text.slice(sentence.start, sentence.end), scope.text.slice(sentence.analysisStart, sentence.analysisEnd))
+  }
+})
+
+test('analysis preserves source Unicode offsets and does not include the next sentence at an exact boundary', () => {
+  const text = '🙂 The author’s idea works. The result is ready.'
+  const end = text.indexOf(' The result')
+  const scope = readingSentenceScope(text, 0, end)
+  assert.equal(scope.text, '🙂 The author’s idea works.')
+  assert.equal(scope.sentences.length, 1)
+})
+
+test('explicit DOM block spans keep adjacent paragraphs separate even without source whitespace', () => {
+  const text = 'The team worksThe result is ready.'
+  const boundary = 'The team works'.length
+  const scope = readingSentenceScope(text, 4, boundary + 10, [
+    { start: 0, end: boundary }, { start: boundary, end: text.length },
+  ])
+  assert.equal(scope.text, 'The team works\n\nThe result is ready.')
+  assert.equal(scope.sentences[1].start, boundary)
+  assert.equal(scope.sentences[1].analysisStart, boundary + 2)
+})
+
+test('oversized or invalid scopes explicitly explain why analysis is unavailable', () => {
+  const text = `${'A very long sentence '.repeat(650)}ends here.`
+  const scope = readingSentenceScope(text, 4, 20)
+  assert.equal(scope.text, '')
+  assert.match(scope.unavailable, /too long/)
+  for (const [start, end] of [[-1, 2], [2, 2], [2, text.length + 1], [0.5, 2]]) {
+    assert.equal(readingSentenceScope(text, start, end).text, '')
+    assert.ok(readingSentenceScope(text, start, end).unavailable)
+  }
 })

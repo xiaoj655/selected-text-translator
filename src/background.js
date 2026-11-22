@@ -89,7 +89,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender?.tab?.id
   if (typeof tabId !== 'number') return false
   const frameId = sender.frameId || 0
-  const key = `${tabId}:${frameId}`
+  // Desktop article analysis runs independently of the selected-text result.
+  // Keep it in its own fixed slot so retrying analysis cannot cancel a translation.
+  const structureScope = !IS_EXTENSION_SERVICE_WORKER && message.payload?.requestScope === 'reading'
+    && message.payload?.kind === 'structure'
+  const key = `${tabId}:${frameId}${structureScope ? ':structure' : ''}`
   if (message?.type === 'CANCEL_TRANSLATION') {
     const active = activeRequests.get(key)
     if (active?.requestId === message.payload?.requestId) active.controller.abort()
@@ -139,8 +143,12 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const selectionId = String(payload?.selectionId || '')
   const requestId = String(payload?.requestId || '')
   const text = String(payload?.text || '').trim()
-  const kind = ['guide', 'pronunciation'].includes(payload?.kind) ? payload.kind : 'translate'
-  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage, includeSentenceStructure: !IS_EXTENSION_SERVICE_WORKER }
+  const kind = ['guide', 'pronunciation'].includes(payload?.kind)
+    || (!IS_EXTENSION_SERVICE_WORKER && payload?.requestScope === 'reading' && payload?.kind === 'structure')
+    ? payload.kind : 'translate'
+  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage,
+    includeSentenceStructure: !IS_EXTENSION_SERVICE_WORKER && payload?.includeSentenceStructure !== false,
+    includeSentenceAnalysis: kind === 'structure', requireStructure: kind === 'structure' }
   const contextSentence = getContextSentence({ text, context: payload?.context,
     contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
   const controller = new AbortController()

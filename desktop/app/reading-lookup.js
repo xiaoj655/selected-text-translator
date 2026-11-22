@@ -3,8 +3,10 @@ import { localizeErrorMessage } from './messages.js'
 import { renderGuide, renderGuidePreview, renderTranslation, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
-import { installReadingSelection, readingStructureRanges } from './reading-selection.js'
+import { classifyReadingSelection } from '../vendor/src/reading-support.js'
+import { installReadingSelection, readingSentenceStructureRanges } from './reading-selection.js'
 import { createReadingLookupLayout } from './reading-lookup-layout.js'
+import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
@@ -94,6 +96,16 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     void chrome.runtime.sendMessage({ type: 'STOP_SPEECH', payload: { speechId: previous } }).catch(() => {})
   }
 
+  function cancelAnalysis() {
+    const analysis = entry?.analysis
+    if (!analysis?.requestId) return
+    const requestId = analysis.requestId
+    analysis.requestId = null
+    void chrome.runtime.sendMessage({ type: 'CANCEL_TRANSLATION', payload: {
+      requestId, requestScope: 'reading', kind: 'structure',
+    } }).catch(() => {})
+  }
+
   function clearStructureHighlights() {
     for (const name of Object.values(STRUCTURE_HIGHLIGHTS)) CSS.highlights?.delete(name)
   }
@@ -101,7 +113,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function renderHighlights() {
     if (!CSS.highlights || typeof Highlight !== 'function') return false
     clearStructureHighlights()
-    const ranges = readingStructureRanges(entry, sentenceStructure(entry))
+    const spans = entry.analysis.expanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
+    const ranges = readingSentenceStructureRanges(entry, spans)
     if (!ranges.length) {
       CSS.highlights.set(SELECTION_HIGHLIGHT, new Highlight(entry.range))
       return false
@@ -124,6 +137,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     selection.clearPending()
     selection.hideSentence()
     cancel()
+    cancelAnalysis()
     stopSpeech()
     entry = null
     layout.close()
@@ -133,7 +147,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
 
   function render() {
     if (!entry) return
-    const hasHighlights = renderHighlights()
+    renderHighlights()
     const scrollTop = body.scrollTop
     translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
     guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
@@ -145,17 +159,25 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       result.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
       result.append(renderGuide(entry, {
-        showSentenceLegend: hasHighlights,
         onRevealHint(current) { current.hintCount += 1; render() },
         onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; render() },
       }))
     } else if (entry.mode === 'guide' && entry.previewHint) {
       result.append(renderGuidePreview(entry.previewHint))
     } else if (entry.translatedText) {
-      result.append(renderTranslation(entry, { showSentenceLegend: hasHighlights }))
+      result.append(renderTranslation(entry))
     }
     else result.textContent = 'Waiting for the model…'
     const done = entry.status === 'done'
+    if (done) result.append(renderReadingSentence(entry, {
+      onToggle(expanded) {
+        if (!entry) return
+        entry.analysis.expanded = expanded
+        if (expanded && entry.analysis.status === 'idle') void requestAnalysis()
+        else render()
+      },
+      onRetry() { void requestAnalysis(true) },
+    }))
     copy.disabled = !done
     save.disabled = !done || Boolean(entry.saving) || (entry.mode === 'guide' && !entry.answerRevealed)
     stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
@@ -172,7 +194,9 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       return
     }
     close()
-    const current = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending' }
+    const singleWord = classifyReadingSelection(selection.text) === 'word'
+    const current = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', singleWord,
+      analysis: { status: 'idle', expanded: !singleWord, detailExpanded: false, requestId: null, result: null, error: '' } }
     entry = current
     title.textContent = selection.text
     title.title = selection.text
@@ -219,7 +243,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         type: 'START_TRANSLATION',
         payload: {
           selectionId: current.id, requestId, requestScope: 'reading', kind: mode, forceRefresh,
-          includeSentenceStructure: true,
+          includeSentenceStructure: false,
           text: current.text, context: current.context, contextStart: current.contextStart, contextEnd: current.contextEnd,
           sourceLanguage: 'english', targetLanguage: values.desktop_target_language || 'auto', glossary: values.desktop_glossary || [],
         },
@@ -233,6 +257,35 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       if (entry !== current || current.requestId !== requestId) return
       current.status = 'error'
       current.error = 'Could not reach the translation service. Try again.'
+      render()
+    }
+  }
+
+  async function requestAnalysis(forceRefresh = false) {
+    const current = entry
+    if (!current?.sentenceScope.text || (!forceRefresh && current.analysis.status !== 'idle')) {
+      render()
+      return
+    }
+    cancelAnalysis()
+    const analysis = current.analysis
+    const requestId = id()
+    Object.assign(analysis, { status: 'loading', requestId, error: '', result: null })
+    render()
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'START_TRANSLATION', payload: {
+        selectionId: current.id, requestId, requestScope: 'reading', kind: 'structure', forceRefresh,
+        text: current.sentenceScope.text, sourceLanguage: 'english',
+      } })
+      if (entry === current && analysis.requestId === requestId && !response?.accepted) {
+        analysis.status = 'error'
+        analysis.error = 'Could not start sentence analysis. Try again.'
+        render()
+      }
+    } catch {
+      if (entry !== current || analysis.requestId !== requestId) return
+      analysis.status = 'error'
+      analysis.error = 'Could not reach the sentence analysis service. Try again.'
       render()
     }
   }
@@ -316,7 +369,22 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       if (payload.status === 'fallback') feedback.textContent = payload.message
       return
     }
-    if (message?.type !== 'TRANSLATION_EVENT' || !entry?.requestId || payload?.requestId !== entry.requestId) return
+    if (message?.type !== 'TRANSLATION_EVENT' || !entry) return
+    if (entry.analysis.requestId && payload?.requestId === entry.analysis.requestId) {
+      const analysis = entry.analysis
+      if (payload.status === 'success') {
+        analysis.result = payload.result
+        analysis.status = 'done'
+        analysis.requestId = null
+      } else if (['error', 'missing-configuration'].includes(payload.status)) {
+        analysis.status = 'error'
+        analysis.error = localizeErrorMessage(payload)
+        analysis.requestId = null
+      } else if (payload.status !== 'started') return
+      render()
+      return
+    }
+    if (!entry.requestId || payload?.requestId !== entry.requestId) return
     switch (payload.status) {
       case 'started': entry.status = 'loading'; break
       case 'stream':
@@ -337,16 +405,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
             guideType: entry.guide?.guideType, createdAt: entry.createdAt })).catch(() => {})
         }
         break
-      case 'structure':
-        if (entry.mode !== 'translate' || entry.status !== 'done') return
-        entry.structure = payload.structure
-        entry.sentenceAnalysis = payload.sentenceAnalysis || null
-        break
       case 'error':
       case 'missing-configuration': entry.status = 'error'; entry.error = localizeErrorMessage(payload); break
       default: return
     }
-    render()
+    if (entry.status === 'done' && entry.analysis.expanded && entry.analysis.status === 'idle') void requestAnalysis()
+    else render()
   })
 
   document.addEventListener('keydown', (event) => {

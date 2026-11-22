@@ -164,6 +164,12 @@ window.sttDesktop = {
   reading: {
     discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
     importPage: (url) => ipcRenderer.invoke('stt:reading-import', url),
+    paste: (text) => ipcRenderer.invoke('stt:reading-paste', text),
+    history: () => ipcRenderer.invoke('stt:reading-history'),
+    restore: (id) => ipcRenderer.invoke('stt:reading-restore', id),
+    removeHistory: (id) => ipcRenderer.invoke('stt:reading-history-remove', id),
+    clearHistory: () => ipcRenderer.invoke('stt:reading-history-clear'),
+    savePosition: (input) => ipcRenderer.invoke('stt:reading-position', input),
     openConsole: () => ipcRenderer.invoke('stt:reading-console'),
     discuss: (input) => ipcRenderer.invoke('stt:reading-discuss', input),
     openArticle: (id) => ipcRenderer.invoke('stt:reading-open', id),
