@@ -60,6 +60,36 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     await page.locator('#btn-more').click()
   })
 
+  await check('main window zoom: plus, minus and reset while typing', async () => {
+    const input = page.locator('#input')
+    const press = (keyCode) => app.evaluate(({ BrowserWindow }, keyCode) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().endsWith('/app/index.html'))
+      win.focus()
+      const modifiers = [process.platform === 'darwin' ? 'meta' : 'control']
+      // DevTools keyboard events skip Electron's before-input-event.
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+    }, keyCode)
+    const ratio = () => page.evaluate(() => devicePixelRatio)
+    const initial = await ratio()
+    const originalText = await input.inputValue()
+    await input.focus()
+    try {
+      await press('=')
+      await page.waitForFunction((initial) => devicePixelRatio > initial, initial, { timeout: 3000 })
+      const enlarged = await ratio()
+      await press('+')
+      await page.waitForFunction((enlarged) => devicePixelRatio > enlarged, enlarged, { timeout: 3000 })
+      await press('-')
+      await page.waitForFunction((enlarged) => Math.abs(devicePixelRatio - enlarged) < 0.001, enlarged, { timeout: 3000 })
+      assert.equal(await input.inputValue(), originalText)
+      assert.equal(await input.evaluate((el) => document.activeElement === el), true)
+    } finally {
+      await press('0')
+      await page.waitForFunction((initial) => Math.abs(devicePixelRatio - initial) < 0.001, initial, { timeout: 3000 })
+    }
+  })
+
   await check('paste workspace: consecutive Ctrl+V submits once and replaces the previous source', async () => {
     const count = mock.requests.length
     try {

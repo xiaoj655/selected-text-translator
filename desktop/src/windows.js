@@ -15,6 +15,26 @@ const CARD_HEIGHT = 300
 const CARD_MIN_HEIGHT = 120
 const CARD_MAX_HEIGHT = 640
 const CARD_MARGIN = 14
+const MAIN_ZOOM_FACTORS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5]
+
+function bindMainZoom(contents) {
+  contents.setZoomMode('isolated')
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.isComposing || input.alt) return
+    const modifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta
+    if (!modifier) return
+
+    const current = contents.getZoomFactor()
+    let next
+    if (input.key === '+' || input.key === '=') next = MAIN_ZOOM_FACTORS.find((factor) => factor > current + 0.001)
+    else if (input.key === '-') next = MAIN_ZOOM_FACTORS.findLast((factor) => factor < current - 0.001)
+    else if (input.key === '0') next = 1
+    else return
+
+    event.preventDefault()
+    if (next !== undefined) contents.setZoomFactor(next)
+  })
+}
 
 function cardHeightLimit(workArea) {
   return Math.max(CARD_MIN_HEIGHT, Math.min(CARD_MAX_HEIGHT, workArea.height - 2 * CARD_MARGIN))
@@ -117,6 +137,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     mainReady = new Promise((resolve) => {
       main.webContents.once('did-finish-load', resolve)
     })
+    bindMainZoom(main.webContents)
     main.setAlwaysOnTop(alwaysOnTop, 'floating')
     main.loadFile(join(appDir, 'index.html'))
     main.on('close', (event) => {
