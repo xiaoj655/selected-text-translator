@@ -1,5 +1,10 @@
 # 桌面端更新记录
 
+## 0.9.73 · 2026-11-22
+
+- 补发 v0.9.72 的阅读设置：在「Settings → Appearance → Article reading」调整正文字号、最大宽度，或打开「Fit window」。
+- 从 macOS / Windows 打包流水线中移除图标解码诊断，避免它启动 Electron 超时而阻断发布。`npm run test:icons` 保留为可选本地检查。
+
 ## 0.9.72 · 2026-11-22
 
 - 在「Settings → Appearance → Article reading」中可调 English Coach 正文字号（18–24 px，默认 20 px）和阅读栏最大宽度（640–1600 px，默认 840 px），也可选择「Fit window」使用窗口内的可用宽度。
