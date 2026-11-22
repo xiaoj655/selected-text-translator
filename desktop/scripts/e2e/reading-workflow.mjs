@@ -10,6 +10,7 @@ const ENGINEERING = {
   title: 'Testing what happens after a failed deployment',
   text: 'A rollback can restore working code while leaving behind data created by a newer version. The team ran a synthetic release to see whether an older version could read the data written during a rollout.',
 }
+const ENGINEERING_BODY = `${ENGINEERING.text} The team also rehearsed returning to the new version after rolling back.`
 const IDEAS = {
   title: 'How software teams remember decisions',
   text: 'An architecture decision record can make trade-offs visible to people joining a project. It ages well when it names the assumptions behind the decision and sets a date for revisiting them.',
@@ -25,12 +26,16 @@ const WEB_TEXT = 'A rollback can restore the previous application version, but i
 const WEB_SECOND_PARAGRAPH = 'One useful rehearsal is to deploy the new version, write a fresh record and then return to the old version. Verify that the record is still readable and that any background jobs can continue safely.'
 const WEB_CLOUD_TEXT = `${WEB_TEXT}\n\n${WEB_SECOND_PARAGRAPH}\n\nCloud parsing retains paragraphs.`
 
-function rss({ title, text, url, publishedAt }) {
+function rss(articles) {
+  const items = articles.map(({ title, text, body, url, publishedAt }) => `<item>
+    <title>${title}</title><link>${url}</link><pubDate>${new Date(publishedAt).toUTCString()}</pubDate>
+    <description><![CDATA[<p>${text}</p>]]></description>
+    ${body ? `<content:encoded><![CDATA[<p>${body}</p>]]></content:encoded>` : ''}
+  </item>`).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
-    <rss version="2.0"><channel><title>Reading workflow fixture</title><item>
-      <title>${title}</title><link>${url}</link><pubDate>${new Date(publishedAt).toUTCString()}</pubDate>
-      <description><![CDATA[<p>${text}</p>]]></description>
-    </item></channel></rss>`
+    <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+      <channel><title>Reading workflow fixture</title>${items}</channel>
+    </rss>`
 }
 
 function atom({ title, text, url, publishedAt }) {
@@ -47,19 +52,28 @@ export async function installReadingFeeds(app) {
   const responses = {}
   for (const [category, sources] of Object.entries(READING_SOURCES)) {
     for (const [index, source] of sources.entries()) {
+      const suffix = ['', ': a second perspective'][index] ?? `: ${source.name}`
       const article = {
         ...pages[category],
         source: source.name,
-        title: index ? `${pages[category].title}: a second perspective` : pages[category].title,
+        title: pages[category].title + suffix,
         publishedAt: new Date(Math.floor(Date.now() / 1000) * 1000 - (index + 1) * 3600000).toISOString(),
         url: `https://${source.hosts[0]}/articles/reading-workflow-fixture-${index}`,
       }
       if (index === 0) articles[category] = article
+      const entries = [category === 'engineering' && index === 0 ? { ...article, body: ENGINEERING_BODY } : article]
+      if (category === 'engineering' && index === 2) {
+        for (let offset = 1; offset <= 9; offset += 1) {
+          entries.push({ ...article, title: `Earlier engineering notes (${offset})`,
+            url: `${article.url}-${offset}`, publishedAt: new Date(Date.parse(article.publishedAt) - offset * 3600000).toISOString() })
+        }
+      }
       const useAtom = /atom|theverge/u.test(source.url)
       responses[source.url] = {
-        body: useAtom ? atom(article) : rss(article),
+        body: useAtom ? atom(article) : rss(entries),
         type: useAtom ? 'application/atom+xml' : 'application/rss+xml',
-        failFirst: category === 'ideas' && index === 1,
+        requests: 0,
+        failureAttempts: category === 'ideas' && index === 1 ? [1, 3] : [],
       }
     }
   }
@@ -76,8 +90,8 @@ export async function installReadingFeeds(app) {
       }
       const feed = feeds[request.url]
       if (!feed) return net.fetch(request, { bypassCustomProtocolHandlers: true })
-      if (feed.failFirst) {
-        feed.failFirst = false
+      feed.requests += 1
+      if (feed.failureAttempts.includes(feed.requests)) {
         return new Response(null, { status: 503 })
       }
       return new Response(feed.body, { headers: { 'Content-Type': feed.type } })
@@ -125,11 +139,18 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
     const translate = page.locator('#btn-translate-workspace')
     const tutor = page.locator('#btn-tutor-workspace')
     const selectArticle = (title) => articles.getByRole('button', { name: title, exact: false }).first().click()
+    const articleRow = (title) => articles.locator('li').filter({ has: page.getByRole('button', { name: title, exact: true }) })
     try {
       await tutor.click()
       assert.equal(await page.locator('#tutor-reading-mode').getAttribute('aria-pressed'), 'true')
-      await articles.getByRole('button', { name: NEWS.title, exact: false }).first().waitFor()
+      await articleRow(NEWS.title).getByText('Summary only · Import for full article', { exact: false }).waitFor()
       await page.locator('#reading-category-engineering').click()
+      const engineeringRow = articleRow(ENGINEERING.title)
+      const engineeringWordCount = ENGINEERING_BODY.split(' ').length
+      await engineeringRow.getByText(`About ${engineeringWordCount} words in feed`, { exact: false }).waitFor()
+      assert.equal(await engineeringRow.locator('.reading-article-excerpt').textContent(), ENGINEERING.text)
+      assert.equal(await articles.getByText(READING_SOURCES.engineering[2].name, { exact: true }).count(), 8)
+      await shot?.(page, 'main-tutor-reading-list')
       await selectArticle(ENGINEERING.title)
       assert.match(await detail.textContent(), new RegExp(ENGINEERING.title, 'u'))
       await page.locator('#reading-back').click()
@@ -139,8 +160,15 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       const partialStatus = page.getByText(`Couldn’t load ${missingFeed}.`, { exact: true })
       await partialStatus.waitFor()
       await page.locator('#reading-refresh').click()
-      await articles.getByRole('button', { name: new RegExp(`${IDEAS.title}: a second perspective`, 'u') }).waitFor()
+      const recoveredTitle = `${IDEAS.title}: a second perspective`
+      const recoveredArticle = articles.getByRole('button', { name: recoveredTitle, exact: true })
+      await recoveredArticle.waitFor()
       assert.equal(await partialStatus.count(), 0)
+      await page.locator('#reading-refresh').click()
+      await page.getByText(`Showing previous results from ${missingFeed}.`, { exact: false }).waitFor()
+      await recoveredArticle.click()
+      await detail.getByRole('heading', { name: recoveredTitle, exact: true }).waitFor()
+      await page.locator('#reading-back').click()
       await page.locator('#reading-category-news').click()
       await selectArticle(NEWS.title)
       const news = readingFeeds.news

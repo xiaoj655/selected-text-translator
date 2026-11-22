@@ -9,16 +9,19 @@ export const READING_SOURCES = {
   engineering: [
     { name: 'The GitHub Blog', url: 'https://github.blog/engineering/feed/', hosts: ['github.blog'] },
     { name: 'Julia Evans', url: 'https://jvns.ca/atom.xml', hosts: ['jvns.ca'] },
+    { name: 'Cloudflare Engineering', url: 'https://blog.cloudflare.com/tag/engineering/rss', hosts: ['blog.cloudflare.com'] },
   ],
   ideas: [
     { name: 'Martin Fowler', url: 'https://martinfowler.com/feed.atom', hosts: ['martinfowler.com'] },
     { name: 'The Pragmatic Engineer', url: 'https://newsletter.pragmaticengineer.com/feed', hosts: ['newsletter.pragmaticengineer.com'] },
+    // This Atom feed publishes the article text in its summary field.
+    { name: 'Simon Willison', url: 'https://simonwillison.net/atom/entries/', hosts: ['simonwillison.net'], summaryContainsBody: true },
   ],
 }
 
 const MAX_FEED_BYTES = 2 * 1024 * 1024
 const REQUEST_TIMEOUT_MS = 8000
-const ARTICLES_PER_SOURCE = 4
+const ARTICLES_PER_SOURCE = 8
 const EXCERPT_LENGTH = 380
 
 const ENTITIES = new Map(Object.entries({
@@ -123,20 +126,26 @@ function readArticle(entry, source) {
 
   const summaryHtml = entry.fields.get('description') ?? entry.fields.get('summary') ?? ''
   const bodyHtml = entry.fields.get('content:encoded') ?? entry.fields.get('content') ?? ''
-  const summary = htmlToText(summaryHtml)
-  const body = htmlToText(bodyHtml)
-  const excerpt = (summary || body).replace(/\s+/g, ' ')
+  const summary = htmlToText(summaryHtml).replace(/\s+/g, ' ')
+  const body = htmlToText(bodyHtml).replace(/\s+/g, ' ')
+  const excerpt = summary || body
   if (!excerpt) return null
+  const options = { baseUrl: url }
+  const bodyContent = body.length > summary.length ? normalizeReadingContent(bodyHtml, options) : null
+  const useBody = bodyContent && bodyContent.text.replace(/\s+/g, ' ').trim().length > summary.length
+  const material = useBody ? bodyContent : normalizeReadingContent(summaryHtml, options)
+  if (!material.text.trim()) return null
   const date = Date.parse(entry.fields.get('pubDate') ?? entry.fields.get('published') ?? entry.fields.get('updated'))
-  const article = {
+  return {
     id: createHash('sha256').update(url).digest('hex'),
     title,
     source: source.name,
     publishedAt: Number.isFinite(date) ? new Date(date).toISOString() : '',
     url,
     excerpt: excerpt.length > EXCERPT_LENGTH ? `${excerpt.slice(0, EXCERPT_LENGTH).trimEnd()}…` : excerpt,
+    feedHasBody: Boolean(useBody || source.summaryContainsBody),
+    ...material,
   }
-  return { ...article, ...normalizeReadingContent(body.length > summary.length ? bodyHtml : summaryHtml, { baseUrl: url }) }
 }
 
 function newestFirst(a, b) {
@@ -164,22 +173,54 @@ async function loadSource(source, fetchImpl) {
   const xml = Buffer.concat(chunks).toString('utf8')
   const articles = new Map()
   for (const entry of readFeedEntries(xml)) {
-    const article = readArticle(entry, source)
-    if (article && !articles.has(article.id)) articles.set(article.id, article)
+    try {
+      const article = readArticle(entry, source)
+      if (article && !articles.has(article.id)) articles.set(article.id, article)
+    } catch {
+      // A broken article need not make the publisher's entire feed unavailable.
+    }
   }
   if (!articles.size) throw new Error('No readable articles')
   return [...articles.values()].sort(newestFirst).slice(0, ARTICLES_PER_SOURCE)
 }
 
-export async function discoverReadingArticles(category, { fetchImpl = globalThis.fetch } = {}) {
+export async function discoverReadingArticles(category, { fetchImpl = globalThis.fetch, sourceCache = new Map() } = {}) {
   if (typeof category !== 'string' || !Object.hasOwn(READING_SOURCES, category)) {
     throw new Error('Choose an article category.')
   }
   const sources = READING_SOURCES[category]
   const results = await Promise.allSettled(sources.map((source) => loadSource(source, fetchImpl)))
-  const articles = results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+  const unavailableSources = []
+  const staleSources = []
+  for (const [index, source] of sources.entries()) {
+    const result = results[index]
+    if (result.status === 'fulfilled') {
+      sourceCache.set(source.url, result.value)
+    } else {
+      unavailableSources.push(source.name)
+      if (sourceCache.has(source.url)) staleSources.push(source.name)
+    }
+  }
+  const articles = sources.flatMap(({ url }) => sourceCache.get(url) ?? [])
+  return { articles: articles.sort(newestFirst), unavailableSources, staleSources }
+}
+
+export function createReadingDiscovery({ fetchImpl } = {}) {
+  const sourceCache = new Map()
+  const pending = new Map()
   return {
-    articles: articles.sort(newestFirst),
-    unavailableSources: sources.filter((_, index) => results[index].status === 'rejected').map(({ name }) => name),
+    async discover(category) {
+      if (!pending.has(category)) {
+        const request = discoverReadingArticles(category, { fetchImpl, sourceCache }).finally(() => pending.delete(category))
+        pending.set(category, request)
+      }
+      return pending.get(category)
+    },
+    getArticle(id) {
+      for (const articles of sourceCache.values()) {
+        const match = articles.find((article) => article.id === id)
+        if (match) return match
+      }
+    },
   }
 }

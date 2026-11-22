@@ -168,6 +168,7 @@
 .reading-list { margin: 18px 0 0; padding: 0; }
 .reading-list li { display: block; border-block-start: 1px solid var(--border); padding: 11px 0 12px; }
 .reading-list .reading-meta { margin: 1px 0 0; }
+.reading-list .reading-article-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reading-detail { max-width: var(--article-width, 840px); margin-inline: auto; }
 .reading-article-title, .reading-back {
   background: transparent;

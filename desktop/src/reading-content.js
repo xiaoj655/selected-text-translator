@@ -93,7 +93,9 @@ function fallback(document, baseUrl, kind = 'video') {
 
 export function normalizeReadingContent(html, { baseUrl } = {}) {
   const base = safeUrl(baseUrl, undefined)
-  const body = documentBody(typeof html === 'string' ? html : '')
+  // Some feeds wrap content in a full HTML document and append a footer after
+  // it. Parse it as a fragment before passing it to the inert DOM.
+  const body = documentBody(serialize(parseFragment(typeof html === 'string' ? html : '')))
   const generatedImages = new Set()
   // Preprocess in an inert Node DOM. Only this module creates renderer markers.
   for (const element of body.querySelectorAll('*')) {

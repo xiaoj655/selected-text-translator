@@ -10,7 +10,7 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { coachError, createTutor } from './tutor.js'
-import { discoverReadingArticles } from './reading-sources.js'
+import { createReadingDiscovery } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
 import { createReadingHistory } from './reading-history.js'
@@ -114,6 +114,7 @@ function installRequestDebugIpc(requestDebug) {
 function installReadingIpc(storage, fetcher) {
   const readingTutor = createReadingTutor({ storage, fetcher })
   const readingHistory = createReadingHistory(app.getPath('userData'))
+  const readingDiscovery = createReadingDiscovery({ fetchImpl: net.fetch })
   const articles = new Map()
   function rememberArticle(article) {
     articles.delete(article.id)
@@ -122,7 +123,7 @@ function installReadingIpc(storage, fetcher) {
   }
   const handlers = {
     async 'stt:reading-discover'(category) {
-      const result = await discoverReadingArticles(category, { fetchImpl: net.fetch })
+      const result = await readingDiscovery.discover(category)
       for (const article of result.articles) rememberArticle(article)
       return result
     },
@@ -156,7 +157,7 @@ function installReadingIpc(storage, fetcher) {
     },
     'stt:reading-discuss'({ articleId, pastedText, question, history, focusText } = {}) {
       const article = articleId
-        ? articles.get(articleId)
+        ? readingDiscovery.getArticle(articleId) ?? articles.get(articleId)
         : typeof pastedText === 'string' && { title: 'Pasted text', text: pastedText.trim() }
       if (!article) throw coachError('This article is no longer in the list. Refresh and choose it again.')
       const focus = typeof focusText === 'string' && focusText.trim().length <= 12000
@@ -164,7 +165,7 @@ function installReadingIpc(storage, fetcher) {
       return readingTutor.ask({ article, question, history, focusText: focus })
     },
     'stt:reading-open'(articleId) {
-      const article = articles.get(articleId)
+      const article = readingDiscovery.getArticle(articleId) ?? articles.get(articleId)
       if (!article?.url.startsWith('https://')) throw new Error('Could not open the original article. Refresh the list and try again.')
       return shell.openExternal(article.url)
     },

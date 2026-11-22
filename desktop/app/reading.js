@@ -96,6 +96,7 @@ const CATEGORIES = {
   ideas: 'Tech ideas',
 }
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
+const wordCountFormat = new Intl.NumberFormat('en')
 const SETTINGS_REQUIRED = 'Add an API URL, API key, and learning model in Settings.'
 
 function attribution({ source, publishedAt }) {
@@ -323,10 +324,16 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     list.setAttribute('aria-busy', String(Boolean(feed?.pending)))
     if (feed?.pending) {
       listStatus.textContent = 'Loading articles…'
+    } else if (feed?.refreshFailed && feed.articles.length) {
+      listStatus.textContent = 'Couldn’t refresh. You can still open the articles already loaded.'
     } else if (feed?.articles?.length) {
-      listStatus.textContent = feed.unavailableSources.length
+      const unavailable = feed.unavailableSources.length
         ? `Couldn’t load ${feed.unavailableSources.join(', ')}.`
         : ''
+      const stale = feed.staleSources?.length
+        ? ` Showing previous results from ${feed.staleSources.join(', ')}.`
+        : ''
+      listStatus.textContent = unavailable + stale
     } else {
       listStatus.textContent = 'No articles are available right now. Refresh or paste your own text.'
     }
@@ -334,7 +341,16 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       const item = el('li')
       const open = button(article.title, '', () => openArticle(article, open), 'reading-article-title')
       open.lang = 'en'
-      item.append(open, attribution(article))
+      const meta = attribution(article)
+      if (article.feedHasBody) {
+        const words = article.text.match(/\S+/gu)?.length ?? 0
+        meta.append(' · About ', wordCountFormat.format(words), ' words in feed')
+      } else {
+        meta.append(' · Summary only · Import for full article')
+      }
+      item.append(open)
+      if (article.excerpt) item.append(englishText('p', 'reading-meta reading-article-excerpt', article.excerpt))
+      item.append(meta)
       return item
     }))
   }
@@ -346,15 +362,9 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     feeds.set(selected, { ...previous, pending: true })
     renderIndex()
     try {
-      const result = await api.discover(selected)
-      feeds.set(selected, { ...result, articles: result.articles.length ? result.articles : previous?.articles || [] })
+      feeds.set(selected, await api.discover(selected))
     } catch {
-      feeds.set(selected, previous || { articles: [], unavailableSources: [] })
-      if (selected === category && previous?.articles?.length) {
-        renderIndex()
-        listStatus.textContent = 'Couldn’t refresh. You can still open the articles already loaded.'
-        return
-      }
+      feeds.set(selected, { ...previous, articles: previous?.articles || [], refreshFailed: true })
     }
     if (selected === category) renderIndex()
   }
