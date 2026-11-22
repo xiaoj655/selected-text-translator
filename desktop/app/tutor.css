@@ -193,6 +193,30 @@
 .reading-material summary { width: fit-content; padding: 5px 0; cursor: pointer; color: var(--text-2); }
 .reading-material .reading-preview { margin-block-start: 8px; }
 .reading-preview[data-reading-selectable] { cursor: text; }
+.reading-rich { white-space: normal; }
+.reading-rich [data-reading-plain] { white-space: pre-wrap; }
+.reading-rich :is(p, ul, ol, dl, blockquote, pre, figure, table, details) { margin-block: 1em; }
+.reading-rich :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; line-height: 1.3; margin-block: 1.5em .55em; }
+.reading-rich h1 { font-size: 1.65em; }
+.reading-rich h2 { font-size: 1.4em; }
+.reading-rich h3 { font-size: 1.2em; }
+.reading-rich :is(h4, h5, h6) { font-size: 1em; }
+.reading-rich :is(ul, ol) { padding-inline-start: 1.5em; }
+.reading-rich li { margin-block: .35em; }
+.reading-rich blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 3px solid var(--border-strong); color: var(--text-2); }
+.reading-rich :is(pre, code, kbd, samp) { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: .85em; }
+.reading-rich pre { white-space: pre; overflow-x: auto; padding: 14px; background: var(--surface-2); border-radius: var(--r-sm); }
+.reading-rich pre code { font-size: inherit; }
+.reading-rich figure { margin-inline: 0; }
+.reading-rich :is(img, video) { display: block; max-width: 100%; height: auto; margin-inline: auto; }
+.reading-rich video { width: 100%; max-height: 65vh; background: #111; }
+.reading-rich :is(figcaption, caption) { font-family: var(--font-reading); color: var(--text-2); font-size: .75em; line-height: 1.5; margin-block-start: .5em; }
+.reading-rich table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .9em; }
+.reading-rich :is(th, td) { border: 1px solid var(--border); padding: .5em .7em; text-align: start; }
+.reading-rich a { color: inherit; text-decoration: underline; text-underline-offset: .15em; cursor: pointer; }
+.reading-rich hr { border: 0; border-block-start: 1px solid var(--border); margin-block: 1.5em; }
+.reading-media-status:not([hidden]) { display: block; font-family: var(--font-reading); font-size: 13px; color: var(--text-2); }
+.reading-media-status::before { content: attr(data-label); }
 .reading-sentence-trigger {
   position: fixed;
   z-index: 2;

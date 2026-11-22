@@ -21,7 +21,7 @@ test('IQS import accepts Markdown links and sends the configured key only to the
       assert.equal(init.credentials, 'omit')
       assert.equal(init.redirect, 'error')
       assert.deepEqual(JSON.parse(init.body), {
-        url: URL, maxAge: 0, formats: ['text'], readability: { readabilityMode: 'article' },
+        url: URL, maxAge: 0, formats: ['html', 'text'], readability: { readabilityMode: 'article' },
       })
       return Response.json({ data: DATA })
     },
@@ -30,7 +30,7 @@ test('IQS import accepts Markdown links and sends the configured key only to the
   assert.equal(article.url, URL)
   assert.equal(article.text, TEXT)
   assert.equal(article.kind, 'web_article')
-  assert.equal(article.textTruncated, false)
+  assert.match(article.html, /data-reading-plain/u)
   assert.ok(!JSON.stringify(article).includes(KEY))
 })
 
@@ -72,15 +72,30 @@ test('IQS failures have useful messages and do not expose service-supplied crede
   }), /unreadable response/u)
 })
 
-test('IQS bounds article text and response size', async () => {
+test('IQS preserves long article text while bounding abnormal response size', async () => {
   const article = await importReadingPage(URL, {
     apiKey: KEY, fetchImpl: async () => Response.json({ data: { ...DATA, text: TEXT.repeat(100) } }),
   })
-  assert.equal(article.text.length, 12000)
-  assert.equal(article.textTruncated, true)
+  assert.equal(article.text, TEXT.repeat(100).trim())
+  assert.ok(article.text.length > 12000)
   await assert.rejects(importReadingPage(URL, {
     apiKey: KEY, fetchImpl: async () => new Response('a'.repeat(2 * 1024 * 1024 + 1)),
   }), /response is too large/u)
+})
+
+test('IQS keeps sanitized rich content and resolves media against the final page URL', async () => {
+  const article = await importReadingPage(URL, {
+    apiKey: KEY,
+    fetchImpl: async () => Response.json({ data: {
+      ...DATA, redirectedUrl: 'https://articles.publisher.com/read/story',
+      html: `<h2>A useful heading</h2><p>${TEXT}<strong>Keep this emphasis.</strong></p><figure><img src="../diagram.png"><figcaption>A diagram.</figcaption></figure><script>bad()</script>`,
+    } }),
+  })
+  assert.equal(article.url, 'https://articles.publisher.com/read/story')
+  assert.match(article.html, /<h2>A useful heading<\/h2>/u)
+  assert.match(article.html, /<strong>Keep this emphasis\.<\/strong>/u)
+  assert.match(article.html, /url=https%3A%2F%2Farticles\.publisher\.com%2Fdiagram\.png/u)
+  assert.doesNotMatch(article.html, /script|bad\(\)/u)
 })
 
 test('the saved IQS credential uses the existing encryption and survives storage reload', async () => {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { discoverReadingArticles, READING_SOURCES } from '../src/reading-sources.js'
 
-test('article discovery combines RSS and Atom in date order and keeps article text plain', async () => {
+test('article discovery preserves full plain text and sanitized feed formatting', async () => {
   const [ars, verge] = READING_SOURCES.news
   const body = `An opening paragraph with a <em>nearly seamless</em> quote. ${'Longer text. '.repeat(1000)}`
   const rss = `<rss><channel><item>
@@ -37,7 +37,10 @@ test('article discovery combines RSS and Atom in date order and keeps article te
   assert.equal(first.excerpt, 'A short description.')
   assert.match(first.text, /^An opening paragraph with a nearly seamless quote\./)
   assert.doesNotMatch(first.text, /<em>/)
-  assert.ok(first.text.length <= 12000)
+  assert.ok(first.text.length > 12000)
+  assert.match(first.text, /Another paragraph\.$/u)
+  assert.match(first.html, /<em>nearly seamless<\/em>/u)
+  assert.doesNotMatch(first.html, /script|ignore this/u)
 })
 
 test('discovery retains working sources and rejects links outside the publisher', async () => {

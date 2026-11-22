@@ -240,6 +240,13 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       await page.locator('#reading-start').click()
       await thread.getByText(INTRO, { exact: true }).waitFor()
       assert.equal(inputs[4].article.text, WEB_CLOUD_TEXT)
+      await page.locator('#reading-back').click()
+      await selectArticle(NEWS.title)
+      await page.locator('#reading-import-full').click()
+      await detail.getByRole('heading', { name: WEB_TITLE }).waitFor()
+      assert.equal(await detail.locator('.reading-preview').textContent(), WEB_CLOUD_TEXT)
+      assert.equal(await page.locator('#reading-original').getAttribute('href'), news.url)
+      assert.equal(inputs.length, 5, 'importing the full feed article must not ask the learning model')
     } finally {
       await page.evaluate(() => chrome.storage.sync.remove('desktop_iqs_api_key'))
       releaseFollowup()

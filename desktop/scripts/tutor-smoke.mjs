@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { createStorage } from '../src/storage.js'
 import { createReadingTutor } from '../src/reading-tutor.js'
+import { buildReadingContext, READING_TEXT_BUDGET } from '../src/reading-context.js'
 import { createTutor } from '../src/tutor.js'
 
 const DAY_MS = 86400000
@@ -165,19 +166,105 @@ test('article reading sends bounded discussion context and only displays verifia
   })
 
   const userText = 'The team chose fast feedback over full test coverage.'
+  const fullText = userText.padEnd(12000, 'x') + ' omitted'
   const followup = await tutor.ask({
-    article: { text: userText.padEnd(12000, 'x') + ' omitted', excerpt },
+    article: { text: fullText, excerpt },
     history: [...Array.from({ length: 9 }, () => ({ role: 'assistant', text: 'a'.repeat(4000) })),
       { role: 'system', text: 'This should remain outside the discussion context.' }],
     question: '  这里有什么取舍？  ',
   })
   assert.equal(followup.quote, '')
-  assert.ok(requests[1].article.text.startsWith(userText))
-  assert.equal(requests[1].article.text.length, 12000)
+  assert.equal(followup.contextPartial, true)
+  assert.ok(requests[1].article.text.includes(userText))
+  assert.ok(requests[1].article.text.length <= READING_TEXT_BUDGET)
+  assert.ok(requests[1].article.text.endsWith('omitted'))
+  assert.equal(requests[1].article.textIsPartial, true)
+  assert.equal(requests[1].article.totalTextLength, fullText.length)
   assert.equal(requests[1].article.kind, 'pasted_text')
-  assert.equal(requests[1].history.length, 7)
+  assert.equal(requests[1].history.length, 2)
   assert.ok(requests[1].history.every((turn) => turn.role === 'assistant' && turn.text.length === 3000))
+  assert.ok(requests[1].history.reduce((length, turn) => length + turn.text.length, 0) <= 8000)
   assert.equal(requests[1].question, '这里有什么取舍？')
+})
+
+function longReadingArticle() {
+  const paragraphs = Array.from({ length: 48 }, (_, index) => {
+    const heading = `Finding ${String(index).padStart(2, '0')}`
+    const detail = index === 43 ? 'The copperbridge mechanism isolates the failed queue.'
+      : `The measurement for section ${index} supports the decision recorded in its own experiment.`
+    return `${heading}\n\n${detail} ${'Engineers documented a repeatable observation and checked the assumptions before changing the system. '.repeat(7)}`
+  })
+  return {
+    title: 'How the team evaluated the rollout', kind: 'web_article',
+    text: paragraphs.join('\n\n').trimEnd(),
+    html: paragraphs.map((paragraph) => {
+      const [heading, detail] = paragraph.split('\n\n')
+      return `<h2>${heading}</h2><p>${detail}</p>`
+    }).join(''),
+  }
+}
+
+test('long article openings cover the article and preserve its full stored text', () => {
+  const article = longReadingArticle()
+  const fullText = article.text
+  const context = buildReadingContext(article)
+  assert.equal(article.text, fullText)
+  assert.equal(context.article.totalTextLength, fullText.length)
+  assert.equal(context.article.textIsPartial, true)
+  assert.ok(context.article.text.includes('Finding 00'))
+  assert.ok(context.article.text.includes('Finding 47'))
+  assert.ok(context.article.text.includes('section 23') || context.article.text.includes('Finding 24'))
+  assert.ok(context.article.headings.includes('Finding 43'))
+  assert.ok(context.article.text.length + context.article.headings.join('').length <= READING_TEXT_BUDGET)
+  assert.ok(context.passages.every((passage) => fullText.includes(passage) && !passage.includes('omitted article passages')))
+})
+
+test('long article questions retrieve late passages and their neighbors without another model call', () => {
+  const article = longReadingArticle()
+  const context = buildReadingContext(article, { question: 'Why does the copperbridge mechanism matter?' })
+  assert.ok(context.article.text.includes('The copperbridge mechanism isolates the failed queue.'))
+  assert.ok(context.article.text.includes('Finding 43'))
+  assert.ok(context.article.text.includes('Finding 44'))
+  const focusText = article.text.split('\n\n')[85]
+  const focused = buildReadingContext(article, { question: '这段话是什么意思？', focusText })
+  assert.ok(focused.article.text.includes(focusText))
+  const quoted = buildReadingContext(article, { question: 'Explain “The copperbridge mechanism isolates the failed queue.”' })
+  assert.ok(quoted.article.text.includes('The copperbridge mechanism isolates the failed queue.'))
+  const invalidFocus = 'This sentence is not present in the source article.'
+  const invalid = buildReadingContext(article, { question: '这段话是什么意思？', focusText: invalidFocus })
+  assert.ok(!invalid.article.text.includes(invalidFocus))
+})
+
+test('reading context keeps paragraph offsets with indented text and single newlines', () => {
+  const text = 'First paragraph.\n\n  Second paragraph\nwith another line.\n\nThird paragraph.'
+  const context = buildReadingContext({ text })
+  assert.equal(context.article.text, text)
+  assert.deepEqual(context.passages, ['First paragraph.', 'Second paragraph\nwith another line.', 'Third paragraph.'])
+})
+
+test('reading quotes must belong to one supplied original passage', async (t) => {
+  const { storage } = await createFixture(t)
+  const article = longReadingArticle()
+  const attempts = []
+  const tutor = createReadingTutor({ storage, fetcher: async (_url, options) => {
+    const request = JSON.parse(JSON.parse(options.body).messages[1].content)
+    let quote
+    if (attempts.length === 0) {
+      quote = article.text.split('\n\n').find((paragraph) => paragraph.startsWith('Finding ')
+        && !request.article.text.includes(paragraph))
+      assert.ok(quote, 'the long fixture must leave some source passages outside the request')
+    } else if (attempts.length === 1) {
+      quote = 'First claim.\n\nSecond claim.'
+      assert.ok(request.article.text.includes(quote))
+    } else quote = 'The copperbridge mechanism isolates the failed queue.'
+    attempts.push(quote)
+    const content = JSON.stringify({ reply: 'The supplied passage explains the trade-off.', quote, followups: [] })
+    return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) }
+  } })
+  assert.equal((await tutor.ask({ article })).quote, '')
+  assert.equal((await tutor.ask({ article: { text: 'First claim.\n\nSecond claim.' } })).quote, '')
+  assert.equal((await tutor.ask({ article, question: 'Explain the copperbridge mechanism.' })).quote, attempts[2])
+  assert.equal(attempts.length, 3, 'each explicit ask should make exactly one request')
 })
 
 test('article reading validates configuration and surfaces malformed model replies', async () => {

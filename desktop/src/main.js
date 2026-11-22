@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell } from 'electron'
 import { createStorage, setCrypto } from './storage.js'
 import { createHistory } from './history.js'
 import { installMainChrome } from './chrome-shim-main.js'
@@ -13,6 +13,8 @@ import { coachError, createTutor } from './tutor.js'
 import { discoverReadingArticles } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
+import { publicReadingUrl } from './reading-network.js'
+import { handleReadingMediaRequest } from './reading-media.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
 import { createRequestDebug } from './request-debug.js'
 import { createDesktopUpdater, fetchReleasePage, findDesktopUpdate } from './update.js'
@@ -26,6 +28,9 @@ const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 const API_CREDENTIAL_KEYS = ['api_key', 'desktop_tts_api_key', 'desktop_iqs_api_key']
 const IQS_CONSOLE_URL = 'https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape'
 const BAILIAN_CONSOLE_URL = 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key'
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'stt-media',
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
 let logFile = ''
 let windows
@@ -128,12 +133,14 @@ function installReadingIpc(storage, fetcher) {
     'stt:reading-console'() {
       return shell.openExternal(IQS_CONSOLE_URL)
     },
-    'stt:reading-discuss'({ articleId, pastedText, question, history } = {}) {
+    'stt:reading-discuss'({ articleId, pastedText, question, history, focusText } = {}) {
       const article = articleId
         ? articles.get(articleId)
-        : typeof pastedText === 'string' && { title: 'Pasted text', text: pastedText.slice(0, 12000).trim() }
+        : typeof pastedText === 'string' && { title: 'Pasted text', text: pastedText.trim() }
       if (!article) throw coachError('This article is no longer in the list. Refresh and choose it again.')
-      return readingTutor.ask({ article, question, history })
+      const focus = typeof focusText === 'string' && focusText.trim().length <= 12000
+        && article.text?.includes(focusText.trim()) ? focusText.trim() : ''
+      return readingTutor.ask({ article, question, history, focusText: focus })
     },
     'stt:reading-open'(articleId) {
       const article = articles.get(articleId)
@@ -158,6 +165,10 @@ function installIpc(storage, history, requestDebug) {
   ipcMain.handle('stt:history-clear', () => history.clear())
   ipcMain.handle('stt:app-version', () => app.getVersion())
   ipcMain.handle('stt:open-releases', () => shell.openExternal(RELEASES_URL))
+  ipcMain.handle('stt:reading-link', (event, url) => {
+    if (!isMainWindowEvent(event)) throw new Error('Open the main window to follow an article link.')
+    return shell.openExternal(publicReadingUrl(url).href)
+  })
   ipcMain.handle('stt:open-bailian-console', (event) => {
     if (!isMainWindowEvent(event)) throw new Error('Open Settings in the main window.')
     return shell.openExternal(BAILIAN_CONSOLE_URL)
@@ -238,6 +249,7 @@ function installIpc(storage, history, requestDebug) {
 }
 
 async function bootstrap() {
+  protocol.handle('stt-media', handleReadingMediaRequest)
   if (process.platform === 'darwin') {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: app.name, submenu: [{ role: 'about' }, { role: 'quit' }] },

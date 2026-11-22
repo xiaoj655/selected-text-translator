@@ -1,6 +1,39 @@
 import { getSentenceSegments } from '../vendor/src/context-sentence.js'
 
 const indexes = new WeakMap()
+const MAX_CONTEXT_LENGTH = 2400
+const INTERACTIVE_CONTENT = 'a, button, input, textarea, select, summary, video, audio, iframe'
+
+function sentenceSpans(text) {
+  return getSentenceSegments(text).flatMap(({ index, segment }) => {
+    const sentence = segment.trim()
+    if (!sentence) return []
+    const start = index + segment.length - segment.trimStart().length
+    return [{ start, end: start + sentence.length }]
+  })
+}
+
+// Keep whole sentences around the selection. The length limit is only a
+// fallback for unusually long sentences, matching the shared request contract.
+export function readingSentenceContext(text, start, end, sentences = sentenceSpans(text)) {
+  const empty = { context: '', contextStart: null, contextEnd: null }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > text.length) return empty
+  const first = sentences.findIndex((sentence) => sentence.end > start)
+  if (first < 0 || sentences[first].start >= end) return empty
+  let last = first
+  while (last + 1 < sentences.length && sentences[last + 1].start < end) last += 1
+  const before = Math.max(0, first - 1)
+  const after = Math.min(sentences.length - 1, last + 1)
+  // Prefer both neighbours, then a complete neighbour, then the selected
+  // sentence(s) alone. Never cut a sentence to fill a character window.
+  for (const [from, to] of [[before, after], [before, last], [first, after], [first, last]]) {
+    const contextStart = sentences[from].start
+    const contextEnd = sentences[to].end
+    if (contextStart > start || contextEnd < end || contextEnd - contextStart > MAX_CONTEXT_LENGTH) continue
+    return { context: text.slice(contextStart, contextEnd), contextStart: start - contextStart, contextEnd: end - contextStart }
+  }
+  return empty
+}
 
 function textIndex(material) {
   const text = material.textContent
@@ -10,8 +43,7 @@ function textIndex(material) {
     text,
     words: Array.from(text.matchAll(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’\-‐‑][\p{L}\p{M}\p{N}]+)*/gu), ({ 0: word, index: start }) =>
       ({ start, end: start + word.length })),
-    sentences: getSentenceSegments(text).map(({ index: start, segment }) =>
-      ({ start, end: start + segment.trimEnd().length })),
+    sentences: sentenceSpans(text),
   }
   indexes.set(material, index)
   return index
@@ -22,6 +54,11 @@ function materialFor(node, root) {
   const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
   const material = element?.closest('.reading-preview[data-reading-selectable]')
   return material && root.contains(material) ? material : null
+}
+
+function isInteractiveContent(node) {
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
+  return Boolean(element?.closest(INTERACTIVE_CONTENT))
 }
 
 export function readingSelection(root) {
@@ -86,6 +123,7 @@ function wordAtPoint(root, x, y, dragStart = null) {
   const caret = document.caretRangeFromPoint(x, y)
   const material = caret && materialFor(caret.startContainer, root)
   if (!material || (dragStart && material !== dragStart.material)) return null
+  if (!dragStart && isInteractiveContent(caret.startContainer)) return null
   const offset = offsetBefore(material, caret)
   const { words } = textIndex(material)
   const index = firstEndingAtOrAfter(words, offset)
@@ -139,20 +177,10 @@ function selectionFromRange(material, originalRange) {
   const end = start + text.length
   const fullText = material.textContent
   if (fullText.slice(start, end) !== text) return null
-  // Centre a bounded context on the exact occurrence, including words near the
-  // end of long pasted articles. Do not truncate the article from its beginning.
-  let windowStart = Math.max(0, start - Math.floor(Math.max(0, 2400 - text.length) / 2))
-  windowStart = Math.min(windowStart, Math.max(0, fullText.length - 2400))
-  if (/[\uDC00-\uDFFF]/u.test(fullText[windowStart] || '')) windowStart += 1
-  let windowEnd = Math.min(fullText.length, windowStart + 2400)
-  if (/[\uD800-\uDBFF]/u.test(fullText[windowEnd - 1] || '')) windowEnd -= 1
-  const hasContext = text.length <= 2400 && end <= windowEnd
   const range = originalRange.cloneRange()
   return {
     material, range, text, start, end, sentenceEnd: Math.max(end, sentenceAt(material, end)?.end || 0),
-    context: hasContext ? fullText.slice(windowStart, windowEnd) : '',
-    contextStart: hasContext ? start - windowStart : null,
-    contextEnd: hasContext ? end - windowStart : null,
+    ...readingSentenceContext(fullText, start, end, textIndex(material).sentences),
   }
 }
 
@@ -226,6 +254,10 @@ export function installReadingSelection(root, onSelect, scroller) {
   }
 
   function hover(event) {
+    if (isInteractiveContent(event.target)) {
+      scheduleHideSentence()
+      return
+    }
     const word = wordAtPoint(root, event.clientX, event.clientY)
     const sentence = word && sentenceAt(word.material, word.start)
     if (!sentence || sentence.end - sentence.start > 12000) {
@@ -273,7 +305,8 @@ export function installReadingSelection(root, onSelect, scroller) {
   }, true)
 
   root.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || event.detail !== 1 || hasModifier(event) || !materialFor(event.target, root)) return
+    if (event.button !== 0 || event.detail !== 1 || hasModifier(event) || isInteractiveContent(event.target)
+      || !materialFor(event.target, root)) return
     const word = wordAtPoint(root, event.clientX, event.clientY)
     if (!word) return
     drag = { ...word, x: event.clientX, y: event.clientY, active: false }
@@ -322,13 +355,14 @@ export function installReadingSelection(root, onSelect, scroller) {
       return
     }
     const material = materialFor(event.target, root)
-    if (!material) return
+    if (!material || isInteractiveContent(event.target)) return
     const selection = readingSelection(root)
     if (selection?.material === material && (event.detail > 1 || !sameRange(selection.range, selectionBeforePointer))) onSelect(selection)
   })
 
   root.addEventListener('click', (event) => {
-    if (ignoreClick || event.detail !== 1 || hasModifier(event) || !materialFor(event.target, root)) return
+    if (ignoreClick || event.detail !== 1 || hasModifier(event) || isInteractiveContent(event.target)
+      || !materialFor(event.target, root)) return
     const selection = readingSelection(root)
     if (selection && !sameRange(selection.range, selectionBeforePointer)) return
     clearWord()

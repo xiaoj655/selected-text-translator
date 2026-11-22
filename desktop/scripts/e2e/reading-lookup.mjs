@@ -370,7 +370,6 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(await page.locator('#reading-lookup-text').textContent(), 'method')
 
         await openPastedText(page, LONG_PASSAGE)
-        await page.locator('.reading-material summary').click()
         await clickWord(page, 'record', 1)
         await page.locator('#reading-lookup-result').getByText('录制采访', { exact: true }).waitFor()
         const tail = inputs.at(-1).data

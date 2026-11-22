@@ -167,6 +167,7 @@ window.sttDesktop = {
     openConsole: () => ipcRenderer.invoke('stt:reading-console'),
     discuss: (input) => ipcRenderer.invoke('stt:reading-discuss', input),
     openArticle: (id) => ipcRenderer.invoke('stt:reading-open', id),
+    openLink: (url) => ipcRenderer.invoke('stt:reading-link', url),
   },
   getFlags() {
     return ipcRenderer.invoke('stt:get-flags')

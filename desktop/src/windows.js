@@ -138,6 +138,9 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       main.webContents.once('did-finish-load', resolve)
     })
     bindMainZoom(main.webContents)
+    // Article links are opened through the reading IPC, never in the app page.
+    main.webContents.on('will-navigate', (event) => event.preventDefault())
+    main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     main.setAlwaysOnTop(alwaysOnTop, 'floating')
     main.loadFile(join(appDir, 'index.html'))
     main.on('close', (event) => {

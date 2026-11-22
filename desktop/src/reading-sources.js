@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { normalizeReadingContent } from './reading-content.js'
 
 export const READING_SOURCES = {
   news: [
@@ -19,7 +20,6 @@ const MAX_FEED_BYTES = 2 * 1024 * 1024
 const REQUEST_TIMEOUT_MS = 8000
 const ARTICLES_PER_SOURCE = 4
 const EXCERPT_LENGTH = 380
-const TEXT_LENGTH = 12000
 
 const ENTITIES = new Map(Object.entries({
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ',
@@ -121,8 +121,10 @@ function readArticle(entry, source) {
   const title = htmlToText(entry.fields.get('title') ?? '').replace(/\s+/g, ' ').slice(0, 300)
   if (!url || !title) return null
 
-  const summary = htmlToText(entry.fields.get('description') ?? entry.fields.get('summary') ?? '')
-  const body = htmlToText(entry.fields.get('content:encoded') ?? entry.fields.get('content') ?? '')
+  const summaryHtml = entry.fields.get('description') ?? entry.fields.get('summary') ?? ''
+  const bodyHtml = entry.fields.get('content:encoded') ?? entry.fields.get('content') ?? ''
+  const summary = htmlToText(summaryHtml)
+  const body = htmlToText(bodyHtml)
   const excerpt = (summary || body).replace(/\s+/g, ' ')
   if (!excerpt) return null
   const date = Date.parse(entry.fields.get('pubDate') ?? entry.fields.get('published') ?? entry.fields.get('updated'))
@@ -134,9 +136,7 @@ function readArticle(entry, source) {
     url,
     excerpt: excerpt.length > EXCERPT_LENGTH ? `${excerpt.slice(0, EXCERPT_LENGTH).trimEnd()}…` : excerpt,
   }
-  const text = body.length > summary.length ? body : summary
-  if (text.length > EXCERPT_LENGTH) article.text = text.slice(0, TEXT_LENGTH).trimEnd()
-  return article
+  return { ...article, ...normalizeReadingContent(body.length > summary.length ? bodyHtml : summaryHtml, { baseUrl: url }) }
 }
 
 function newestFirst(a, b) {

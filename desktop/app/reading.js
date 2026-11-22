@@ -1,5 +1,6 @@
 import { button, coachErrorText, createReviewWorkspace, el, englishText } from './tutor.js'
 import { createReadingLookup } from './reading-lookup.js'
+import { createReadingMaterial, readingFocusText } from './reading-material.js'
 
 export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }) {
   const shell = el('div', 'tutor-shell')
@@ -138,6 +139,12 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   let activePanel = null
   const feeds = new Map()
   const sessions = new Map()
+  const readingPositions = new WeakMap()
+  scroller.addEventListener('scroll', () => {
+    if (!activePanel) return
+    const focus = readingFocusText(activePanel, scroller)
+    if (focus) readingPositions.set(activePanel, focus)
+  })
 
   function renderIndex() {
     const feed = feeds.get(category)
@@ -193,6 +200,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
 
   function showPanel(panel) {
     lookup.close()
+    for (const video of activePanel?.querySelectorAll('video') || []) video.pause()
     activePanel?.remove()
     activePanel = panel
     index.hidden = Boolean(panel)
@@ -213,7 +221,6 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     const input = englishText('textarea', 'reading-input')
     input.id = 'reading-paste-text'
     input.required = true
-    input.maxLength = 12000
     input.rows = 8
     label.htmlFor = input.id
     const submit = el('button', 'primary', 'Open text')
@@ -305,11 +312,12 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       panel.append(meta)
     }
     const excerpt = article.excerpt || article.text
-    if (article.kind === 'web_article') {
-      const material = englishText('p', 'reading-preview', article.text)
+    const materialOptions = { openLink: (url) => api.openLink(url),
+      onError: () => { status.textContent = 'Couldn’t open the link. Try the original article.' } }
+    if (article.kind === 'web_article' || article.html || pastedText) {
+      const material = createReadingMaterial(article, materialOptions)
       lookup.bindMaterial(material, article)
       panel.append(material)
-      if (article.textTruncated) panel.append(el('p', 'reading-meta', 'Open the original to continue reading.'))
     } else if (excerpt) {
       const limit = 620
       const preview = excerpt.length > limit ? `${excerpt.slice(0, limit).trimEnd()}…` : excerpt
@@ -328,6 +336,23 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       }
     } else {
       panel.append(el('p', 'reading-meta', 'This feed only provides a headline. Open the original or paste a passage to read here.'))
+    }
+    if (article.url && article.kind !== 'web_article') {
+      const importFull = button('Import full article', 'reading-import-full', async () => {
+        if (importFull.disabled) return
+        importFull.disabled = true
+        importStatus.textContent = 'Importing article…'
+        try {
+          const full = await api.importPage(article.url)
+          if (activePanel === panel) openArticle(full, origin)
+        } catch (error) {
+          importStatus.textContent = coachErrorText(error, 'Couldn’t import the full article. Open the original to continue.')
+        } finally { importFull.disabled = false }
+      })
+      const importStatus = el('span', 'reading-meta')
+      const importTools = el('div', 'reading-tools')
+      importTools.append(importFull, importStatus)
+      panel.append(importTools)
     }
 
     const thread = el('div', 'reading-thread')
@@ -392,7 +417,8 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       try {
         const history = state.turns.slice(-8).map(({ role, text, quote }) =>
           ({ role, text: quote ? `${text}\n${quote}` : text }))
-        const result = await api.discuss({ articleId: article.id, pastedText, question, history })
+        const result = await api.discuss({ articleId: article.id, pastedText, question, history,
+          focusText: question ? readingFocusText(panel, scroller) || readingPositions.get(panel) || '' : '' })
         if (question) {
           const userTurn = { role: 'user', text: question }
           state.turns.push(userTurn)
@@ -403,7 +429,8 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
         state.turns.push(tutorTurn)
         appendTurn(tutorTurn)
         renderSuggestions(result.followups)
-        status.textContent = ''
+        status.textContent = result.contextPartial
+          ? 'Coach is using selected passages from this long article. Scroll to a passage to ask about it.' : ''
         if (panel.isConnected && !panel.closest('[hidden]')) {
           if (document.activeElement === document.body) input.focus({ preventScroll: true })
           thread.lastElementChild.scrollIntoView({ block: 'nearest' })
