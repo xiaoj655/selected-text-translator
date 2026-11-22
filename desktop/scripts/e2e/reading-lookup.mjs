@@ -7,6 +7,7 @@ const LONG_PASSAGE = 'A record keeps earlier decisions available. '
   + 'Background information gives readers more detail about the project. '.repeat(55)
   + '\n\nWe will record a new interview at the end of this article.'
 const DRAG_SENTENCE = 'The editor’s well-known method for gradually moving the release back until the testing team is ready helps engineers avoid mistakes.'
+const LAYERED_SELECTION = "There are some kinds of work that you can't do well without thinking differently from your peers. To be a successful scientist"
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const needsStructure = (body) => body.messages[0].content.includes('Return only a JSON object with the key "structure"')
 
@@ -390,6 +391,108 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(inputs.at(-1).isGuide, true, 'first lookup after reload should use the saved mode')
       })
     } finally {
+      mock.resetHandler()
+    }
+  })
+
+  await check('article lookup: complete sentence with a trailing fragment keeps its main clause and optional clause detail', async () => {
+    const clause = "that you can't do well without thinking differently from your peers"
+    const connection = 'The clause beginning with “that” identifies the work. “Can’t … without” makes a different way of thinking necessary.'
+    const fragment = 'This starts another sentence, but its main clause is not selected.'
+    const meaning = 'Some kinds of work require thinking differently from your peers.'
+    const analysisGate = deferred()
+    const requests = []
+    const analysis = {
+      structure: [
+        { role: 'subject', text: 'There' },
+        { role: 'verb', text: 'are' },
+        { role: 'complement', text: 'some kinds of work' },
+      ],
+      sentenceAnalysis: {
+        connections: [
+          { text: 'There are', explanation: '“There are” introduces things that exist. “There” is a dummy subject; this clause has no object.' },
+          { text: clause, explanation: connection },
+        ],
+        clauses: [{
+          text: clause,
+          explanation: '“You” is the subject; “can’t do” is the verb; “that” stands for the work and is its object.',
+          structure: [
+            { role: 'object', text: 'that' },
+            { role: 'subject', text: 'you' },
+            { role: 'verb', text: "can't do" },
+          ],
+        }],
+        fragments: [{ text: 'To be a successful scientist', explanation: fragment }],
+      },
+    }
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const data = sourceData(body)
+      if (data?.selectedText !== LAYERED_SELECTION) return defaultResponse({ body, res })
+      const kind = needsStructure(body) ? 'structure'
+        : body.messages[0].content.includes('You are a patient reading tutor.') ? 'guide' : 'translate'
+      requests.push(kind)
+      if (kind === 'structure') {
+        await analysisGate.promise
+        return reply(res, analysis)
+      }
+      if (kind === 'translate') return reply(res, { translation: meaning })
+      reply(res, {
+        guideType: 'sentence',
+        hints: ['“There are some kinds of work” is the main clause.', connection],
+        answer: { meaning, explanation: connection },
+        ...analysis,
+      })
+    })
+    const articleHighlights = () => page.evaluate(() => Object.fromEntries(
+      ['selection', 'subject', 'verb', 'object', 'complement'].flatMap((role) => {
+        const ranges = CSS.highlights.get(`reading-lookup-${role}`)
+        return ranges ? [[role, [...ranges].map((range) => range.toString())]] : []
+      }),
+    ))
+    const mainHighlights = { subject: ['There'], verb: ['are'], complement: ['some kinds of work'] }
+    try {
+      await withState(page, async () => {
+        await openPastedText(page, `${LAYERED_SELECTION}, you need to ask useful questions.`)
+        await selectText(page, LAYERED_SELECTION)
+        await page.locator('#reading-lookup-translate').click()
+        const result = page.locator('#reading-lookup-result')
+        await result.getByText(meaning, { exact: true }).waitFor()
+        await until(() => requests.includes('structure'), 'the optional multi-sentence analysis request')
+        assert.equal(await result.locator('.sentence-analysis').count(), 0, 'translation must display before optional analysis')
+        assert.deepEqual(await articleHighlights(), { selection: [LAYERED_SELECTION] })
+        analysisGate.resolve()
+        await result.getByText(connection, { exact: true }).waitFor()
+        await result.getByText(fragment, { exact: true }).waitFor()
+        assert.deepEqual(await articleHighlights(), mainHighlights)
+        assert.deepEqual(await result.locator('.sentence-legend').first().locator('li').allTextContents(), ['Subject', 'Verb', 'Complement'])
+        const details = result.locator('details.sentence-explore')
+        assert.equal(await details.evaluate((node) => node.open), false)
+        await shot?.(page, 'main-article-layered-sentence')
+        const beforeExpand = requests.length
+        await details.locator('summary').click()
+        await result.locator('.sentence-clause-source').waitFor({ state: 'visible' })
+        assert.deepEqual(await result.locator('.sentence-clause-source mark').allTextContents(), ['that', 'you', "can't do"])
+        assert.deepEqual(await result.locator('.sentence-clause-source mark').evaluateAll((marks) => marks.map((mark) => mark.dataset.role)), ['object', 'subject', 'verb'])
+        assert.deepEqual(await articleHighlights(), mainHighlights, 'opening clause detail must leave the article focused on the main clause')
+        assert.equal(requests.length, beforeExpand, 'opening existing clause detail must not request the model again')
+        await result.locator('.sentence-clause-source').scrollIntoViewIfNeeded()
+        await shot?.(page, 'main-article-layered-sentence-detail')
+
+        await page.locator('#reading-lookup-guide').click()
+        await result.locator('.hint').first().waitFor()
+        await result.getByText(fragment, { exact: true }).waitFor()
+        assert.deepEqual(await articleHighlights(), mainHighlights)
+        const guideDetails = result.locator('details.sentence-explore')
+        if (!await guideDetails.evaluate((node) => node.open)) await guideDetails.locator('summary').click()
+        const beforeReveal = requests.length
+        await result.getByRole('button', { name: 'Reveal answer', exact: true }).click()
+        await result.locator('.answer').getByText(meaning, { exact: false }).waitFor()
+        assert.equal(await guideDetails.evaluate((node) => node.open), true, 'revealing the answer must preserve expanded clause detail')
+        assert.equal(requests.length, beforeReveal, 'revealing the existing answer must not request the model again')
+        assert.deepEqual(await articleHighlights(), mainHighlights)
+      })
+    } finally {
+      analysisGate.resolve()
       mock.resetHandler()
     }
   })

@@ -31,7 +31,7 @@ const guide = {
   ],
 };
 
-async function createHarness(t, provider, { baseUrl = DASHSCOPE_URL, extension = false } = {}) {
+async function createHarness(t, provider, { baseUrl = DASHSCOPE_URL, extension = false, model = 'qwen-mt-flash' } = {}) {
   const previousChrome = globalThis.chrome;
   const previousScope = globalThis.ServiceWorkerGlobalScope;
   if (extension) globalThis.ServiceWorkerGlobalScope = class ServiceWorkerGlobalScope {};
@@ -52,7 +52,7 @@ async function createHarness(t, provider, { baseUrl = DASHSCOPE_URL, extension =
     storage: {
       onChanged: { addListener() {} },
       sync: { async get() {
-        return { base_url: baseUrl, api_key: 'test-key', model: 'qwen-mt-flash', learning_model: 'qwen3.8-flash' };
+        return { base_url: baseUrl, api_key: 'test-key', model, learning_model: 'qwen3.8-flash' };
       } },
     },
     tabs: { sendMessage(_id, { payload }, _options, done) { events.push(payload); done(); } },
@@ -68,8 +68,8 @@ async function createHarness(t, provider, { baseUrl = DASHSCOPE_URL, extension =
   return {
     events,
     requests,
-    start(text, kind = 'guide', requestId = 'request') {
-      dispatch({ type: 'START_TRANSLATION', payload: { text, kind, requestId, selectionId: 'selection' } });
+    start(text, kind = 'guide', requestId = 'request', options = {}) {
+      dispatch({ type: 'START_TRANSLATION', payload: { text, kind, requestId, selectionId: 'selection', ...options } });
     },
     cancel(requestId = 'request') {
       dispatch({ type: 'CANCEL_TRANSLATION', payload: { requestId } });
@@ -194,4 +194,61 @@ test('generic endpoints and the browser retain non-streaming guide requests', as
       assert.deepEqual(harness.events.map(({ status }) => status), ['started', 'success']);
     });
   }
+});
+
+test('desktop translation finishes before layered analysis and reuses both on a cache hit', async (t) => {
+  const text = 'There are some kinds of work that you cannot do alone. To be a scientist';
+  const fragment = 'To be a scientist';
+  let releaseAnalysis;
+  const gate = new Promise((resolve) => { releaseAnalysis = resolve; });
+  t.after(() => releaseAnalysis());
+  const harness = await createHarness(t, async (body) => {
+    const isAnalysis = body.messages[0].content.includes('Return only a JSON object with the key "structure"');
+    if (isAnalysis) await gate;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(isAnalysis ? {
+      structure: [
+        { role: 'subject', text: 'There' }, { role: 'verb', text: 'are' },
+        { role: 'complement', text: 'some kinds of work' },
+      ],
+      sentenceAnalysis: {
+        connections: [{ text: 'that you cannot do alone', explanation: 'This clause describes work.' }],
+        fragments: [{ text: fragment, explanation: 'The main clause is missing from this selection.' }],
+      },
+    } : { translation: '有些工作不能独自完成。要成为科学家……' }) } }] });
+  }, { model: 'generic' });
+  harness.start(text, 'translate', 'first', { includeSentenceStructure: true });
+  const translated = await harness.event('success', 'first');
+  assert.ok(translated.translatedText);
+  assert.equal(harness.events.some(({ status }) => status === 'structure'), false);
+  releaseAnalysis();
+  const analysis = await harness.event('structure', 'first');
+  assert.deepEqual(analysis.structure.map(({ role }) => role), ['subject', 'verb', 'complement']);
+  assert.equal(text.slice(analysis.sentenceAnalysis.fragments[0].start,
+    analysis.sentenceAnalysis.fragments[0].end), fragment);
+  await wait(0);
+  harness.start(text, 'translate', 'cached', { includeSentenceStructure: true });
+  const cached = await harness.event('success', 'cached');
+  assert.deepEqual(cached.sentenceAnalysis, analysis.sentenceAnalysis);
+  assert.deepEqual(cached.structure, analysis.structure);
+  assert.equal(harness.requests.length, 2, 'reuse must not trigger another paid analysis');
+});
+
+test('late optional sentence analysis cannot overwrite a newer desktop lookup', async (t) => {
+  let finishAnalysis;
+  const gate = new Promise((resolve) => { finishAnalysis = resolve; });
+  t.after(() => finishAnalysis());
+  const harness = await createHarness(t, async (body) => {
+    const isAnalysis = body.messages[0].content.includes('Return only a JSON object with the key "structure"');
+    if (isAnalysis) await gate;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(isAnalysis
+      ? { structure: [{ role: 'verb', text: 'left' }] }
+      : { translation: 'Translated.' }) } }] });
+  }, { model: 'generic' });
+  harness.start('She left. To be ready', 'translate', 'old', { includeSentenceStructure: true });
+  await harness.event('success', 'old');
+  harness.start('New lookup.', 'translate', 'new');
+  await harness.event('success', 'new');
+  finishAnalysis();
+  await wait(10);
+  assert.equal(harness.events.some(({ status }) => status === 'structure'), false);
 });

@@ -464,6 +464,8 @@ function buildJson() {
       translatedText: entry.translatedText || '',
       lexical: entry.lexical || null,
       guide: entry.guide || null,
+      structure: entry.structure || null,
+      sentenceAnalysis: entry.sentenceAnalysis || null,
       error: entry.error || '',
       createdAt: entry.createdAt,
     })),
@@ -1280,7 +1282,7 @@ function workbenchMemoryKey(text, mode) {
   const withStructure = mode === 'guide' ? supportsSentenceStructure(text, state.sourceLanguage)
     : supportsTranslationStructure(text, state.sourceLanguage)
   const key = makeMemoryKey({
-    text: withStructure ? '' : text, mode: withStructure ? `${mode}-structure` : mode,
+    text: withStructure ? '' : text, mode: withStructure ? `${mode}-structure-v2` : mode,
     targetLanguage: state.targetLanguage, sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary,
   })
   // Highlights are offsets into the verbatim input. The ordinary memory key folds whitespace.
@@ -1344,6 +1346,7 @@ function submit(options = {}) {
     entry.lexical = cached.lexical || null
     entry.guide = cached.guide || null
     entry.structure = cached.structure || null
+    entry.sentenceAnalysis = cached.sentenceAnalysis || null
     entry.fromMemory = true
     state.lastElapsed = 0
   }
@@ -1385,6 +1388,7 @@ function handleTranslationEvent(payload) {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
         entry.structure = payload.structure || null
+        entry.sentenceAnalysis = payload.sentenceAnalysis || null
         if (!entry.translatedText) {
           entry.status = 'error'
           entry.error = 'The model returned no translation. Try again or choose another model.'
@@ -1405,6 +1409,7 @@ function handleTranslationEvent(payload) {
           lexical: entry.lexical,
           guide: entry.guide,
           structure: entry.structure,
+          sentenceAnalysis: entry.sentenceAnalysis,
         })
         try {
           Promise.resolve(chrome.storage.local.set({ translation_memory: state.translationMemory })).catch(() => {})
@@ -1415,7 +1420,8 @@ function handleTranslationEvent(payload) {
     case 'structure':
       if (entry.mode !== 'translate' || entry.status !== 'done') return
       entry.structure = payload.structure
-      if (entry.memoryKey && sentenceStructure(entry).length) {
+      entry.sentenceAnalysis = payload.sentenceAnalysis || null
+      if (entry.memoryKey && (sentenceStructure(entry).length || entry.sentenceAnalysis)) {
         state.translationMemory = writeMemoryEntry(state.translationMemory, entry.memoryKey, entry)
         void chrome.storage.local.set({ translation_memory: state.translationMemory }).catch(() => {})
       }
@@ -1614,6 +1620,7 @@ function startCompanionEntry(entry, mode) {
     companion.lexical = cached.lexical || null
     companion.guide = cached.guide || null
     companion.structure = cached.structure || null
+    companion.sentenceAnalysis = cached.sentenceAnalysis || null
     companion.fromMemory = true
   }
   stopActiveSpeech()
@@ -1924,6 +1931,8 @@ function regenerate(entry) {
   entry.lexical = null
   entry.guide = null
   entry.structure = null
+  entry.sentenceAnalysis = null
+  entry.analysisExpanded = false
   entry.error = ''
   entry.createdAt = Date.now()
   entry.hintCount = 1

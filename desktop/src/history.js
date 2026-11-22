@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const MAX_ENTRIES = 20
-const MAX_TEXT = 4000
+const MAX_TEXT = 12000
 
 function sanitize(entry) {
   if (!entry || typeof entry !== 'object') return null
@@ -17,6 +17,9 @@ function sanitize(entry) {
     translatedText: String(entry.translatedText || '').slice(0, MAX_TEXT),
     lexical: entry.lexical && typeof entry.lexical === 'object' ? entry.lexical : null,
     guide: entry.guide && typeof entry.guide === 'object' ? entry.guide : null,
+    structure: Array.isArray(entry.structure) ? entry.structure : null,
+    sentenceAnalysis: entry.sentenceAnalysis && typeof entry.sentenceAnalysis === 'object' ? entry.sentenceAnalysis : null,
+    analysisExpanded: entry.analysisExpanded === true,
     error: String(entry.error || ''),
     createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
     hintCount: Math.max(1, Math.min(9, Number(entry.hintCount) || 1)),

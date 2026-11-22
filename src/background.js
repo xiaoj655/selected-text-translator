@@ -122,7 +122,7 @@ function releaseCacheWrite(lease) {
 async function translateSentenceStructure({ settings, endpoint, text, signal }) {
   const reading = await readReadingSettings()
   const model = getLearningModel(settings.model, reading.learningModel)
-  if (!model || signal.aborted) return []
+  if (!model || signal.aborted) return { structure: [] }
   const fetchProvider = chrome.providerFetch?.('guidance') ?? fetch
   const response = await fetchProvider(endpoint, {
     method: 'POST',
@@ -130,9 +130,9 @@ async function translateSentenceStructure({ settings, endpoint, text, signal }) 
     body: JSON.stringify(buildReadingRequest({ model, text, kind: 'structure' })),
     signal,
   })
-  if (!response.ok) return []
+  if (!response.ok) return { structure: [] }
   const content = readNonStreamMessageContent((await response.json())?.choices?.[0])
-  return parseReadingResponse(content, 'structure', { text })
+  return parseReadingResponse(content, 'structure', { text, includeSentenceAnalysis: true })
 }
 
 async function handleStartTranslation({ tabId, frameId, key, payload }) {
@@ -235,16 +235,18 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     const enrich = async (result) => {
       if (!wantsStructure || result.structure || !result.translatedText || !isActive()) return
       try {
-        const structure = await translateSentenceStructure({ settings, endpoint, text, signal: controller.signal })
+        const analysis = await translateSentenceStructure({ settings, endpoint, text, signal: controller.signal })
         if (!isActive()) return
-        if (structure.length) emit({ status: 'structure', structure }, false)
-        if (canUseCache && requestEpoch === cacheEpoch && resultCache.get(cacheKey) === result) {
-          resultCache.set(cacheKey, { ...result, structure })
+        if (analysis.structure.length || analysis.sentenceAnalysis) emit({ status: 'structure', ...analysis }, false)
+        if (canUseCache && requestEpoch === cacheEpoch && cacheLease.state.revision === cacheLease.revision
+          && resultCache.get(cacheKey)) {
+          resultCache.set(cacheKey, { ...result, ...analysis })
         }
       } catch {
         // The translation is already complete. An optional analysis failure does not affect it.
       }
     }
+    if (canUseCache) cacheLease = acquireCacheWrite(cacheKey, payload?.forceRefresh === true)
     if (canUseCache && payload?.forceRefresh === true) resultCache.delete(cacheKey)
     const cached = payload?.forceRefresh !== true && canUseCache && resultCache.get(cacheKey)
     if (cached) {
@@ -253,7 +255,6 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       await enrich(cached)
       return
     }
-    if (canUseCache) cacheLease = acquireCacheWrite(cacheKey, payload?.forceRefresh === true)
     emit({ status: TRANSLATION_EVENT_STATUS.STARTED })
     debugLog('request_start', { selectionId, requestId, kind, model,
       selectedText: createSelectedTextDiagnostics(text) })

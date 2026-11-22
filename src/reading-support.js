@@ -1,5 +1,4 @@
 import { buildGenericRequest, isQwenMtModel } from './translation-contracts.js'
-import { getSentenceSegments } from './context-sentence.js'
 import { detectSourceLanguage } from './source-language.js'
 
 export const READING_STORAGE_KEYS = Object.freeze({
@@ -67,7 +66,6 @@ export function supportsSentenceStructure(text, sourceLanguage = 'auto') {
   const language = String(sourceLanguage || 'auto').trim().toLowerCase() || 'auto'
   return Boolean(selectedText) && classifyReadingSelection(selectedText) !== 'word'
     && (language === 'auto' ? detectSourceLanguage(selectedText) : language) === 'english'
-    && getSentenceSegments(selectedText).length === 1
 }
 
 export function supportsTranslationStructure(text, sourceLanguage) {
@@ -98,7 +96,7 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
   const selectionType = classifyReadingSelection(selectedText)
   const task = kind === 'structure'
     ? [
-        'Return only a JSON object with the key "structure". Use an empty array if the source is not a complete English sentence.',
+        'Return only a JSON object with the key "structure" and optional "sentenceAnalysis". Use an empty structure array if no complete English main clause is selected.',
         ...SENTENCE_STRUCTURE_INSTRUCTIONS,
       ]
     : kind === 'pronunciation'
@@ -135,20 +133,51 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
 }
 
 const SENTENCE_STRUCTURE_INSTRUCTIONS = [
-  'For exactly one complete English sentence, including a complete sentence with no final punctuation, add a top-level',
+  'Analyze each complete English sentence in selectedText, including complete sentences with no final punctuation. Add a top-level',
   '"structure" array of objects with "role" and "text", such as {"role":"verb","text":"could reduce"}.',
-  'Only use the roles "subject", "verb", "object", and "complement" for the main clause or coordinated main clauses.',
+  'Collect the main clause or coordinated main clauses from every complete sentence in this one array, in source order.',
+  'Only use the roles "subject", "verb", "object", and "complement".',
   'Copy each text fragment verbatim from selectedText. Preserve casing and spacing and never include surrounding whitespace.',
   'When the same whole fragment occurs more than once with identical casing, add "occurrence": the 1-based index',
-  'of the intended whole-fragment match in selectedText. Never use relative positions in the surrounding context.',
+  'of the intended whole-fragment match across all of selectedText, including other sentences. Never count within a clause or surrounding context.',
   'Use concise main-clause spans without incidental modifiers or embedded relative clauses. Keep auxiliaries, modals,',
   'negation, and essential particles with the main verb, using separate fragments for a role when they are not contiguous.',
   'For example, in "The changes that the team proposed could reduce costs.", the subject fragment is "The changes",',
   'the verb fragment is "could reduce", and the object fragment is "costs".',
   'In linking-verb clauses use "complement" for the description of the subject. Preserve passive voice and questions in original order.',
+  'For existential there-be clauses such as "There are some kinds of work", mark "There" as the dummy subject, "are" as the verb,',
+  'and "some kinds of work" as the complement, never an object. Briefly explain that this pattern says something exists.',
+  'In "There are some kinds of work that you cannot do alone.", the complement is only "some kinds of work",',
+  'never "some kinds of work that you cannot do alone". Put "that you cannot do alone" only in subordinate clause detail.',
+  'Likewise, in "The scientist who discovered it won a prize.", the main subject is only "The scientist",',
+  'never "The scientist who discovered it". Keep relative clauses out of every top-level noun fragment.',
+  'A clause can itself fill an essential main-clause role. Keep "that she left" as the object in "I know that she left.",',
+  '"What she said" as the subject in "What she said matters.", and "to help others" as the complement in "Her goal is to help others.",',
+  'even when that whole clause is also explored in subordinate detail. Do not erase the main-clause argument.',
   'Leave implicit subjects and absent objects out. Keep the fragments disjoint and in source order.',
-  'Omit structure for a word, phrase, excerpt without a complete main clause, or a selection with multiple sentences.',
-  'Omit structure if the main-clause parts cannot be identified reliably.',
+  'Skip incomplete beginnings or endings individually, while preserving the structure of other complete selected sentences.',
+  'Do not finish a cut-off sentence or borrow missing words from surroundingContext. A trailing infinitive such as',
+  '"To be a successful scientist" has no complete main clause and must not receive main-clause role labels.',
+  'Use an empty structure for selections containing only words, phrases, or incomplete clauses. Skip any clause whose parts are uncertain.',
+  'When useful, add "sentenceAnalysis":{"connections":[],"clauses":[],"fragments":[]} alongside structure.',
+  'Write all explanations in simple English. Every item uses {"text":"exact selected quote","explanation":"short useful explanation"},',
+  'with "occurrence" when its whole quote repeats, counted across all of selectedText exactly as for structure.',
+  'In connections, give at most three brief notes about a useful relationship or unusual construction, such as which noun',
+  'a relative clause describes, or how "cannot ... without" makes something necessary. Each explanation is at most 35 words.',
+  'When a clause uses "cannot/can\'t ... without", include a connection note explaining the necessary condition, alongside any useful relative-clause note.',
+  'When a sentence has a relative or other important subordinate clause, include it in clauses for deeper exploration, at most six clauses.',
+  'Each clause also has its own "structure" array using the same four roles and global selectedText occurrence counts.',
+  'Use true grammatical roles: adverbs such as "well" and "differently" are never objects. Do not force an object where none exists.',
+  'In "tasks that you cannot finish without help", the relative-clause object is "that", subject "you", and verb "cannot finish";',
+  '"without help" is an adjunct, not an object of "finish". Apply this relative-pronoun rule when the pronoun is the missing object.',
+  'For "work that you can\'t do well without help", the clause item is',
+  '{"text":"that you can\'t do well without help","explanation":"This describes work; that is the object of do.",',
+  '"structure":[{"role":"object","text":"that"},{"role":"subject","text":"you"},{"role":"verb","text":"can\'t do"}]}.',
+  'Do not label "well" or "without help" in that clause. Only label a complement for a linking verb or an essential object complement, not an adjunct.',
+  'Keep these role fragments entirely inside that clause quote. Explain its relationship to the main clause in at most 35 words.',
+  'Do not copy subordinate role labels into the top-level structure. Do not add clause detail for a simple sentence.',
+  'In fragments, identify at most two incomplete selected beginnings or endings and briefly say that the main clause is missing.',
+  'Do not guess what the missing text says. Omit empty categories and omit sentenceAnalysis when there is nothing useful to add.',
 ]
 
 function buildGuideInstructions(includeSentenceStructure, stream) {
@@ -240,6 +269,66 @@ function normalizeSentenceStructure(parts, text) {
   return structure.some((part, index) => index > 0 && structure[index - 1].end > part.start) ? [] : structure
 }
 
+function normalizeAnalysisItem(item, text) {
+  if (!item || typeof item.text !== 'string' || !item.text || item.text !== item.text.trim()
+    || item.text.length > text.length || typeof item.explanation !== 'string') return null
+  const explanation = item.explanation.trim()
+  if (!explanation || explanation.length > 600) return null
+  const start = locateStructureFragment(text, item.text, item.occurrence)
+  return start === undefined ? null : { start, end: start + item.text.length, explanation }
+}
+
+function normalizeSentenceAnalysis(analysis, text) {
+  if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) return undefined
+  const result = {}
+  for (const [category, limit] of [['connections', 3], ['clauses', 6], ['fragments', 2]]) {
+    if (!Array.isArray(analysis[category])) continue
+    const items = []
+    // Bound work as well as displayed items when a model returns an oversized array.
+    for (const raw of analysis[category].slice(0, 24)) {
+      const item = normalizeAnalysisItem(raw, text)
+      if (!item || items.some(({ start, end }) => start === item.start && end === item.end)) continue
+      if (category === 'clauses') {
+        const structure = normalizeSentenceStructure(raw.structure, text)
+        if (!structure.length || structure.some(({ start, end }) => start < item.start || end > item.end)) continue
+        item.structure = structure
+      }
+      items.push(item)
+      if (items.length === limit) break
+    }
+    if (items.length) result[category] = items.sort((left, right) => left.start - right.start)
+  }
+  return Object.keys(result).length ? result : undefined
+}
+
+function mainSentenceStructure(parts, text, sentenceAnalysis) {
+  const structure = normalizeSentenceStructure(parts, text)
+  const clauses = sentenceAnalysis?.clauses
+  if (!clauses?.length || !structure.length) return structure
+  const main = structure.flatMap((part) => {
+    let pieces = [part]
+    for (const clause of clauses) {
+      // A whole clause may itself be an essential subject, object, or complement.
+      // Its presence in deeper detail is not evidence that this main role is a modifier.
+      if (part.role !== 'verb' && clause.start <= part.start && clause.end >= part.end) continue
+      pieces = pieces.flatMap((piece) => {
+        if (clause.end <= piece.start || clause.start >= piece.end) return [piece]
+        const remaining = []
+        if (piece.start < clause.start) remaining.push({ ...piece, end: clause.start })
+        if (clause.end < piece.end) remaining.push({ ...piece, start: clause.end })
+        return remaining
+      })
+    }
+    return pieces.flatMap((piece) => {
+      const source = text.slice(piece.start, piece.end)
+      const start = piece.start + source.length - source.trimStart().length
+      const end = piece.end - (source.length - source.trimEnd().length)
+      return start < end ? [{ role: piece.role, start, end }] : []
+    })
+  })
+  return main.some(({ role }) => role === 'verb') ? main : []
+}
+
 export function parseReadingResponse(content, kind = 'guide', options = {}) {
   let parsed
   try {
@@ -254,7 +343,14 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
     if (!phonetic) throw new Error('The learning model did not return a pronunciation.')
     return { phonetic }
   }
-  if (kind === 'structure') return normalizeSentenceStructure(parsed?.structure, options.text || '')
+  if (kind === 'structure') {
+    const text = options.text || ''
+    const sentenceAnalysis = normalizeSentenceAnalysis(parsed?.sentenceAnalysis, text)
+    const structure = mainSentenceStructure(parsed?.structure, text, sentenceAnalysis)
+    return options.includeSentenceAnalysis
+      ? { structure, sentenceAnalysis }
+      : structure
+  }
   const hints = Array.isArray(parsed?.hints)
     ? parsed.hints.filter((hint) => typeof hint === 'string' && hint.trim()).map((hint) => hint.trim())
     : []
@@ -272,9 +368,11 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
   if (isSentence) {
     normalizedAnswer.example = typeof answer.example === 'string' ? answer.example.trim() : ''
     if (options.includeSentenceStructure && supportsSentenceStructure(options.text, options.sourceLanguage)) {
-      const structure = normalizeSentenceStructure(parsed.structure, options.text)
+      const sentenceAnalysis = normalizeSentenceAnalysis(parsed.sentenceAnalysis, options.text)
+      const structure = mainSentenceStructure(parsed.structure, options.text, sentenceAnalysis)
       const visibleHints = structure.length && hints.length > 1 && !options.keepFirstHint ? hints.slice(1) : hints
-      return { guideType: 'sentence', phonetic: '', hints: visibleHints, answer: normalizedAnswer, structure }
+      return { guideType: 'sentence', phonetic: '', hints: visibleHints, answer: normalizedAnswer, structure,
+        ...(sentenceAnalysis ? { sentenceAnalysis } : {}) }
     }
     return { guideType: 'sentence', phonetic: '', hints, answer: normalizedAnswer }
   }

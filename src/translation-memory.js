@@ -38,6 +38,8 @@ export function writeMemoryEntry(memory, key, result, maxEntries = MEMORY_MAX_EN
     lexical: result?.lexical || null,
     guide: result?.guide || null,
     ...(Array.isArray(result?.structure) && result.structure.length ? { structure: result.structure } : {}),
+    ...(result?.sentenceAnalysis && typeof result.sentenceAnalysis === 'object'
+      ? { sentenceAnalysis: result.sentenceAnalysis } : {}),
     savedAt: Math.max(now, newest + 1),
   }
   return pruneMemory(next, { maxEntries })

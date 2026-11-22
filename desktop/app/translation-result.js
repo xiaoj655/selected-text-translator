@@ -53,6 +53,74 @@ export function renderSentenceLegend(structure) {
   return legend
 }
 
+function isSourceSpan(span, text, start = 0, end = text.length) {
+  return span && Number.isInteger(span.start) && Number.isInteger(span.end)
+    && span.start >= start && span.end > span.start && span.end <= end
+}
+
+function clauseStructure(clause, text) {
+  if (!Array.isArray(clause.structure)) return []
+  let previousEnd = clause.start
+  for (const part of clause.structure) {
+    if (!isSourceSpan(part, text, previousEnd, clause.end) || !Object.hasOwn(SENTENCE_ROLES, part.role)) return []
+    previousEnd = part.end
+  }
+  return clause.structure.map((part) => ({
+    role: part.role, start: part.start - clause.start, end: part.end - clause.start,
+  }))
+}
+
+export function renderSentenceAnalysis(entry) {
+  if (entry.status !== 'done' || typeof entry.text !== 'string') return null
+  const analysis = entry.mode === 'guide' ? entry.guide?.sentenceAnalysis : entry.sentenceAnalysis
+  if (!analysis || typeof analysis !== 'object') return null
+  const items = (name, limit) => Array.isArray(analysis[name]) ? analysis[name].filter((item) =>
+    isSourceSpan(item, entry.text) && typeof item.explanation === 'string' && item.explanation.trim(),
+  ).slice(0, limit) : []
+  const connections = items('connections', 3)
+  const fragments = items('fragments', 2)
+  const clauses = items('clauses', 8)
+  if (!connections.length && !fragments.length && !clauses.length) return null
+
+  const box = el('div', 'sentence-analysis')
+  for (const connection of connections) {
+    const note = el('p', 'sentence-connection')
+    note.append(el('q', 'sentence-connection-source', entry.text.slice(connection.start, connection.end)),
+      ' ', el('span', '', connection.explanation))
+    box.append(note)
+  }
+  for (const fragment of fragments) {
+    const note = el('p', 'sentence-fragment')
+    note.append(el('span', 'sentence-fragment-label', 'Incomplete selection: '),
+      el('q', '', entry.text.slice(fragment.start, fragment.end)), ' ', el('span', '', fragment.explanation))
+    box.append(note)
+  }
+  if (clauses.length) {
+    const details = el('details', 'sentence-explore')
+    details.open = entry.analysisExpanded === true
+    details.append(el('summary', '', 'Explore sentence'))
+    const body = el('div', 'sentence-explore-body')
+    const roles = []
+    for (const clause of clauses) {
+      const section = el('div', 'sentence-clause')
+      const quote = el('blockquote', 'sentence-clause-source')
+      const source = entry.text.slice(clause.start, clause.end)
+      const structure = clauseStructure(clause, entry.text)
+      markSentence(quote, source, structure)
+      roles.push(...structure)
+      section.append(quote, el('p', 'sentence-clause-explanation', clause.explanation))
+      body.append(section)
+    }
+    if (roles.length) body.prepend(renderSentenceLegend(roles))
+    details.append(body)
+    details.addEventListener('toggle', () => {
+      if (details.isConnected) entry.analysisExpanded = details.open
+    })
+    box.append(details)
+  }
+  return box
+}
+
 export function renderLexical(entry) {
   const lexical = entry.lexical
   if (!lexical) return null
@@ -140,6 +208,8 @@ export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceL
       tools.append(more)
     }
   }
+  const analysis = renderSentenceAnalysis(entry)
+  if (analysis) box.append(analysis)
   const answer = guide.answer
   if (answer) {
     const reveal = el('button', '', entry.answerRevealed ? 'Hide answer' : 'Reveal answer')
@@ -175,12 +245,16 @@ export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceL
   return box
 }
 
-export function renderTranslation(entry, { languageText = el } = {}) {
+export function renderTranslation(entry, { languageText = el, showSentenceLegend = false } = {}) {
   const result = document.createDocumentFragment()
   const answer = el('div', 'translation-answer')
   answer.append(languageText('span', 'translation-text', entry.translatedText))
   if (entry.status === 'streaming') answer.append(el('span', 'caret'))
   result.append(answer)
+  const structure = showSentenceLegend ? sentenceStructure(entry) : []
+  if (structure.length) result.append(renderSentenceLegend(structure))
+  const analysis = renderSentenceAnalysis(entry)
+  if (analysis) result.append(analysis)
   const lexical = renderLexical(entry)
   if (lexical) {
     const details = el('details', 'lexical-details')

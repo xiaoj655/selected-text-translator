@@ -70,6 +70,15 @@ test('readMemoryEntry rejects expired and malformed entries', () => {
   assert.equal(readMemoryEntry(null, key), null);
 });
 
+test('translation memory retains main structure and optional sentence analysis together', () => {
+  const structure = [{ role: 'verb', start: 6, end: 10 }];
+  const sentenceAnalysis = { fragments: [{ start: 12, end: 20, explanation: 'The selection ends before the main clause.' }] };
+  const memory = writeMemoryEntry({}, 'sentence', { translatedText: 'Translation', structure, sentenceAnalysis });
+  const restored = readMemoryEntry(memory, 'sentence');
+  assert.deepEqual(restored.structure, structure);
+  assert.deepEqual(restored.sentenceAnalysis, sentenceAnalysis);
+});
+
 test('writeMemoryEntry prunes to the entry cap keeping the newest', () => {
   let memory = {};
   for (let index = 0; index < 5; index += 1) {

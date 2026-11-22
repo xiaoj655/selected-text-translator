@@ -1,6 +1,6 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderGuidePreview, renderSentenceLegend, renderTranslation, sentenceStructure } from './translation-result.js'
+import { renderGuide, renderGuidePreview, renderTranslation, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
 import { installReadingSelection, readingStructureRanges } from './reading-selection.js'
@@ -152,8 +152,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     } else if (entry.mode === 'guide' && entry.previewHint) {
       result.append(renderGuidePreview(entry.previewHint))
     } else if (entry.translatedText) {
-      result.append(renderTranslation(entry))
-      if (hasHighlights) result.append(renderSentenceLegend(sentenceStructure(entry)))
+      result.append(renderTranslation(entry, { showSentenceLegend: hasHighlights }))
     }
     else result.textContent = 'Waiting for the model…'
     const done = entry.status === 'done'
@@ -206,7 +205,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     cancel()
     const current = entry
     const requestId = id()
-    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null, previewHint: '',
+    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null,
+      sentenceAnalysis: null, analysisExpanded: false, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
     if (mode === 'guide') layout.expand()
     feedback.textContent = ''
@@ -329,6 +329,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         entry.lexical = payload.lexicalDetails || null
         entry.guide = payload.result || null
         entry.structure = payload.structure || null
+        entry.sentenceAnalysis = payload.sentenceAnalysis || null
         entry.status = (entry.mode === 'guide' ? entry.guide : entry.translatedText) ? 'done' : 'error'
         entry.error = entry.mode === 'guide' ? 'No guidance was generated. Try again.' : 'No translation was generated. Try again.'
         if (entry.status === 'done' && /\s/u.test(entry.text)) {
@@ -339,6 +340,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       case 'structure':
         if (entry.mode !== 'translate' || entry.status !== 'done') return
         entry.structure = payload.structure
+        entry.sentenceAnalysis = payload.sentenceAnalysis || null
         break
       case 'error':
       case 'missing-configuration': entry.status = 'error'; entry.error = localizeErrorMessage(payload); break

@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildReadingRequest, getLearningModel, parseReadingResponse, readReadingSettings,
-  saveReadingSettings, classifyReadingSelection, supportsSentenceStructure } from '../src/reading-support.js'
+  saveReadingSettings, classifyReadingSelection, supportsSentenceStructure,
+  supportsTranslationStructure } from '../src/reading-support.js'
 import { matchesUrlPattern } from '../src/url-patterns.js'
 
 const guide = {
@@ -127,14 +128,15 @@ test('sentence guides use the model scope even when a sentence without punctuati
   })
 })
 
-test('structure requests are opt-in and suited to a single English sentence', () => {
+test('structure requests are opt-in and support complete English sentences within a selection', () => {
   const prompt = (text, options) => buildReadingRequest({ model: 'generic', text, ...options }).messages[0].content
-  for (const text of ['She could stay', 'Dr. Rao is ready.', 'The rate is 2.5 percent.']) {
+  for (const text of ['She could stay', 'Dr. Rao is ready.', 'The rate is 2.5 percent.',
+    'She left. We stayed.', 'She left. To be a successful scientist']) {
     assert.equal(supportsSentenceStructure(text), true)
     assert.doesNotMatch(prompt(text), /"structure" array/)
     assert.match(prompt(text, { includeSentenceStructure: true }), /"structure" array/)
   }
-  for (const text of ['record', 'She left. We stayed.', '她接受了建议。']) {
+  for (const text of ['', 'record', '她接受了建议。']) {
     assert.equal(supportsSentenceStructure(text), false)
     assert.doesNotMatch(prompt(text, { includeSentenceStructure: true }), /"structure" array/)
   }
@@ -205,7 +207,212 @@ test('corrupt or missing structure falls back to the existing guide', () => {
     assert.deepEqual(result.hints, sentenceGuide.hints)
   }
   assert.equal('structure' in parseSentenceStructure(text, [verb], { includeSentenceStructure: false }), false)
-  assert.equal('structure' in parseSentenceStructure('She rushed home. They stayed.', [verb]), false)
+  assert.deepEqual(parseSentenceStructure('She rushed home. They stayed.', [verb]).structure,
+    [{ role: 'verb', start: 4, end: 10 }])
+})
+
+const EXISTENTIAL_SELECTION = "There are some kinds of work that you can't do well without thinking differently from your peers. To be a successful scientist"
+const EXISTENTIAL_STRUCTURE = [
+  { role: 'subject', text: 'There' },
+  { role: 'verb', text: 'are' },
+  { role: 'complement', text: 'some kinds of work' },
+]
+const RELATIVE_CLAUSE = "that you can't do well without thinking differently from your peers"
+const EXISTENTIAL_ANALYSIS = {
+  connections: [
+    { text: 'There are', explanation: 'This pattern says that these kinds of work exist. There is a dummy subject.' },
+    { text: RELATIVE_CLAUSE, explanation: 'This clause describes work. You must think differently to do these jobs well.' },
+  ],
+  clauses: [{
+    text: RELATIVE_CLAUSE,
+    explanation: 'That points back to work and is the object of do.',
+    structure: [
+      { role: 'object', text: 'that' }, { role: 'subject', text: 'you' }, { role: 'verb', text: "can't do" },
+    ],
+  }],
+  fragments: [{ text: 'To be a successful scientist', explanation: 'This is the start of another sentence. Its main clause is missing.' }],
+}
+
+function parseAnalysis(text, structure, sentenceAnalysis, options = {}) {
+  return parseReadingResponse(JSON.stringify({ structure, sentenceAnalysis }), 'structure', {
+    text, includeSentenceAnalysis: true, ...options,
+  })
+}
+
+test('existential sentence retains its main clause beside a cut-off next sentence and offers grounded detail', () => {
+  assert.equal(supportsSentenceStructure(EXISTENTIAL_SELECTION), true)
+  assert.equal(supportsTranslationStructure(EXISTENTIAL_SELECTION), true)
+  const prompt = buildReadingRequest({ model: 'generic', text: EXISTENTIAL_SELECTION, kind: 'structure' }).messages[0].content
+  assert.match(prompt, /Skip incomplete beginnings or endings individually/)
+  assert.match(prompt, /Do not finish a cut-off sentence or borrow missing words/)
+  assert.match(prompt, /dummy subject/)
+  assert.match(prompt, /never an object/)
+  assert.match(prompt, /"sentenceAnalysis"/)
+
+  const parsed = parseAnalysis(EXISTENTIAL_SELECTION, EXISTENTIAL_STRUCTURE, EXISTENTIAL_ANALYSIS)
+  assert.deepEqual(parsed.structure.map(({ role, start, end }) => [role, EXISTENTIAL_SELECTION.slice(start, end)]), [
+    ['subject', 'There'], ['verb', 'are'], ['complement', 'some kinds of work'],
+  ])
+  assert.ok(parsed.structure.every(({ end }) => end <= EXISTENTIAL_SELECTION.indexOf(' that')))
+  const { connections, clauses, fragments } = parsed.sentenceAnalysis
+  assert.equal(connections.length, 2)
+  assert.equal(EXISTENTIAL_SELECTION.slice(clauses[0].start, clauses[0].end), RELATIVE_CLAUSE)
+  assert.deepEqual(clauses[0].structure.map(({ role, start, end }) => [role, EXISTENTIAL_SELECTION.slice(start, end)]), [
+    ['object', 'that'], ['subject', 'you'], ['verb', "can't do"],
+  ])
+  assert.equal(EXISTENTIAL_SELECTION.slice(fragments[0].start, fragments[0].end), 'To be a successful scientist')
+  const guideResult = parseReadingResponse(JSON.stringify({
+    ...sentenceGuide, structure: EXISTENTIAL_STRUCTURE, sentenceAnalysis: EXISTENTIAL_ANALYSIS,
+  }), 'guide', { text: EXISTENTIAL_SELECTION, includeSentenceStructure: true })
+  assert.deepEqual(guideResult.sentenceAnalysis, parsed.sentenceAnalysis)
+})
+
+test('main complements exclude grounded relative-clause detail even when the model returns the whole noun phrase', () => {
+  const structure = EXISTENTIAL_STRUCTURE.map((part) => part.role === 'complement'
+    ? { ...part, text: `some kinds of work ${RELATIVE_CLAUSE}` } : part)
+  const expected = parseAnalysis(EXISTENTIAL_SELECTION, EXISTENTIAL_STRUCTURE, EXISTENTIAL_ANALYSIS)
+  const actual = parseAnalysis(EXISTENTIAL_SELECTION, structure, EXISTENTIAL_ANALYSIS)
+  assert.deepEqual(actual, expected)
+  const raw = JSON.stringify({ ...sentenceGuide, structure, sentenceAnalysis: EXISTENTIAL_ANALYSIS })
+  const guideResult = parseReadingResponse(raw, 'guide', {
+    text: EXISTENTIAL_SELECTION, includeSentenceStructure: true,
+  })
+  assert.deepEqual(guideResult.structure, expected.structure)
+  assert.deepEqual(parseReadingResponse(raw, 'structure', { text: EXISTENTIAL_SELECTION }), expected.structure)
+  const ungrounded = { ...EXISTENTIAL_ANALYSIS, clauses: [{
+    ...EXISTENTIAL_ANALYSIS.clauses[0], text: 'that you can do alone',
+  }] }
+  assert.equal(parseAnalysis(EXISTENTIAL_SELECTION, structure, ungrounded).structure.at(-1).end,
+    EXISTENTIAL_SELECTION.indexOf(RELATIVE_CLAUSE) + RELATIVE_CLAUSE.length)
+})
+
+test('removing nested clauses splits a main subject into ordered verbatim UTF-16 ranges', () => {
+  const text = '🙂 The scientist who discovered it and her colleague won a prize.'
+  const clauses = [{
+    text: 'who discovered it', explanation: 'This clause describes the scientist.',
+    structure: [{ role: 'subject', text: 'who' }, { role: 'verb', text: 'discovered' }, { role: 'object', text: 'it' }],
+  }]
+  const parts = [{ role: 'subject', text: 'The scientist who discovered it and her colleague' },
+    { role: 'verb', text: 'won' }, { role: 'object', text: 'a prize' }]
+  const parsed = parseAnalysis(text, parts, { clauses })
+  assert.deepEqual(parsed.structure, [
+    { role: 'subject', start: 3, end: 16 },
+    { role: 'subject', start: text.indexOf('and her colleague'), end: text.indexOf(' won') },
+    { role: 'verb', start: text.indexOf('won'), end: text.indexOf('won') + 3 },
+    { role: 'object', start: text.indexOf('a prize'), end: text.indexOf('a prize') + 7 },
+  ])
+  assert.deepEqual(parsed.structure.map(({ start, end }) => text.slice(start, end)),
+    ['The scientist', 'and her colleague', 'won', 'a prize'])
+  assert.deepEqual(parsed.sentenceAnalysis.clauses[0].structure.map(({ role, start, end }) => [role, text.slice(start, end)]),
+    [['subject', 'who'], ['verb', 'discovered'], ['object', 'it']])
+  assert.deepEqual(parseAnalysis(text, parts, undefined).structure.map(({ start, end }) => text.slice(start, end)),
+    ['The scientist who discovered it and her colleague', 'won', 'a prize'])
+})
+
+test('clause subtraction drops fully covered main spans and preserves the main-verb requirement', () => {
+  const text = 'The scientist who discovered it won.'
+  const analysis = { clauses: [{ text: 'who discovered it', explanation: 'This describes the scientist.',
+    structure: [{ role: 'subject', text: 'who' }, { role: 'verb', text: 'discovered' }, { role: 'object', text: 'it' }],
+  }] }
+  const parts = [{ role: 'subject', text: 'The scientist' }, { role: 'verb', text: 'who discovered it' }]
+  assert.deepEqual(parseAnalysis(text, parts, analysis).structure, [])
+  assert.deepEqual(parseAnalysis(text, [...parts, { role: 'verb', text: 'won' }], analysis).structure,
+    [{ role: 'subject', start: 0, end: 13 }, { role: 'verb', start: 32, end: 35 }])
+  const overlapping = [{ role: 'subject', text: 'The scientist who discovered it' }, { role: 'verb', text: 'discovered' }]
+  assert.deepEqual(parseAnalysis(text, overlapping, analysis).structure, [],
+    'subtraction must not rescue a top-level structure that fails strict overlap validation')
+})
+
+test('essential subject, object and complement clauses retain their main roles when explored', () => {
+  for (const [text, mainParts, clauseText, clauseParts] of [
+    ['I know that she left.', [['subject', 'I'], ['verb', 'know'], ['object', 'that she left']],
+      'that she left', [['subject', 'she'], ['verb', 'left']]],
+    ['What she said matters.', [['subject', 'What she said'], ['verb', 'matters']],
+      'What she said', [['object', 'What'], ['subject', 'she'], ['verb', 'said']]],
+    ['Her goal is to help others.', [['subject', 'Her goal'], ['verb', 'is'], ['complement', 'to help others']],
+      'to help others', [['verb', 'to help'], ['object', 'others']]],
+  ]) {
+    const structure = mainParts.map(([role, fragment]) => ({ role, text: fragment }))
+    const analysis = { clauses: [{ text: clauseText, explanation: 'This clause fills a role in the main sentence.',
+      structure: clauseParts.map(([role, fragment]) => ({ role, text: fragment })),
+    }] }
+    const parsed = parseAnalysis(text, structure, analysis)
+    assert.deepEqual(parsed.structure.map(({ role, start, end }) => [role, text.slice(start, end)]), mainParts)
+    assert.equal(parsed.sentenceAnalysis.clauses.length, 1)
+  }
+})
+
+test('multiple main clauses retain repeated subjects in source order with global occurrence counts', () => {
+  const text = 'They work. They rest.'
+  const result = parseSentenceStructure(text, [
+    { role: 'verb', text: 'rest' }, { role: 'subject', text: 'They', occurrence: 2 },
+    { role: 'verb', text: 'work' }, { role: 'subject', text: 'They', occurrence: 1 },
+  ])
+  assert.deepEqual(result.structure, [
+    { role: 'subject', start: 0, end: 4 }, { role: 'verb', start: 5, end: 9 },
+    { role: 'subject', start: 11, end: 15 }, { role: 'verb', start: 16, end: 20 },
+  ])
+  const repeated = 'They record what others record. They record what others record.'
+  const analysis = parseAnalysis(repeated, [], { clauses: [{
+    text: 'what others record', occurrence: 2, explanation: 'What is the thing being recorded.',
+    structure: [{ role: 'object', text: 'what', occurrence: 2 },
+      { role: 'subject', text: 'others', occurrence: 2 }, { role: 'verb', text: 'record', occurrence: 4 }],
+  }] }).sentenceAnalysis
+  assert.equal(analysis.clauses[0].start, repeated.lastIndexOf('what others record'))
+  assert.equal(analysis.clauses[0].structure.at(-1).start, repeated.lastIndexOf('record'))
+})
+
+test('fragment-only selections can explain missing text without inventing main-clause labels', () => {
+  const text = 'To be a successful scientist'
+  const fragments = [{ text, explanation: 'The main clause has not been selected.' }]
+  assert.deepEqual(parseAnalysis(text, [], { fragments }), {
+    structure: [], sentenceAnalysis: { fragments: [{ start: 0, end: text.length, explanation: fragments[0].explanation }] },
+  })
+  assert.deepEqual(parseReadingResponse(JSON.stringify({ structure: [] }), 'structure', { text }), [])
+})
+
+test('invalid optional notes and subordinate spans cannot erase valid main structure or valid siblings', () => {
+  const valid = EXISTENTIAL_ANALYSIS.clauses[0]
+  const result = parseAnalysis(EXISTENTIAL_SELECTION, EXISTENTIAL_STRUCTURE, {
+    connections: [null, { text: 'invented quote', explanation: 'Unknown.' },
+      { text: 'work', explanation: '' }, { text: 'work', explanation: 'x'.repeat(601) },
+      ...EXISTENTIAL_ANALYSIS.connections],
+    clauses: [
+      { ...valid, text: 'that you can do well' },
+      { ...valid, structure: [{ role: 'verb', text: 'are' }] },
+      { ...valid, structure: [{ role: 'verb', text: "can't do" }, { role: 'object', text: "can't do well" }] },
+      { ...valid, structure: [{ role: 'subject', text: 'you' }] },
+      valid,
+    ],
+    fragments: [false, { text: ' To be a successful scientist', explanation: 'Bad spacing.' },
+      ...EXISTENTIAL_ANALYSIS.fragments],
+  })
+  const validResult = parseAnalysis(EXISTENTIAL_SELECTION, EXISTENTIAL_STRUCTURE, EXISTENTIAL_ANALYSIS)
+  assert.deepEqual(result, validResult)
+  assert.deepEqual(parseAnalysis(EXISTENTIAL_SELECTION, EXISTENTIAL_STRUCTURE, { connections: [{}] }), {
+    structure: validResult.structure, sentenceAnalysis: undefined,
+  })
+})
+
+test('analysis quotes use whole-fragment global occurrences and UTF-16 offsets', () => {
+  const text = '🙂 They work. They rest.'
+  const note = { text: 'They', explanation: 'This refers to the same people.' }
+  for (const occurrence of [undefined, 0, 3, '2']) {
+    assert.equal(parseAnalysis(text, [], { connections: [{ ...note, occurrence }] }).sentenceAnalysis, undefined)
+  }
+  assert.deepEqual(parseAnalysis(text, [], { connections: [{ ...note, occurrence: 2 }] }).sentenceAnalysis.connections,
+    [{ start: 14, end: 18, explanation: note.explanation }])
+  assert.equal(parseAnalysis(text, [], { connections: [{ text: 'he', explanation: 'Cannot match inside They.' }] }).sentenceAnalysis, undefined)
+})
+
+test('optional analysis deduplicates quotes, caps displayed items, and remains opt-in for guides', () => {
+  const text = 'One two three four five six seven.'
+  const connections = ['One', 'One', 'two', 'three', 'four', 'five'].map((word) => ({ text: word, explanation: word }))
+  assert.equal(parseAnalysis(text, [], { connections }).sentenceAnalysis.connections.length, 3)
+  const result = parseReadingResponse(JSON.stringify({ ...sentenceGuide,
+    sentenceAnalysis: { connections: EXISTENTIAL_ANALYSIS.connections },
+  }), 'guide', { text: EXISTENTIAL_SELECTION })
+  assert.equal('sentenceAnalysis' in result, false)
 })
 
 test('sentence guides accept one to three useful hints without requiring an example', () => {

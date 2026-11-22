@@ -343,6 +343,34 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 
 .translation-answer { font-family: var(--font-reading); margin: 0; }
 .translation-text { white-space: pre-wrap; }
+.sentence-analysis {
+  margin-top: 12px;
+  font: 13px/1.7 var(--font-ui);
+  color: var(--text-2);
+}
+.sentence-connection, .sentence-fragment { margin: 7px 0; }
+.sentence-connection-source { color: var(--text); }
+.sentence-fragment { font-size: 12px; color: var(--text-3); }
+.sentence-explore { margin-top: 10px; }
+.sentence-explore > summary {
+  width: fit-content;
+  padding: 4px 0;
+  cursor: pointer;
+  color: var(--text-2);
+}
+.sentence-explore > summary:hover { color: var(--text); }
+.sentence-explore-body { padding: 4px 0 2px; }
+.sentence-explore-body > .sentence-legend { margin: 0 0 12px; }
+.sentence-clause + .sentence-clause { margin-top: 14px; }
+.sentence-clause-source {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-reading);
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sentence-clause-explanation { margin: 4px 0 0; }
 .lexical-details { margin-top: 10px; }
 .lexical-details > summary {
   cursor: pointer;
