@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { writeFile } from 'node:fs/promises'
 import { makeMemoryKey } from '../../../src/translation-memory.js'
 
 const SOURCE = 'The supplier put off the launch because the packaging was delayed.'
@@ -59,6 +60,61 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     assert.equal(await page.locator('#installed-version').textContent(), `v${metadata.version}`)
     assert.match(await page.locator('#btn-releases').textContent(), /View releases/u)
     await page.locator('#btn-more').click()
+  })
+
+  await check('developer tools: F12 and the platform shortcut toggle a detached console', async () => {
+    const originalText = await page.locator('#input').inputValue()
+    const press = (keyCode, modifiers = []) => app.evaluate(async ({ BrowserWindow }, { keyCode, modifiers }) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().endsWith('/app/index.html'))
+      const contents = win.webContents
+      win.focus()
+      const wasOpen = contents.isDevToolsOpened()
+      const toggles = keyCode === 'F12' || modifiers.length > 0
+      let changed
+      if (toggles) {
+        changed = new Promise((resolve, reject) => {
+          const eventName = wasOpen ? 'devtools-closed' : 'devtools-opened'
+          const timer = setTimeout(() => {
+            contents.removeListener(eventName, onChange)
+            reject(new Error(`Developer tools did not ${wasOpen ? 'close' : 'open'}`))
+          }, 8000)
+          const onChange = () => { clearTimeout(timer); resolve() }
+          contents.once(eventName, onChange)
+        })
+      }
+      contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+      contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+      if (changed) await changed
+      else await new Promise((resolve) => setTimeout(resolve, 100))
+      return { opened: contents.isDevToolsOpened(), focused: win.isFocused() }
+    }, { keyCode, modifiers })
+    try {
+      await page.locator('#input').focus()
+      assert.equal((await press('I')).opened, false, 'ordinary typing must not open developer tools')
+      const mainSize = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+      assert.equal((await press('F12')).opened, true)
+      await shot({ screenshot: async ({ path }) => {
+        const image = await app.evaluate(async ({ BrowserWindow }) => {
+          const win = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().endsWith('/app/index.html'))
+          return (await win.webContents.devToolsWebContents.capturePage()).toDataURL()
+        })
+        await writeFile(path, Buffer.from(image.slice(image.indexOf(',') + 1), 'base64'))
+      } }, 'main-developer-tools')
+      assert.deepEqual(await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), mainSize)
+      assert.equal((await press('F12')).opened, false)
+      const modifiers = process.platform === 'darwin' ? ['meta', 'alt'] : ['control', 'shift']
+      const opened = await press('I', modifiers)
+      assert.equal(opened.opened, true)
+      assert.equal(opened.focused, true, 'opening developer tools keeps the application focused')
+      assert.equal((await press('I', modifiers)).opened, false)
+    } finally {
+      await app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().endsWith('/app/index.html'))
+        if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools()
+        win.focus()
+      })
+      await page.locator('#input').fill(originalText)
+    }
   })
 
   await check('main window zoom: plus, minus and reset while typing', async () => {

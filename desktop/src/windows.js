@@ -17,6 +17,20 @@ const CARD_MAX_HEIGHT = 640
 const CARD_MARGIN = 14
 const MAIN_ZOOM_FACTORS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5]
 
+function bindDeveloperTools(contents) {
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.isComposing || input.isAutoRepeat) return
+    const f12 = input.key === 'F12' && !input.control && !input.meta && !input.alt && !input.shift
+    const inspect = input.key.toLowerCase() === 'i' && (process.platform === 'darwin'
+      ? input.meta && input.alt && !input.control && !input.shift
+      : input.control && input.shift && !input.meta && !input.alt)
+    if (!f12 && !inspect) return
+    event.preventDefault()
+    if (contents.isDevToolsOpened()) contents.closeDevTools()
+    else contents.openDevTools({ mode: 'detach', activate: false })
+  })
+}
+
 function bindMainZoom(contents) {
   contents.setZoomMode('isolated')
   contents.on('before-input-event', (event, input) => {
@@ -65,6 +79,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   function createWindow(options) {
     const win = new BrowserWindow({ ...options, icon: appIcon })
     if (process.platform === 'win32' || process.platform === 'linux') win.removeMenu()
+    bindDeveloperTools(win.webContents)
     return win
   }
 
@@ -360,6 +375,10 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       { label: 'Vocabulary', click: () => open('library') },
       { type: 'separator' },
       { label: 'Open Log', click: onOpenLog },
+      { label: 'Open Developer Tools', click: async () => {
+        await showMainWindow()
+        if (main && !main.isDestroyed()) main.webContents.openDevTools({ mode: 'detach' })
+      } },
       { type: 'separator' },
       { label: 'Quit', click: onQuit },
     ]))

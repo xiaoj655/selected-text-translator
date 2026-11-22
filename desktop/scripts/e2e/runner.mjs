@@ -78,9 +78,13 @@ export function ensureDisplay() {
 }
 
 function watchErrors(page, bag) {
-  page.on('pageerror', (error) => bag.push(String(error?.stack || error?.message || error)))
+  // Detached DevTools reports its own optional Chromium protocol errors.
+  const isDeveloperTools = () => page.url().startsWith('devtools://')
+  page.on('pageerror', (error) => {
+    if (!isDeveloperTools()) bag.push(String(error?.stack || error?.message || error))
+  })
   page.on('console', (message) => {
-    if (message.type() === 'error') bag.push(message.text())
+    if (message.type() === 'error' && !isDeveloperTools()) bag.push(message.text())
   })
 }
 
