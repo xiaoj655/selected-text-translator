@@ -13,6 +13,7 @@ import {
   extractDeltaContent,
   extractGenericResponse,
   isSingleWordInput,
+  readStructuredPreview,
   usesStructuredOutputForModel,
 } from './translation-contracts.js'
 import { readProviderSettings } from './provider-settings.js'
@@ -134,8 +135,9 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const active = { requestId, controller }
   activeRequests.set(key, active)
   const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), 25000)
+  const isActive = () => activeRequests.get(key) === active && !controller.signal.aborted
   const emit = (event, shouldCache = true) => {
-    if (activeRequests.get(key) === active && !controller.signal.aborted) {
+    if (isActive()) {
       if (shouldCache && cacheLease && cacheLease.state.revision === cacheLease.revision
         && requestEpoch === cacheEpoch && event.status === TRANSLATION_EVENT_STATUS.SUCCESS) {
         resultCache.set(cacheKey, event)
@@ -191,17 +193,20 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     const qwenScope = isQwenMtRequest ? createQwenTranslationScope({ text, context: payload?.context,
       contextStart: payload?.contextStart, contextEnd: payload?.contextEnd }) : null
+    const endpoint = normalizeEndpoint(settings.baseUrl)
+    const streamStructured = !IS_EXTENSION_SERVICE_WORKER
+      && (kind === 'guide' || (kind === 'translate' && !isQwenMtRequest && isSingleWordInput(text)))
+      && supportsDashScopeStructuredStream(endpoint, model)
     const requestBody = kind !== 'translate'
       ? buildReadingRequest({ model, ...readingOptions, context: payload?.context,
-          contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind })
+          contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind, stream: streamStructured })
       : isQwenMtRequest
         ? buildQwenMtRequest({ model, text, context: payload?.context,
             contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
             sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
         : buildGenericRequest({ model, text, context: payload?.context,
             contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
-            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
-    const endpoint = normalizeEndpoint(settings.baseUrl)
+            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary, stream: streamStructured })
     try {
       cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
         context: payload?.context, contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })
@@ -248,20 +253,32 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
         404: 'Check the Base URL and model name.', 429: 'Rate limit reached. Please try again shortly.' }
       throw new Error(`Request failed (${response.status}). ${help[response.status] || 'Please try again.'}`)
     }
+    let streamedContent
+    if (streamStructured && response.headers.get('content-type')?.startsWith('text/event-stream')) {
+      streamedContent = await consumeStructuredStream(response, kind, isActive, (preview) => {
+        const result = kind === 'guide' ? { previewHint: preview } : { translatedText: preview }
+        emit({ status: TRANSLATION_EVENT_STATUS.STREAM, kind, ...result })
+        debugLog('structured_preview', { selectionId, requestId, kind, elapsedMs: Date.now() - startedAt })
+      })
+      if (!isActive()) return
+    }
     if (kind !== 'translate') {
-      const json = await response.json()
-      const content = readNonStreamMessageContent(json?.choices?.[0])
-      const result = parseReadingResponse(content, kind, readingOptions)
+      const content = streamedContent ?? readNonStreamMessageContent((await response.json())?.choices?.[0])
+      const result = parseReadingResponse(content, kind, { ...readingOptions, keepFirstHint: streamStructured })
       emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, kind, result })
+      debugLog('request_success', { selectionId, requestId, kind, elapsedMs: Date.now() - startedAt })
       return
     }
     const translationResult = isQwenMtRequest
       ? requestBody.stream
         ? { translation: await consumeStream({ response, tabId, frameId, selectionId, requestId, scope: qwenScope,
-            isActive: () => activeRequests.get(key) === active && !controller.signal.aborted }), lexicalDetails: null }
+            isActive }), lexicalDetails: null }
         : { translation: await consumeQwenMtNonStreamResponse({ response, selectionId, requestId, scope: qwenScope }),
             lexicalDetails: null }
-      : await consumeNonStreamResponse({ response, selectionId, requestId, sourceText: text })
+      : parseGenericResult({
+          content: streamedContent ?? await readGenericResponseContent({ response, selectionId, requestId }),
+          selectionId, requestId, sourceText: text,
+        })
     emit({ status: TRANSLATION_EVENT_STATUS.SUCCESS, sourceText: text,
       translatedText: translationResult.translation, lexicalDetails: translationResult.lexicalDetails })
     if (useMemory) {
@@ -285,72 +302,70 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   }
 }
 
-async function consumeStream({ response, tabId, frameId, selectionId, requestId, isActive, scope }) {
-  if (!response.body) {
-    throw new Error('qwen-mt response did not include a stream body.');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let sseBuffer = '';
-  let qwenTranslation = '';
-  let lastRenderedTranslation = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      sseBuffer += decoder.decode();
-      if (!sseBuffer.trim()) break;
+async function* readStreamDeltas(body) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let remaining = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      const lines = (remaining + decoder.decode(value, { stream: !done })).split('\n')
+      remaining = done ? '' : lines.pop()
+      for (const rawLine of lines) {
+        const line = rawLine.trim()
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trim()
+        if (data === '[DONE]') return
+        let delta = ''
+        try { delta = extractDeltaContent(JSON.parse(data)) } catch { }
+        if (delta) yield delta
+      }
+      if (done) return
     }
+  } finally {
+    void reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+}
 
-    if (!isActive()) break;
-    sseBuffer += decoder.decode(value, { stream: true });
-    const lines = sseBuffer.split('\n');
-    sseBuffer = done ? '' : lines.pop() || '';
+async function consumeStructuredStream(response, kind, isActive, onPreview) {
+  if (!response.body) throw new Error('The model did not return a stream body.')
+  let content = ''
+  let preview = ''
+  for await (const delta of readStreamDeltas(response.body)) {
+    if (!isActive()) break
+    content += delta
+    if (!preview) {
+      preview = readStructuredPreview(content, kind)
+      if (preview) onPreview(preview)
+    }
+  }
+  return content
+}
 
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line || !line.startsWith('data:')) {
-        continue;
-      }
-
-      const rawData = line.slice(5).trim();
-      if (!rawData || rawData === '[DONE]') {
-        continue;
-      }
-
-      let payload;
-      try {
-        payload = JSON.parse(rawData);
-      } catch {
-        continue;
-      }
-
-      const delta = extractDeltaContent(payload);
-      if (!delta) {
-        continue;
-      }
-
-      qwenTranslation += delta;
-      const partial = extractQwenScopedTranslation(qwenTranslation, scope, { partial: true })
-      if (partial && partial !== lastRenderedTranslation) {
-        lastRenderedTranslation = partial;
-        emitEvent(tabId, {
-          status: TRANSLATION_EVENT_STATUS.STREAM,
-          selectionId,
-          requestId,
-          translatedText: partial
-        }, frameId);
-      }
-
-      debugLog('stream_progress', {
+async function consumeStream({ response, tabId, frameId, selectionId, requestId, isActive, scope }) {
+  if (!response.body) throw new Error('qwen-mt response did not include a stream body.')
+  let qwenTranslation = ''
+  let lastRenderedTranslation = ''
+  for await (const delta of readStreamDeltas(response.body)) {
+    if (!isActive()) break
+    qwenTranslation += delta
+    const partial = extractQwenScopedTranslation(qwenTranslation, scope, { partial: true })
+    if (partial && partial !== lastRenderedTranslation) {
+      lastRenderedTranslation = partial
+      emitEvent(tabId, {
+        status: TRANSLATION_EVENT_STATUS.STREAM,
         selectionId,
         requestId,
-        chunkLength: delta.length,
-        renderedLength: lastRenderedTranslation.length
-      });
+        translatedText: partial,
+      }, frameId)
     }
-    if (done) break;
+    debugLog('stream_progress', {
+      selectionId,
+      requestId,
+      chunkLength: delta.length,
+      renderedLength: lastRenderedTranslation.length,
+    })
   }
 
   const finalTranslation = extractQwenScopedTranslation(qwenTranslation, scope)
@@ -396,7 +411,7 @@ async function consumeQwenMtNonStreamResponse({ response, selectionId, requestId
   return extractQwenScopedTranslation(content, scope)
 }
 
-async function consumeNonStreamResponse({ response, selectionId, requestId, sourceText }) {
+async function readGenericResponseContent({ response, selectionId, requestId }) {
   const rawResponseText = await safeReadText(response);
   if (!rawResponseText.trim()) {
     throw new Error('No translated text returned by endpoint.');
@@ -420,8 +435,10 @@ async function consumeNonStreamResponse({ response, selectionId, requestId, sour
   }
 
   const choice = Array.isArray(json?.choices) ? json.choices[0] : null;
-  const content = readNonStreamMessageContent(choice);
+  return readNonStreamMessageContent(choice)
+}
 
+function parseGenericResult({ content, selectionId, requestId, sourceText }) {
   if (!content) {
     throw new Error('No translated text returned by endpoint.');
   }
@@ -440,7 +457,6 @@ async function consumeNonStreamResponse({ response, selectionId, requestId, sour
         parsedContent.parseError === 'invalid_json' || parsedContent.parseError === 'non_object',
       invalidFields: parsedContent.invalidFields,
       sourceTextIsSingleWord: singleWordInput,
-      responseLength: rawResponseText.length,
       responseContentLength: content.length
     });
     throw new Error(buildGenericResponseFormatError(parsedContent.parseError));
@@ -481,6 +497,14 @@ function normalizeEndpoint(baseUrl) {
   const url = new URL(trimmed);
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Use an HTTP or HTTPS Base URL.');
   return trimmed.endsWith('/chat/completions') ? trimmed : `${trimmed}/chat/completions`;
+}
+
+function supportsDashScopeStructuredStream(endpoint, model) {
+  const url = new URL(endpoint)
+  return url.protocol === 'https:'
+    && (/^dashscope(?:-intl|-us)?\.aliyuncs\.com$/u.test(url.hostname) || url.hostname.endsWith('.maas.aliyuncs.com'))
+    && url.pathname === '/compatible-mode/v1/chat/completions'
+    && /^qwen(?:\d+(?:\.\d+)?)?-(?:flash|plus|max|turbo)(?:-|$)/iu.test(model)
 }
 
 async function safeReadText(response) {

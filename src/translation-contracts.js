@@ -129,20 +129,20 @@ export function buildQwenMtRequest({ model, text, context, contextStart, context
   };
 }
 
-export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage, glossary }) {
+export function buildGenericRequest({ model, text, context, contextStart, contextEnd, targetLanguage, sourceLanguage,
+  glossary, stream = false }) {
   const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage })
   const basePrompt = buildTranslationSystemPrompt(targetLanguage, sourceLanguage)
   const glossaryInstruction = buildGlossaryInstruction(glossary)
-  const systemPrompt = glossaryInstruction ? `${basePrompt} ${glossaryInstruction}` : basePrompt
+  const systemPrompt = [basePrompt, glossaryInstruction, sourceData && CONTEXTUAL_SOURCE_INSTRUCTIONS,
+    stream && 'Write "translation" as the first field in the JSON object.'].filter(Boolean).join(' ')
   const payload = {
     model,
-    stream: false,
+    stream,
     messages: [
       {
         role: 'system',
-        content: sourceData
-          ? `${systemPrompt} ${CONTEXTUAL_SOURCE_INSTRUCTIONS}`
-          : systemPrompt
+        content: systemPrompt,
       },
       {
         role: 'user',
@@ -216,6 +216,25 @@ export function extractDeltaContent(streamPayload) {
   }
 
   return '';
+}
+
+const JSON_STRING = /"(?:[^"\\]|\\.)*"/u.source
+const GUIDE_HINT_PREFIX = new RegExp(
+  '^\\s*\\{\\s*(?:(?:"guideType"|"phonetic")\\s*:\\s*' + JSON_STRING
+    + '\\s*,\\s*)*"hints"\\s*:\\s*\\[\\s*(' + JSON_STRING + ')(?=\\s*[,\\]])',
+  'u',
+)
+const TRANSLATION_PREFIX = new RegExp('^\\s*\\{\\s*"translation"\\s*:\\s*(' + JSON_STRING + ')(?=\\s*[,\\}])', 'u')
+
+export function readStructuredPreview(content, kind) {
+  const prefix = kind === 'guide' ? GUIDE_HINT_PREFIX : TRANSLATION_PREFIX
+  const match = prefix.exec(content)
+  if (!match) return ''
+  try {
+    return JSON.parse(match[1]).trim()
+  } catch {
+    return ''
+  }
 }
 
 export function extractGenericTranslation(rawContent) {

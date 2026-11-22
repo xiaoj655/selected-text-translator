@@ -107,6 +107,34 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     }
   })
 
+  await check('workbench: resubmitting the same text leaves a slow request running', async () => {
+    const source = '同一段文字只需要发出一次请求。'
+    const input = page.locator('#input')
+    const submit = page.locator('#btn-send')
+    const started = mock.requests.length
+    let releaseResponse
+    const responseGate = new Promise((resolve) => { releaseResponse = resolve })
+    mock.setHandler(async (request) => {
+      if (request.body.messages.at(-1).content === source) await responseGate
+      await request.defaultResponse(request)
+    })
+    try {
+      await input.fill(source)
+      await submit.click()
+      await page.waitForTimeout(2100)
+      assert.equal(mock.requests.length, started + 1)
+      await submit.click()
+      await page.locator('#statusbar').getByText('Already processing this text').waitFor({ timeout: 3000 })
+      releaseResponse()
+      await page.locator('#statusbar').getByText(/^Done ·/u).waitFor()
+      assert.equal(mock.requests.length, started + 1)
+    } finally {
+      releaseResponse()
+      mock.resetHandler()
+      await clearHistory(page)
+    }
+  })
+
   await check('sentence structure: workbench marks the source, with fresh and verbatim cache entries', async () => {
     const sentence = 'The changes that the team proposed last month could reduce costs without affecting quality.'
     const spaced = sentence.replace('last month', 'last  month')

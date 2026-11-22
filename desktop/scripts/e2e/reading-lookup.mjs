@@ -199,7 +199,9 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
 
         const beforeSelection = inputs.length
         await selectText(page, 'put off')
-        assert.equal(inputs.length, beforeSelection, 'native selection must wait for an explicit mode choice')
+        await page.locator('#reading-lookup-result').getByText('Meaning of put off', { exact: true }).waitFor()
+        assert.equal(inputs.length, beforeSelection + 1, 'native selection should start one lookup using the current mode')
+        assert.equal(inputs.at(-1).isGuide, false)
         await page.locator('#reading-lookup-guide').click()
         await page.locator('#reading-lookup-result .hint').first().waitFor()
         assert.equal(await page.locator('#reading-lookup-result .hint').count(), 1)
@@ -208,8 +210,6 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(await page.locator('#reading-lookup-result .hint').count(), 2)
         await page.locator('#reading-lookup-result').getByRole('button', { name: 'Reveal answer', exact: true }).click()
         await page.locator('#reading-lookup-result .answer').getByText('to delay a planned action', { exact: false }).waitFor()
-        await page.locator('#reading-lookup-translate').click()
-        await page.locator('#reading-lookup-result').getByText('Meaning of put off', { exact: true }).waitFor()
         await page.waitForFunction(async () => {
           const saved = await chrome.storage.local.get('desktop_tutor_v1')
           return saved.desktop_tutor_v1?.some((item) => item.text === 'put off')
@@ -217,8 +217,11 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         const sources = await page.evaluate(async () => (await chrome.storage.local.get('desktop_tutor_v1')).desktop_tutor_v1)
         assert.equal(sources.filter((item) => item.text === 'put off').length, 1)
         assert.equal(sources.some((item) => item.text === 'record'), false, 'single words must not become Review exercises')
+        await clickWord(page, 'engineers')
+        await page.locator('#reading-lookup-result .hint').first().waitFor()
+        assert.equal(inputs.at(-1).data.selectedText, 'engineers')
+        assert.equal(inputs.at(-1).isGuide, true)
         await selectText(page, SENTENCE)
-        await page.locator('#reading-lookup-guide').click()
         await page.locator('#reading-lookup-result').getByText('“then” puts the second action after the first.', { exact: true }).waitFor()
         assert.equal(inputs.at(-1).isGuide, true)
         assert.equal(inputs.at(-1).data.selectedText, SENTENCE)
@@ -260,12 +263,25 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
 
         await openPastedText(page, PASSAGE)
         const beforeDoubleClick = inputs.length
-        const point = await textRange(page, 'record')
+        const point = await textRange(page, 'release')
         await page.mouse.dblclick(point.x, point.y, { delay: 50 })
-        await page.locator('#reading-lookup').waitFor({ state: 'visible' })
-        await page.locator('#reading-lookup-result').getByText('Choose how to explore this selection.', { exact: true }).waitFor()
+        await page.locator('#reading-lookup-result').getByText('Meaning of release', { exact: true }).waitFor()
         await page.waitForTimeout(350)
-        assert.equal(inputs.length, beforeDoubleClick, 'double-click selection must cancel the single-click lookup timer')
+        assert.equal(inputs.length, beforeDoubleClick + 1, 'double-click selection should start only one lookup')
+
+        const earlierSelection = 'The editor’s well-known method'
+        await selectText(page, earlierSelection)
+        await page.locator('#reading-lookup-result').getByText(`Meaning of ${earlierSelection}`, { exact: true }).waitFor()
+        await page.locator('#reading-lookup-close').click()
+        assert.equal(await page.evaluate(() => window.getSelection().toString()), earlierSelection)
+        const material = page.locator('.reading-preview:visible').first()
+        await material.dispatchEvent('keydown', { key: 'Shift' })
+        await material.dispatchEvent('keyup', { key: 'Shift' })
+        assert.equal(await page.locator('#reading-lookup').isVisible(), false)
+        const nextWord = await textRange(page, 'method')
+        await page.mouse.click(nextWord.x, nextWord.y)
+        await page.locator('#reading-lookup-result').getByText('Meaning of method', { exact: true }).waitFor()
+        assert.equal(await page.locator('#reading-lookup-text').textContent(), 'method')
 
         await openPastedText(page, LONG_PASSAGE)
         await page.locator('.reading-material summary').click()
@@ -278,6 +294,15 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         assert.equal(tail.surroundingContext.slice(tail.contextStart, tail.contextEnd), 'record')
         assert.equal(tail.selectedOccurrence.before.endsWith('will '), true)
         assert.equal(await page.evaluate((key) => chrome.storage.sync.get(key).then((values) => values[key]), MODE_KEY), 'translate')
+
+        await page.locator('#reading-lookup-guide').click()
+        await page.waitForFunction(async (key) => (await chrome.storage.sync.get(key))[key] === 'guide', MODE_KEY)
+        await page.reload()
+        await openPastedText(page, PASSAGE)
+        await selectText(page, 'a risky release')
+        await page.locator('#reading-lookup-result .hint').first().waitFor()
+        assert.equal(inputs.at(-1).data.selectedText, 'a risky release')
+        assert.equal(inputs.at(-1).isGuide, true, 'first lookup after reload should use the saved mode')
       })
     } finally {
       mock.resetHandler()

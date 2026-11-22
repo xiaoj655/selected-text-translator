@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { setTimeout as wait } from 'node:timers/promises';
 
 const backgroundSource = readFileSync(new URL('../src/background.js', import.meta.url), 'utf8');
 
@@ -18,8 +19,179 @@ test('background includes non-stream qwen-mt parse failures for malformed respon
   assert.match(backgroundSource, /debugLog\('qwen_non_stream_parse_failed'/);
 });
 
-test('background emits STREAM events only in stream consumer path', () => {
-  const streamStatusRefs = [...backgroundSource.matchAll(/TRANSLATION_EVENT_STATUS\.STREAM/g)];
-  assert.equal(streamStatusRefs.length, 1);
-  assert.match(backgroundSource, /async function consumeStream[\s\S]*TRANSLATION_EVENT_STATUS\.STREAM/);
+const DASHSCOPE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const guide = {
+  guideType: 'sentence',
+  hints: ['Notice "quiet" and the word 安静.', '"Was" connects the room with its description.'],
+  answer: { meaning: 'There was little noise in the room.', explanation: 'Quiet describes the room.' },
+  structure: [
+    { role: 'subject', text: 'The room' },
+    { role: 'verb', text: 'was' },
+    { role: 'complement', text: 'quiet' },
+  ],
+};
+
+async function createHarness(t, provider, { baseUrl = DASHSCOPE_URL, extension = false } = {}) {
+  const previousChrome = globalThis.chrome;
+  const previousScope = globalThis.ServiceWorkerGlobalScope;
+  if (extension) globalThis.ServiceWorkerGlobalScope = class ServiceWorkerGlobalScope {};
+  t.after(() => {
+    globalThis.chrome = previousChrome;
+    globalThis.ServiceWorkerGlobalScope = previousScope;
+  });
+  const listeners = [];
+  const events = [];
+  const requests = [];
+  globalThis.chrome = {
+    providerFetch: () => async (_url, options) => {
+      const body = JSON.parse(options.body);
+      requests.push(body);
+      return provider(body, options.signal);
+    },
+    runtime: { onMessage: { addListener(fn) { listeners.push(fn); } } },
+    storage: {
+      onChanged: { addListener() {} },
+      sync: { async get() {
+        return { base_url: baseUrl, api_key: 'test-key', model: 'qwen-mt-flash', learning_model: 'qwen3.8-flash' };
+      } },
+    },
+    tabs: { sendMessage(_id, { payload }, _options, done) { events.push(payload); done(); } },
+  };
+  await import(`../src/background.js?structured=${Math.random()}`);
+  function dispatch(message) {
+    let accepted = false;
+    for (const listener of listeners) {
+      listener(message, { tab: { id: 2 }, frameId: 1 }, (response) => { accepted ||= response?.accepted; });
+    }
+    assert.equal(accepted, true);
+  }
+  return {
+    events,
+    requests,
+    start(text, kind = 'guide', requestId = 'request') {
+      dispatch({ type: 'START_TRANSLATION', payload: { text, kind, requestId, selectionId: 'selection' } });
+    },
+    cancel(requestId = 'request') {
+      dispatch({ type: 'CANCEL_TRANSLATION', payload: { requestId } });
+    },
+    async event(status, requestId = 'request') {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const event = events.find((item) => item.status === status && item.requestId === requestId);
+        if (event) return event;
+        await wait(5);
+      }
+      assert.fail(`No ${status} event for ${requestId}`);
+    },
+  };
+}
+
+function createSse() {
+  const encoder = new TextEncoder();
+  let stream;
+  const body = new ReadableStream({ start(controller) { stream = controller; } });
+  return {
+    response: new Response(body, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }),
+    send(content) {
+      const data = JSON.stringify({ choices: [{ delta: { content } }] });
+      const bytes = encoder.encode(`data: ${data}\r\n\r\n`);
+      const unicode = bytes.findIndex((byte) => byte > 127);
+      const split = unicode < 0 ? 12 : unicode + 1;
+      stream.enqueue(bytes.slice(0, split));
+      stream.enqueue(bytes.slice(split));
+    },
+    end() {
+      stream.enqueue(encoder.encode('data: [DONE]'));
+      stream.close();
+    },
+    abort(error) { stream.error(error); },
+  };
+}
+
+test('desktop DashScope guides preview a complete escaped hint and retain it with final sentence structure', async (t) => {
+  const sse = createSse();
+  const harness = await createHarness(t, () => sse.response);
+  const json = JSON.stringify(guide);
+  const firstHintEnd = json.indexOf(JSON.stringify(guide.hints[0])) + JSON.stringify(guide.hints[0]).length + 1;
+  const split = json.indexOf('\\"') + 1;
+  harness.start('The room was quiet.');
+  sse.send(json.slice(0, split));
+  sse.send(json.slice(split, firstHintEnd));
+  const preview = await harness.event('stream');
+  assert.equal(preview.kind, 'guide');
+  assert.equal(preview.previewHint, guide.hints[0]);
+  assert.equal(preview.result, undefined);
+  assert.equal(harness.events.some(({ status }) => status === 'success'), false);
+  assert.equal(harness.requests[0].stream, true);
+  assert.equal(harness.requests[0].enable_thinking, false);
+  assert.deepEqual(harness.requests[0].response_format, { type: 'json_object' });
+  sse.send(json.slice(firstHintEnd));
+  sse.end();
+  const done = await harness.event('success');
+  assert.deepEqual(done.result.hints, guide.hints);
+  assert.equal(done.result.answer.meaning, guide.answer.meaning);
+  assert.deepEqual(done.result.structure.map(({ role }) => role), ['subject', 'verb', 'complement']);
+  assert.equal(harness.events.filter(({ status }) => status === 'stream').length, 1);
+});
+
+test('desktop DashScope direct single words preview the translation before completing lexical details', async (t) => {
+  const sse = createSse();
+  const harness = await createHarness(t, () => sse.response);
+  harness.start('record', 'translate');
+  sse.send('{"translation":"记录",');
+  const preview = await harness.event('stream');
+  assert.equal(harness.requests[0].model, 'qwen3.8-flash');
+  assert.equal(harness.requests[0].stream, true);
+  assert.match(harness.requests[0].messages[0].content, /"translation" as the first field/);
+  assert.equal(preview.translatedText, '记录');
+  assert.equal(preview.lexicalDetails, undefined);
+  assert.equal(harness.events.some(({ status }) => status === 'success'), false);
+  sse.send('"phonetic":"/ˈrekərd/","definitions":[{"meaning":"记录","pos":"noun"}]}');
+  sse.end();
+  const done = await harness.event('success');
+  assert.equal(done.translatedText, preview.translatedText);
+  assert.equal(done.lexicalDetails.phonetic, '/ˈrekərd/');
+  assert.equal(done.lexicalDetails.definitions[0].meaning, '记录');
+});
+
+test('desktop stream previews never publish hidden answer fields or replace final validation', async (t) => {
+  const sse = createSse();
+  const harness = await createHarness(t, () => sse.response);
+  harness.start('The room was quiet.');
+  sse.send('{"answer":{"hints":["Hidden answer"],"meaning":"Hidden answer"},');
+  sse.send('"hints":["Real hint"]}');
+  sse.end();
+  const failure = await harness.event('error');
+  assert.match(failure.message, /incomplete reading guide/);
+  assert.deepEqual(harness.events.map(({ status }) => status), ['started', 'error']);
+});
+
+test('cancelling a previewed guide aborts the stream without publishing a final result', async (t) => {
+  const sse = createSse();
+  let signal;
+  const harness = await createHarness(t, (_body, requestSignal) => {
+    signal = requestSignal;
+    signal.addEventListener('abort', () => sse.abort(signal.reason), { once: true });
+    return sse.response;
+  });
+  harness.start('The room was quiet.');
+  sse.send('{"hints":["Look at the word quiet."]');
+  await harness.event('stream');
+  harness.cancel();
+  assert.equal(signal.aborted, true);
+  await wait(0);
+  assert.deepEqual(harness.events.map(({ status }) => status), ['started', 'stream']);
+});
+
+test('generic endpoints and the browser retain non-streaming guide requests', async (t) => {
+  for (const options of [{ baseUrl: 'https://api.example.com/v1' }, { extension: true }]) {
+    await t.test(JSON.stringify(options), async (caseTest) => {
+      const harness = await createHarness(caseTest, () => Response.json({
+        choices: [{ message: { content: JSON.stringify(guide) } }],
+      }), options);
+      harness.start('The room was quiet.');
+      await harness.event('success');
+      assert.equal(harness.requests[0].stream, false);
+      assert.deepEqual(harness.events.map(({ status }) => status), ['started', 'success']);
+    });
+  }
 });

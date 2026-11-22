@@ -1,6 +1,6 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderTranslation, sentenceStructure } from './translation-result.js'
+import { renderGuide, renderGuidePreview, renderTranslation, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
 import { readingSelection, readingStructureRanges, readingWordAt } from './reading-selection.js'
@@ -13,6 +13,11 @@ const STRUCTURE_HIGHLIGHTS = {
   verb: 'reading-lookup-verb',
   object: 'reading-lookup-object',
   complement: 'reading-lookup-complement',
+}
+
+function sameRange(a, b) {
+  return a && b && a.compareBoundaryPoints(Range.START_TO_START, b) === 0
+    && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
 }
 
 export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
@@ -29,8 +34,8 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   dismiss.setAttribute('aria-label', 'Close lookup')
   header.append(title, dismiss)
   const modes = el('div', 'reading-lookup-modes')
-  const translate = button('Translate', 'reading-lookup-translate', () => void request('translate'))
-  const guide = button('Guided Reading', 'reading-lookup-guide', () => void request('guide'))
+  const translate = button('Translate', 'reading-lookup-translate', () => selectMode('translate'))
+  const guide = button('Guided Reading', 'reading-lookup-guide', () => selectMode('guide'))
   modes.append(translate, guide)
   const body = el('div', 'reading-lookup-body')
   const result = el('div', 'result')
@@ -52,14 +57,16 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
   const articles = new WeakMap()
   let entry = null
   let counter = 0
-  let lastMode = 'translate'
-  let modeChosen = false
+  let lastMode
   let wordTimer = 0
+  let selectionBeforePointer = null
+  let selectionBeforeShift
   let speechId = null
   const id = () => `reading-${Date.now()}-${++counter}`
-  void chrome.storage.sync.get(MODE_KEY).then((values) => {
-    if (!modeChosen && values?.[MODE_KEY] === 'guide') lastMode = 'guide'
-  }).catch(() => {})
+  const modeReady = chrome.storage.sync.get(MODE_KEY).then(
+    (values) => { lastMode ??= values?.[MODE_KEY] === 'guide' ? 'guide' : 'translate' },
+    () => { lastMode ??= 'translate' },
+  )
 
   function clearWordTimer() {
     clearTimeout(wordTimer)
@@ -105,11 +112,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     // The native selection paints over the role colors. Clear it only if it is
     // still the selection that opened this lookup.
     const selection = window.getSelection()
-    if (selection?.rangeCount === 1) {
-      const nativeRange = selection.getRangeAt(0)
-      if (entry.range.compareBoundaryPoints(Range.START_TO_START, nativeRange) === 0
-        && entry.range.compareBoundaryPoints(Range.END_TO_END, nativeRange) === 0) selection.removeAllRanges()
-    }
+    if (selection?.rangeCount === 1 && sameRange(entry.range, selection.getRangeAt(0))) selection.removeAllRanges()
     return true
   }
 
@@ -145,8 +148,7 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     result.replaceChildren()
     result.className = 'result'
     result.setAttribute('aria-busy', String(ACTIVE.has(entry.status)))
-    if (entry.status === 'idle') result.textContent = 'Choose how to explore this selection.'
-    else if (entry.status === 'error' || entry.status === 'cancelled') {
+    if (entry.status === 'error' || entry.status === 'cancelled') {
       result.classList.add('is-error')
       result.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
@@ -155,21 +157,25 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
         onRevealHint(current) { current.hintCount += 1; render() },
         onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; render() },
       }))
+    } else if (entry.mode === 'guide' && entry.previewHint) {
+      result.append(renderGuidePreview(entry.previewHint))
     } else if (entry.translatedText) result.append(renderTranslation(entry))
     else result.textContent = 'Waiting for the model…'
     const done = entry.status === 'done'
     copy.disabled = !done
     save.disabled = !done || Boolean(entry.saving) || (entry.mode === 'guide' && !entry.answerRevealed)
-    stop.hidden = !ACTIVE.has(entry.status)
+    stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
     retry.hidden = !['error', 'cancelled'].includes(entry.status)
     settings.hidden = entry.status !== 'error'
     body.scrollTop = scrollTop
     position()
   }
 
-  function open(selection, autoRequest) {
+  function open(selection) {
+    if (entry?.material === selection.material && sameRange(entry.range, selection.range)) return
     close()
-    entry = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'idle', hintCount: 1, answerRevealed: false }
+    const current = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending' }
+    entry = current
     title.textContent = selection.text
     title.title = selection.text
     feedback.textContent = ''
@@ -178,8 +184,22 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     copy.classList.remove('is-done')
     popover.hidden = false
     popover.showPopover()
-    render()
-    if (autoRequest) void request(lastMode)
+    if (lastMode) void request(lastMode)
+    else {
+      render()
+      void modeReady.then(() => {
+        if (entry === current && !current.mode) void request(lastMode)
+      })
+    }
+  }
+
+  function selectMode(mode) {
+    if (!entry) return
+    if (lastMode !== mode) {
+      lastMode = mode
+      void chrome.storage.sync.set({ [MODE_KEY]: mode }).catch(() => {})
+    }
+    void request(mode)
   }
 
   async function request(mode, forceRefresh = false) {
@@ -188,11 +208,8 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     cancel()
     const current = entry
     const requestId = id()
-    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null,
+    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
-    modeChosen = true
-    lastMode = mode
-    void chrome.storage.sync.set({ [MODE_KEY]: mode }).catch(() => {})
     feedback.textContent = ''
     save.textContent = 'Save'
     render()
@@ -302,7 +319,11 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     if (message?.type !== 'TRANSLATION_EVENT' || !entry?.requestId || payload?.requestId !== entry.requestId) return
     switch (payload.status) {
       case 'started': entry.status = 'loading'; break
-      case 'stream': entry.status = 'streaming'; entry.translatedText = String(payload.translatedText || ''); break
+      case 'stream':
+        entry.status = 'streaming'
+        if (entry.mode === 'guide') entry.previewHint = String(payload.previewHint || '')
+        else entry.translatedText = String(payload.translatedText || '')
+        break
       case 'success':
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
@@ -327,25 +348,42 @@ export function createReadingLookup({ rootEl, onOpenSettings, onLookup }) {
     const material = event.target.closest?.('.reading-preview[data-reading-selectable]')
     if (!material) return
     const selection = readingSelection(rootEl)
-    if (selection?.material === material) open(selection, false)
+    if (selection?.material === material && (event.detail > 1 || !sameRange(selection.range, selectionBeforePointer))) open(selection)
   })
   rootEl.addEventListener('click', (event) => {
-    if (event.detail !== 1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || readingSelection(rootEl)) return
+    if (event.detail !== 1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+    const selection = readingSelection(rootEl)
+    if (selection && !sameRange(selection.range, selectionBeforePointer)) return
     clearWordTimer()
     const word = readingWordAt(rootEl, event.clientX, event.clientY)
-    if (word) wordTimer = setTimeout(() => {
+    if (!word) return
+    // Chromium may leave a prior native selection in place until the click completes.
+    if (selection) window.getSelection().removeAllRanges()
+    wordTimer = setTimeout(() => {
       wordTimer = 0
-      if (word.material.isConnected && !word.material.closest('[hidden]')) open(word, true)
+      if (word.material.isConnected && !word.material.closest('[hidden]')) open(word)
     }, 280)
   })
-  rootEl.addEventListener('keyup', (event) => {
-    if (event.key !== 'Shift' && !event.key.startsWith('Arrow')) return
+  rootEl.addEventListener('keydown', (event) => {
+    if (event.key === 'Shift' && !event.repeat) selectionBeforeShift = readingSelection(rootEl)?.range || null
+  })
+  document.addEventListener('keyup', (event) => {
+    // Shift+Arrow can change the range repeatedly while Shift is held.
+    if (event.key !== 'Shift') return
+    const previous = selectionBeforeShift
+    selectionBeforeShift = undefined
+    if (previous === undefined || !rootEl.contains(event.target)) return
     if (event.target.closest?.('input, textarea, button, a, summary')) return
     const selection = readingSelection(rootEl)
-    if (selection) open(selection, false)
+    if (selection && !sameRange(selection.range, previous)) open(selection)
   })
   document.addEventListener('pointerdown', (event) => {
     clearWordTimer()
+    selectionBeforePointer = null
+    if (event.button === 0 && rootEl.contains(event.target)) {
+      const selection = window.getSelection()
+      if (selection?.rangeCount === 1 && !selection.isCollapsed) selectionBeforePointer = selection.getRangeAt(0).cloneRange()
+    }
     if (!popover.hidden && !popover.contains(event.target)) close()
   })
   document.addEventListener('keydown', (event) => {

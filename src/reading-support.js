@@ -86,8 +86,9 @@ function getSelectionOccurrence(context, text, contextStart, contextEnd) {
 }
 
 export function buildReadingRequest({ model, text, context = '', kind = 'guide', contextStart, contextEnd,
-  includeSentenceStructure = false, sourceLanguage }) {
+  includeSentenceStructure = false, sourceLanguage, stream = false }) {
   const request = buildGenericRequest({ model, text: '' })
+  request.stream = stream && kind === 'guide'
   const selectedText = String(text || '').slice(0, 12000)
   const surroundingContext = String(context || '').slice(0, 2400)
   const selectionType = classifyReadingSelection(selectedText)
@@ -97,7 +98,8 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
         'Use American IPA for English, tone-marked Pinyin for Chinese. Never include definitions or translations.',
         'For words such as record, read, lead, or wind, use the grammar and meaning of the selected occurrence.',
       ]
-    : buildGuideInstructions(includeSentenceStructure && supportsSentenceStructure(selectedText, sourceLanguage))
+    : buildGuideInstructions(includeSentenceStructure && supportsSentenceStructure(selectedText, sourceLanguage),
+        request.stream)
   request.messages = [
     {
       role: 'system',
@@ -141,7 +143,7 @@ const SENTENCE_STRUCTURE_INSTRUCTIONS = [
   'When another hint helps, make it explain which words a clause modifies or what relationship a connecting phrase adds.',
 ]
 
-function buildGuideInstructions(includeSentenceStructure) {
+function buildGuideInstructions(includeSentenceStructure, stream) {
   return [
     'Help an English learner understand the selected word, phrase, or passage through contextual clues.',
     'Write all hints and explanations in clear, accessible English. Do not translate into Chinese.',
@@ -189,6 +191,12 @@ function buildGuideInstructions(includeSentenceStructure) {
     'Omit phonetic, usage, and example for sentence guides.',
     'If context is absent or ambiguous, say so briefly. Do not invent a source sentence or pretend a guess is certain.',
     ...(includeSentenceStructure ? SENTENCE_STRUCTURE_INSTRUCTIONS : []),
+    ...(stream ? [
+      'Write the top-level "hints" field before "answer" and "structure".',
+      ...(includeSentenceStructure ? [
+        'When adding structure, make the first hint complement the labels by explaining a useful link or a difficult part of the main action.',
+      ] : []),
+    ] : []),
   ]
 }
 
@@ -252,7 +260,7 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
     normalizedAnswer.example = typeof answer.example === 'string' ? answer.example.trim() : ''
     if (options.includeSentenceStructure && supportsSentenceStructure(options.text, options.sourceLanguage)) {
       const structure = normalizeSentenceStructure(parsed.structure, options.text)
-      const visibleHints = structure.length && hints.length > 1 ? hints.slice(1) : hints
+      const visibleHints = structure.length && hints.length > 1 && !options.keepFirstHint ? hints.slice(1) : hints
       return { guideType: 'sentence', phonetic: '', hints: visibleHints, answer: normalizedAnswer, structure }
     }
     return { guideType: 'sentence', phonetic: '', hints, answer: normalizedAnswer }

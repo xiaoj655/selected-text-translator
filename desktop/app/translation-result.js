@@ -109,6 +109,17 @@ export function hintNode(hint, index, isNew) {
   return node
 }
 
+function renderHints(hints) {
+  const list = el('div', 'hints')
+  list.dataset.hints = 'true'
+  hints.forEach((hint, index) => list.append(hintNode(hint, index)))
+  return list
+}
+
+export function renderGuidePreview(hint) {
+  return renderHints([hint])
+}
+
 export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceLegend = false } = {}) {
   const guide = entry.guide
   if (!guide) return null
@@ -118,11 +129,8 @@ export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceL
   if (structure.length) box.append(renderSentenceLegend(structure))
   if (guide.phonetic) box.append(lexicalRow('Pronunciation', guide.phonetic))
   if (Array.isArray(guide.hints) && guide.hints.length) {
-    const hints = el('div', 'hints')
-    hints.dataset.hints = 'true'
     const revealed = revealedHints(entry, guide.hints)
-    guide.hints.slice(0, revealed).forEach((hint, index) => hints.append(hintNode(hint, index)))
-    box.append(hints)
+    box.append(renderHints(guide.hints.slice(0, revealed)))
     if (revealed < guide.hints.length) {
       const more = el('button', '', `Next hint (${guide.hints.length - revealed} left)`)
       more.type = 'button'

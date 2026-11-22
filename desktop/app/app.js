@@ -1,7 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import {
-  renderLexical, renderGuide, renderTranslation, revealedHints, hintNode,
+  renderLexical, renderGuide, renderGuidePreview, renderTranslation, revealedHints, hintNode,
   sentenceStructure, markSentence, renderSentenceLegend,
 } from './translation-result.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
@@ -1273,9 +1273,9 @@ function submit(options = {}) {
     return
   }
   const memoryKey = workbenchMemoryKey(text, state.mode)
-  const recent = state.entries[state.entries.length - 1]
-  if (recent && recent.memoryKey === memoryKey && ['pending', 'loading', 'streaming'].includes(recent.status)
-    && Date.now() - recent.createdAt < 2000) {
+  const pending = state.entries.some((entry) => entry.memoryKey === memoryKey && entry.text === text
+    && ['pending', 'loading', 'streaming'].includes(entry.status))
+  if (pending) {
     setStatus('Already processing this text')
     return
   }
@@ -1343,7 +1343,8 @@ function handleTranslationEvent(payload) {
       break
     case 'stream':
       entry.status = 'streaming'
-      entry.translatedText = String(payload.translatedText || '').trim()
+      if (entry.mode === 'guide') entry.previewHint = payload.previewHint
+      else entry.translatedText = String(payload.translatedText || '').trim()
       break
     case 'success':
       entry.status = 'done'
@@ -1510,9 +1511,11 @@ function renderResult(entry) {
     result.append(message, tools)
     return result
   }
-  if (entry.status === 'pending' || entry.status === 'loading') {
+  if (entry.status === 'pending' || entry.status === 'loading'
+    || (entry.status === 'streaming' && entry.mode === 'guide')) {
     result.classList.add('is-loading')
-    result.textContent = 'Waiting for the model…'
+    if (entry.status === 'streaming' && entry.previewHint) result.append(renderGuidePreview(entry.previewHint))
+    else result.textContent = 'Waiting for the model…'
     return result
   }
   if (entry.mode === 'guide') {
@@ -1813,6 +1816,11 @@ function patchStreamResult(entry) {
   }
   const label = node.querySelector('.entry-body > .result-label')
   if (label) label.textContent = 'Processing'
+  if (entry.mode === 'guide') {
+    result.replaceWith(renderResult(entry))
+    followStreamBottom()
+    return
+  }
   result.classList.remove('is-error', 'is-loading')
   const answer = el('div', 'translation-answer')
   const text = languageText('span', 'translation-text', entry.translatedText || '')
