@@ -25,6 +25,8 @@ const DETECTED_LANGUAGE_TAGS = {
 const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
 const SPEECH_PREVIEW_ID = 'speech-preview'
 const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
+const DEFAULT_ARTICLE_APPEARANCE = { font: 20, width: 840, fit: false }
+const ARTICLE_FONT_SIZES = [18, 20, 22, 24]
 
 const state = {
   mode: 'translate',
@@ -51,7 +53,8 @@ const state = {
   snackbarTimer: null,
   announceTimer: 0,
   lastElapsed: 0,
-  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'neutral', reducedMotion: false },
+  prefs: { pasteAutoSubmit: true, enterToSend: false, theme: 'system', font: 'normal', accent: 'neutral', reducedMotion: false,
+    articleAppearance: DEFAULT_ARTICLE_APPEARANCE },
   collapsed: new Set(),
   selection: null,
   reviewReminderShown: false,
@@ -643,6 +646,32 @@ function applyAppearance() {
   root.dataset.motion = state.prefs.reducedMotion ? 'reduced' : 'full'
   root.dataset.accent = ACCENTS.includes(state.prefs.accent) ? state.prefs.accent : 'neutral'
   void window.sttDesktop.setTheme(root.dataset.theme)
+}
+
+function applyArticleAppearance() {
+  const saved = state.prefs.articleAppearance
+  const widthInput = $('opt-article-width')
+  const minWidth = Number(widthInput.min)
+  const maxWidth = Number(widthInput.max)
+  const widthStep = Number(widthInput.step)
+  const font = ARTICLE_FONT_SIZES.includes(saved?.font) ? saved.font : DEFAULT_ARTICLE_APPEARANCE.font
+  const width = Number.isFinite(saved?.width) && saved.width >= minWidth && saved.width <= maxWidth
+    && (saved.width - minWidth) % widthStep === 0 ? saved.width : DEFAULT_ARTICLE_APPEARANCE.width
+  const fit = saved?.fit === true
+  state.prefs.articleAppearance = { font, width, fit }
+  $('opt-article-font').value = String(font)
+  widthInput.value = String(width)
+  widthInput.disabled = fit
+  $('article-width-value').value = `${width} px`
+  widthInput.setAttribute('aria-valuetext', `${width} pixels`)
+  $('opt-article-fit').checked = fit
+  tutor.setArticleAppearance(state.prefs.articleAppearance)
+}
+
+function updateArticleAppearance(change, persist = true) {
+  state.prefs.articleAppearance = { ...state.prefs.articleAppearance, ...change }
+  applyArticleAppearance()
+  if (persist) void savePrefs()
 }
 
 let persistTimer
@@ -2091,6 +2120,17 @@ function bind() {
     void savePrefs()
     applyAppearance()
   })
+  $('opt-article-font').addEventListener('change', (event) => {
+    updateArticleAppearance({ font: Number(event.target.value) })
+  })
+  $('opt-article-width').addEventListener('input', (event) => {
+    updateArticleAppearance({ width: event.target.valueAsNumber }, false)
+  })
+  $('opt-article-width').addEventListener('change', () => void savePrefs())
+  $('opt-article-fit').addEventListener('change', (event) => {
+    updateArticleAppearance({ fit: event.target.checked })
+  })
+  $('opt-article-reset').addEventListener('click', () => updateArticleAppearance(DEFAULT_ARTICLE_APPEARANCE))
   $('opt-reduced-motion').addEventListener('change', (event) => {
     state.prefs.reducedMotion = event.target.checked
     void savePrefs()
@@ -2407,6 +2447,7 @@ async function init() {
     // default preferences
   }
   applyPrefs()
+  applyArticleAppearance()
   try {
     const restored = await window.sttDesktop.loadHistory()
     if (Array.isArray(restored) && restored.length) {

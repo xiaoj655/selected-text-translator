@@ -252,6 +252,28 @@
             </div>
             <label class="mini-toggle" for="opt-reduced-motion">Reduce motion<input type="checkbox" id="opt-reduced-motion"></label>
           </div>
+          <section class="article-appearance" aria-labelledby="settings-article-heading">
+            <div class="settings-row article-appearance-head">
+              <h4 id="settings-article-heading">Article reading</h4>
+              <button id="opt-article-reset" type="button" aria-label="Reset article reading appearance">Reset</button>
+            </div>
+            <div class="drawer-appearance">
+              <label class="settings-row" for="opt-article-font">Article text size
+                <select id="opt-article-font">
+                  <option value="18">18 px</option>
+                  <option value="20" selected>20 px</option>
+                  <option value="22">22 px</option>
+                  <option value="24">24 px</option>
+                </select>
+              </label>
+              <div class="settings-row article-width-field">
+                <label for="opt-article-width">Maximum width</label>
+                <input id="opt-article-width" type="range" min="640" max="1600" step="20" value="840">
+                <output id="article-width-value" for="opt-article-width" aria-hidden="true">840 px</output>
+              </div>
+              <label class="mini-toggle" for="opt-article-fit">Fit window<input type="checkbox" id="opt-article-fit"></label>
+            </div>
+          </section>
         </div>
       </div>
       <div class="drawer-diag" id="diagnostics"></div>

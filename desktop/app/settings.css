@@ -134,8 +134,12 @@
 }
 
 .settings-row select { width: auto; max-width: 66%; }
-.speech-rate-field input { flex: 1; max-width: 200px; min-width: 0; margin-inline-start: auto; accent-color: var(--primary); }
-.speech-rate-value { min-width: 3ch; color: var(--text-2); text-align: end; font-variant-numeric: tabular-nums; }
+.speech-rate-field input, .article-width-field input { flex: 1; max-width: 200px; min-width: 0; margin-inline-start: auto; accent-color: var(--primary); }
+.speech-rate-value, .article-width-field output { min-width: 3ch; color: var(--text-2); text-align: end; font-variant-numeric: tabular-nums; }
+.article-appearance { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
+.article-appearance-head h4 { margin: 0; font-size: 14px; font-weight: 650; }
+.article-appearance-head button { border-color: transparent; color: var(--text-2); }
+.article-width-field output { min-width: 7ch; }
 
 .glossary-add-row {
   display: grid;

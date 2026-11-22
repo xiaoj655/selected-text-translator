@@ -46,8 +46,39 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
     refresh() {
       if (!reviewPanel.hidden) review.refresh()
     },
+    setArticleAppearance({ font, width, fit }) {
+      const anchor = readingAnchor(rootEl)
+      rootEl.style.setProperty('--article-font-size', `${font}px`)
+      rootEl.style.setProperty('--article-width', fit ? '100%' : `${width}px`)
+      if (anchor) rootEl.scrollTop += anchor.range.getBoundingClientRect().top - anchor.top
+    },
     close() { reading.close() },
   }
+}
+
+function readingAnchor(scroller) {
+  if (scroller.hidden || scroller.scrollTop <= 0) return null
+  const top = scroller.getBoundingClientRect().top + 1
+  for (const material of scroller.querySelectorAll('.reading-preview')) {
+    const bounds = material.getBoundingClientRect()
+    const text = material.firstChild
+    if (bounds.top > top || bounds.bottom <= top || text?.nodeType !== Node.TEXT_NODE) continue
+    // The prose is one text node. Find the first visible line without hit testing the Settings overlay.
+    const range = document.createRange()
+    let start = 0
+    let end = text.length
+    while (start < end) {
+      const middle = Math.floor((start + end) / 2)
+      range.setStart(text, middle)
+      range.collapse(true)
+      if (range.getBoundingClientRect().bottom <= top) start = middle + 1
+      else end = middle
+    }
+    range.setStart(text, start)
+    range.collapse(true)
+    return { range, top: range.getBoundingClientRect().top }
+  }
+  return null
 }
 
 const CATEGORIES = {
@@ -261,9 +292,11 @@ function createReadingWorkspace({ rootEl, api, onOpenSettings, onLookup }) {
     send.id = 'reading-send'
     form.append(label, input, send)
     const pasteExcerpt = button('Paste a passage', '', openPaste)
-    panel.append(thread, status, settings)
-    if (excerpt) panel.append(start, suggestions, form)
-    else panel.append(pasteExcerpt)
+    const discussion = el('div', 'reading-discussion')
+    discussion.append(thread, status, settings)
+    if (excerpt) discussion.append(start, suggestions, form)
+    else discussion.append(pasteExcerpt)
+    panel.append(discussion)
 
     function appendTurn({ role, text, quote }) {
       const entry = el('div', 'reading-turn')
