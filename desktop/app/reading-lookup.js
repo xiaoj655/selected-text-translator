@@ -23,6 +23,12 @@ function sameRange(a, b) {
     && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
 }
 
+function sameSentenceScope(a, b) {
+  return a.text && a.text === b.text
+    && a.sentences[0].start === b.sentences[0].start
+    && a.sentences.at(-1).end === b.sentences.at(-1).end
+}
+
 export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup }) {
   const popover = el('section', 'reading-lookup')
   popover.id = 'reading-lookup'
@@ -32,7 +38,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const title = el('strong', 'reading-lookup-text')
   title.id = 'reading-lookup-text'
   title.lang = 'en'
-  const dismiss = button('×', 'reading-lookup-close', close, 'reading-lookup-close')
+  const dismiss = button('×', 'reading-lookup-close', () => close(), 'reading-lookup-close')
   dismiss.setAttribute('aria-label', 'Close lookup')
   const expand = button('Expand', 'reading-lookup-expand', () => layout.expand())
   const collapse = button('Minimize', 'reading-lookup-minimize', () => layout.collapse())
@@ -51,6 +57,9 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const body = el('div', 'reading-lookup-body')
   const result = el('div', 'result')
   result.id = 'reading-lookup-result'
+  const meaning = el('div', 'result')
+  const structure = el('div')
+  result.append(meaning, structure)
   const feedback = el('p', 'reading-lookup-feedback')
   feedback.setAttribute('role', 'status')
   body.append(result, feedback)
@@ -133,11 +142,10 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     return true
   }
 
-  function close() {
+  function close({ preserveAnalysis = false } = {}) {
     selection.clearPending()
-    selection.hideSentence()
     cancel()
-    cancelAnalysis()
+    if (!preserveAnalysis) cancelAnalysis()
     stopSpeech()
     entry = null
     layout.close()
@@ -145,73 +153,99 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     clearStructureHighlights()
   }
 
-  function render() {
-    if (!entry) return
-    renderHighlights()
+  function renderMeaning() {
     const scrollTop = body.scrollTop
+    const structurePanel = scrollTop > 0 ? structure.firstElementChild : null
+    const structureTop = structurePanel?.getBoundingClientRect().top
+    const viewingStructure = structurePanel && structureTop <= body.getBoundingClientRect().top
     translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
     guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
-    result.replaceChildren()
-    result.className = 'result'
-    result.setAttribute('aria-busy', String(ACTIVE.has(entry.status)))
+    meaning.replaceChildren()
+    meaning.classList.toggle('is-error', ['error', 'cancelled'].includes(entry.status))
+    meaning.setAttribute('aria-busy', String(ACTIVE.has(entry.status)))
     if (entry.status === 'error' || entry.status === 'cancelled') {
-      result.classList.add('is-error')
-      result.textContent = entry.error
+      meaning.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
-      result.append(renderGuide(entry, {
-        onRevealHint(current) { current.hintCount += 1; render() },
-        onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; render() },
+      meaning.append(renderGuide(entry, {
+        onRevealHint(current) { current.hintCount += 1; renderMeaning() },
+        onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; renderMeaning() },
       }))
     } else if (entry.mode === 'guide' && entry.previewHint) {
-      result.append(renderGuidePreview(entry.previewHint))
+      meaning.append(renderGuidePreview(entry.previewHint))
     } else if (entry.translatedText) {
-      result.append(renderTranslation(entry))
+      meaning.append(renderTranslation(entry))
+    } else {
+      meaning.textContent = 'Waiting for the model…'
     }
-    else result.textContent = 'Waiting for the model…'
+    renderActions()
+    if (viewingStructure) {
+      body.scrollTop += structurePanel.getBoundingClientRect().top - structureTop
+    } else {
+      body.scrollTop = scrollTop
+    }
+    layout.position()
+  }
+
+  function renderActions() {
     const done = entry.status === 'done'
-    if (done) result.append(renderReadingSentence(entry, {
-      onToggle(expanded) {
-        if (!entry) return
-        entry.analysis.expanded = expanded
-        if (expanded && entry.analysis.status === 'idle') void requestAnalysis()
-        else render()
-      },
-      onRetry() { void requestAnalysis(true) },
-    }))
     copy.disabled = !done
     save.disabled = !done || Boolean(entry.saving) || (entry.mode === 'guide' && !entry.answerRevealed)
     stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
     retry.hidden = !['error', 'cancelled'].includes(entry.status)
     settings.hidden = entry.status !== 'error'
-    body.scrollTop = scrollTop
     popover.classList.toggle('is-detailed', entry.mode === 'guide' || entry.status === 'error' || entry.status === 'cancelled')
+  }
+
+  function renderAnalysis() {
+    const scrollTop = body.scrollTop
+    renderHighlights()
+    if (!entry.singleWord || entry.status === 'done' || structure.firstElementChild) {
+      structure.replaceChildren(renderReadingSentence(entry, {
+        onToggle(expanded) {
+          entry.analysis.expanded = expanded
+          if (expanded && entry.analysis.status === 'idle') void requestAnalysis()
+          else renderAnalysis()
+        },
+        onRetry() { void requestAnalysis(true) },
+      }))
+    }
+    body.scrollTop = scrollTop
     layout.position()
   }
 
-  function open(selection) {
-    if (entry?.material === selection.material && sameRange(entry.range, selection.range)) {
+  function open(selected) {
+    const sameMaterial = entry?.material === selected.material
+    if (sameMaterial && entry.start === selected.start && entry.end === selected.end && entry.text === selected.text) {
       layout.reopen()
       return
     }
-    close()
-    const singleWord = classifyReadingSelection(selection.text) === 'word'
-    const current = { ...selection, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', singleWord,
-      analysis: { status: 'idle', expanded: !singleWord, detailExpanded: false, requestId: null, result: null, error: '' } }
+    const singleWord = classifyReadingSelection(selected.text) === 'word'
+    const preserveAnalysis = !singleWord && sameMaterial && entry.analysis.status === 'loading'
+      && sameSentenceScope(entry.sentenceScope, selected.sentenceScope)
+    const analysis = preserveAnalysis ? entry.analysis
+      : { status: 'idle', detailExpanded: false, requestId: null, result: null, error: '' }
+    analysis.expanded = !singleWord
+    close({ preserveAnalysis })
+    const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', singleWord, analysis }
     entry = current
-    title.textContent = selection.text
-    title.title = selection.text
+    title.textContent = selected.text
+    title.title = selected.text
     feedback.textContent = ''
     save.textContent = 'Save'
     copy.textContent = 'Copy result'
     copy.classList.remove('is-done')
+    structure.replaceChildren()
+    body.scrollTop = 0
     layout.open(current)
     if (lastMode) void request(lastMode)
     else {
-      render()
+      renderMeaning()
       void modeReady.then(() => {
         if (entry === current && !current.mode) void request(lastMode)
       })
     }
+    if (singleWord || preserveAnalysis) renderAnalysis()
+    else void requestAnalysis()
   }
 
   function selectMode(mode) {
@@ -235,7 +269,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     if (mode === 'guide') layout.expand()
     feedback.textContent = ''
     save.textContent = 'Save'
-    render()
+    renderMeaning()
     try {
       const values = await chrome.storage.sync.get(['desktop_target_language', 'desktop_glossary'])
       if (entry !== current || current.requestId !== requestId) return
@@ -251,42 +285,44 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       if (entry === current && current.requestId === requestId && !response?.accepted) {
         current.status = 'error'
         current.error = 'Could not start the request. Try again.'
-        render()
+        renderMeaning()
       }
     } catch {
       if (entry !== current || current.requestId !== requestId) return
       current.status = 'error'
       current.error = 'Could not reach the translation service. Try again.'
-      render()
+      renderMeaning()
     }
   }
 
   async function requestAnalysis(forceRefresh = false) {
     const current = entry
     if (!current?.sentenceScope.text || (!forceRefresh && current.analysis.status !== 'idle')) {
-      render()
+      if (current) renderAnalysis()
       return
     }
     cancelAnalysis()
     const analysis = current.analysis
     const requestId = id()
     Object.assign(analysis, { status: 'loading', requestId, error: '', result: null })
-    render()
+    renderAnalysis()
     try {
       const response = await chrome.runtime.sendMessage({ type: 'START_TRANSLATION', payload: {
         selectionId: current.id, requestId, requestScope: 'reading', kind: 'structure', forceRefresh,
         text: current.sentenceScope.text, sourceLanguage: 'english',
       } })
-      if (entry === current && analysis.requestId === requestId && !response?.accepted) {
+      if (entry?.analysis === analysis && analysis.requestId === requestId && !response?.accepted) {
         analysis.status = 'error'
+        analysis.requestId = null
         analysis.error = 'Could not start sentence analysis. Try again.'
-        render()
+        renderAnalysis()
       }
     } catch {
-      if (entry !== current || analysis.requestId !== requestId) return
+      if (entry?.analysis !== analysis || analysis.requestId !== requestId) return
       analysis.status = 'error'
+      analysis.requestId = null
       analysis.error = 'Could not reach the sentence analysis service. Try again.'
-      render()
+      renderAnalysis()
     }
   }
 
@@ -295,7 +331,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     if (!entry) return
     entry.status = 'cancelled'
     entry.error = 'Request stopped. Retry when you’re ready.'
-    render()
+    renderMeaning()
   }
 
   async function copyResult() {
@@ -313,7 +349,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const current = entry
     if (!current || current.status !== 'done' || current.saving) return
     current.saving = true
-    render()
+    renderActions()
     try {
       const answer = current.guide?.answer || {}
       const response = await chrome.runtime.sendMessage({ type: 'VOCABULARY_SAVE', payload: {
@@ -331,7 +367,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       if (entry === current) feedback.textContent = 'Could not save. Try again.'
     } finally {
       current.saving = false
-      if (entry === current) render()
+      if (entry === current) renderActions()
     }
   }
 
@@ -380,8 +416,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         analysis.status = 'error'
         analysis.error = localizeErrorMessage(payload)
         analysis.requestId = null
-      } else if (payload.status !== 'started') return
-      render()
+      } else return
+      renderAnalysis()
       return
     }
     if (!entry.requestId || payload?.requestId !== entry.requestId) return
@@ -409,8 +445,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       case 'missing-configuration': entry.status = 'error'; entry.error = localizeErrorMessage(payload); break
       default: return
     }
-    if (entry.status === 'done' && entry.analysis.expanded && entry.analysis.status === 'idle') void requestAnalysis()
-    else render()
+    renderMeaning()
+    if (entry.singleWord && entry.status === 'done' && !structure.firstElementChild) renderAnalysis()
   })
 
   document.addEventListener('keydown', (event) => {

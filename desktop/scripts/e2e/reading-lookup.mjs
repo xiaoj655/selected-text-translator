@@ -128,8 +128,8 @@ export async function clickWord(page, word, occurrence = 0) {
   assert.equal(await page.locator('#reading-lookup-text').textContent(), word)
 }
 
-export async function selectText(page, text, occurrence = 0) {
-  if (await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
+export async function selectText(page, text, occurrence = 0, { keepOpen = false } = {}) {
+  if (!keepOpen && await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
   await textRange(page, text, occurrence, true)
   await page.locator('#reading-lookup').waitFor({ state: 'visible' })
   assert.equal(await page.locator('#reading-lookup-text').textContent(), text)
@@ -361,7 +361,7 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         const point = await textRange(page, 'release')
         await page.mouse.dblclick(point.x, point.y, { delay: 50 })
         await page.locator('#reading-lookup-result').getByText('Meaning of release', { exact: true }).waitFor()
-        await page.waitForTimeout(350)
+        assert.equal(await page.evaluate(() => window.getSelection().toString()), 'release')
         assert.equal(inputs.length, beforeDoubleClick + 1, 'double-click selection should start only one lookup')
 
         const earlierSelection = 'The editor’s well-known method'
@@ -633,7 +633,7 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
     }
   })
 
-  await check('article lookup: dictionary resize and pending click dismissal', async () => {
+  await check('article lookup: dictionary resize and immediate word lookup', async () => {
     let previousBounds
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       if (body.messages?.[0]?.content?.includes('Read an English article together')) {
@@ -685,27 +685,27 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
           'clicking Coach with an earlier article selection must not reopen its lookup')
 
         await page.evaluate(() => window.getSelection().removeAllRanges())
-        let point = await textRange(page, 'record')
+        const point = await textRange(page, 'record')
+        const panel = page.locator('#reading-lookup')
+        await panel.evaluate((node) => {
+          document.addEventListener('click', () => {
+            node.dataset.openOnClick = String(!node.hidden)
+          }, { once: true })
+        })
         await page.mouse.click(point.x, point.y)
+        assert.equal(await panel.getAttribute('data-open-on-click'), 'true', 'a single click must open the lookup in the click event')
         await page.locator('#btn-settings').click()
         await page.locator('#settings-panel').waitFor({ state: 'visible' })
-        await page.waitForTimeout(350)
-        assert.equal(await page.locator('#reading-lookup').isVisible(), false,
-          'opening Settings must cancel a pending single-click lookup')
         await page.locator('#btn-close-settings').click()
 
-        await page.evaluate(() => window.getSelection().removeAllRanges())
-        point = await textRange(page, 'record')
-        await page.mouse.click(point.x, point.y)
         const scrolled = await page.locator('#tutor-workspace').evaluate((node) => {
           const before = node.scrollTop
           node.scrollTop += before > 0 ? -24 : 24
           return node.scrollTop !== before
         })
-        assert.equal(scrolled, true, 'the pending-click test must actually scroll the article')
-        await page.waitForTimeout(350)
-        assert.equal(await page.locator('#reading-lookup').isVisible(), false,
-          'scrolling must cancel a pending single-click lookup')
+        assert.equal(scrolled, true, 'the test must actually scroll the article')
+        await panel.getByText('录制采访', { exact: true }).waitFor()
+        assert.equal(await page.locator('#reading-lookup-text').textContent(), 'record')
       })
     } finally {
       if (previousBounds) await app.evaluate(({ BrowserWindow }, bounds) => {

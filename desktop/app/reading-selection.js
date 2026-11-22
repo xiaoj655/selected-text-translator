@@ -268,18 +268,18 @@ export function installReadingSelection(root, onSelect, scroller) {
   sentenceTrigger.hidden = true
   root.append(sentenceTrigger)
 
-  let wordTimer = 0
   let sentenceTimer = 0
   let hideTimer = 0
   let hoveredSentence = null
+  let lastWordRange = null
   let selectionBeforePointer = null
   let selectionBeforeShift
   let drag = null
   let ignoreClick = false
 
-  function clearWord() {
-    clearTimeout(wordTimer)
-    wordTimer = 0
+  function isWordDoubleClick(event) {
+    return event.button === 0 && event.detail === 2 && !hasModifier(event)
+      && lastWordRange && root.contains(lastWordRange.startContainer)
   }
 
   function hideSentence() {
@@ -292,7 +292,6 @@ export function installReadingSelection(root, onSelect, scroller) {
   }
 
   function clearPending() {
-    clearWord()
     hideSentence()
     selectionBeforeShift = undefined
     drag = null
@@ -360,7 +359,6 @@ export function installReadingSelection(root, onSelect, scroller) {
   })
 
   document.addEventListener('pointerdown', (event) => {
-    clearWord()
     drag = null
     ignoreClick = false
     selectionBeforePointer = null
@@ -369,8 +367,15 @@ export function installReadingSelection(root, onSelect, scroller) {
     if (event.button === 0 && root.contains(event.target)) selectionBeforePointer = readingSelection(root)?.range || null
   }, true)
 
-  root.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || event.detail !== 1 || hasModifier(event) || isInteractiveContent(event.target)
+  document.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return
+    if (isWordDoubleClick(event)) {
+      // The sidebar can reflow the article between the two clicks.
+      event.preventDefault()
+      return
+    }
+    if (event.detail === 1) lastWordRange = null
+    if (event.detail !== 1 || hasModifier(event) || isInteractiveContent(event.target)
       || !materialFor(event.target, root)) return
     const word = wordAtPoint(root, event.clientX, event.clientY)
     if (!word) return
@@ -411,7 +416,12 @@ export function installReadingSelection(root, onSelect, scroller) {
 
   document.addEventListener('mouseup', (event) => {
     if (event.button !== 0) return
-    clearWord()
+    if (isWordDoubleClick(event)) {
+      const native = window.getSelection()
+      native.removeAllRanges()
+      native.addRange(lastWordRange.cloneRange())
+      return
+    }
     const current = drag
     drag = null
     if (current?.active) {
@@ -425,20 +435,23 @@ export function installReadingSelection(root, onSelect, scroller) {
     if (selection?.material === material && (event.detail > 1 || !sameRange(selection.range, selectionBeforePointer))) onSelect(selection)
   })
 
-  root.addEventListener('click', (event) => {
+  document.addEventListener('click', (event) => {
+    if (isWordDoubleClick(event)) {
+      // The same point may now be over a link or a sidebar control.
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (ignoreClick || event.detail !== 1 || hasModifier(event) || isInteractiveContent(event.target)
       || !materialFor(event.target, root)) return
     const selection = readingSelection(root)
     if (selection && !sameRange(selection.range, selectionBeforePointer)) return
-    clearWord()
     const word = readingWordAt(root, event.clientX, event.clientY)
     if (!word) return
     if (selection) window.getSelection()?.removeAllRanges()
-    wordTimer = setTimeout(() => {
-      wordTimer = 0
-      if (word.material.isConnected && !word.material.closest('[hidden]')) onSelect(word)
-    }, 280)
-  })
+    lastWordRange = word.range
+    onSelect(word)
+  }, true)
 
   root.addEventListener('keydown', (event) => {
     if (event.key === 'Shift' && !event.repeat) selectionBeforeShift = readingSelection(root)?.range || null
@@ -456,5 +469,5 @@ export function installReadingSelection(root, onSelect, scroller) {
 
   document.addEventListener('scroll', hideSentence, true)
   window.addEventListener('resize', hideSentence)
-  return { clearPending, hideSentence, hasPending: () => Boolean(wordTimer || sentenceTimer || hoveredSentence || drag) }
+  return { clearPending, hideSentence, hasPending: () => Boolean(sentenceTimer || hoveredSentence || drag) }
 }
