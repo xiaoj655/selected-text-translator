@@ -1,13 +1,33 @@
 import assert from 'node:assert/strict'
+import { openPastedText, selectText, withState } from './reading-lookup.mjs'
 
 const WIDTH_KEY = 'desktop_reading_lookup_width'
 const PASSAGE = Array.from({ length: 45 }, (_, index) => `Observation ${index + 1}: The engineering team compares each measurement against an independent reference before continuing. This careful process keeps the complete report useful for readers and helps the team understand unexpected changes.`).join('\n\n')
+const WIDE_SENTENCE = 'The engineers tested a local copy of the package before touching the public index.'
+const WIDE_PASSAGE = [
+  'Rehearsing a software release',
+  'A package release can look simple from the outside. A new version number appears, and people can install it. Inside a team, a release brings together source code, build scripts, documentation, and systems for distributing files.',
+  `${WIDE_SENTENCE} They installed the copy on a clean machine and ran the same commands that a first-time user would run. This uncovered a file that was present on every developer’s laptop but missing from the package.`,
+  'The team kept the rehearsal close to the real release. A small test server accepted uploads and exposed the same download paths as the public index. A separate account installed the release so that its permissions matched those of an ordinary user.',
+  'The rehearsal also showed what to measure. The tests recorded how long it took to install the package on each platform and checked that the downloaded files matched the files built earlier. The team could compare those results with the next release.',
+  'When a check failed, the team fixed the process as well as the package. They added a reminder only when they needed a human to make a decision. Checks for missing files and invalid version numbers moved into the build script, where every contributor could run them.',
+  'After a few releases, the rehearsal became a regular part of development. The team could try a change to the build system on an ordinary day, while the earlier release was still available. Preparing a release then became one more opportunity to find a defect early.',
+].join('\n\n')
+
+function fontSize(locator) {
+  return locator.evaluate((node) => getComputedStyle(node).fontSize)
+}
 
 async function resizeWindow(app, page, width, height = 800) {
   await app.evaluate(({ BrowserWindow }, { width, height }) => {
     BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('index.html')).setContentSize(width, height)
   }, { width, height })
-  await page.waitForFunction((width) => innerWidth === width, width)
+  try {
+    await page.waitForFunction((width) => Math.abs(innerWidth - width) <= 1, width, { timeout: 5000 })
+  } catch (error) {
+    const actual = await page.evaluate(() => innerWidth)
+    throw new Error(`Window width ${actual}px did not reach ${width}px`, { cause: error })
+  }
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
@@ -64,7 +84,7 @@ async function dragDivider(page, delta) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
-export async function verifyReadingLookupResize({ app, page, check, shot }) {
+export async function verifyReadingLookupResize({ app, page, mock, check, shot }) {
   await check('article lookup: resize sidebar, retain reading position and saved width, adapt narrow windows', async () => {
     const saved = await page.evaluate((key) => chrome.storage.local.get(key), WIDTH_KEY)
     const bounds = await app.evaluate(({ BrowserWindow }) =>
@@ -146,6 +166,115 @@ export async function verifyReadingLookupResize({ app, page, check, shot }) {
       }, { key: WIDTH_KEY, saved })
       await app.evaluate(({ BrowserWindow }, bounds) =>
         BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('index.html')).setBounds(bounds), bounds)
+    }
+  })
+
+  await check('article lookup: wide reading layout and independent text sizes', async () => {
+    const { bounds, workArea } = await app.evaluate(({ BrowserWindow, screen }) => {
+      const window = BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes('index.html'))
+      const bounds = window.getBounds()
+      return { bounds, workArea: screen.getDisplayMatching(bounds).workArea }
+    })
+    const widest = Math.max(1280, workArea.width)
+    const height = Math.min(workArea.height, 2160)
+    mock.setHandler(async ({ body, res }) => {
+      const prompt = body.messages[0].content
+      let result = { translation: '工程师先测试了软件包的本地副本，然后才操作公开索引。' }
+      if (prompt.includes('Return only a JSON object with the key "structure"')) {
+        result = {
+          structure: [
+            { role: 'subject', text: 'The engineers' }, { role: 'verb', text: 'tested' },
+            { role: 'object', text: 'a local copy of the package' },
+          ],
+          sentenceAnalysis: { connections: [{ text: 'before touching the public index',
+            explanation: '“Before” tells us that testing the copy happened first. The same engineers did both actions.' }] },
+        }
+      } else if (prompt.includes('You are a patient reading tutor.')) {
+        result = {
+          guideType: 'sentence',
+          hints: [
+            'Start with “The engineers tested a local copy.” This is the main action in the sentence.',
+            'Look at “before touching the public index.” This puts the testing and the work on the public index in order.',
+          ],
+          answer: {
+            meaning: 'The engineers tried the package on their own machines first, then worked with the public list of packages.',
+            explanation: 'The word “before” tells you which action happened first.',
+          },
+        }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }))
+    })
+    try {
+      await withState(page, async () => {
+        await app.evaluate(({ BrowserWindow }, { x, y }) => {
+          BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('index.html')).setPosition(x, y)
+        }, workArea)
+        await resizeWindow(app, page, widest, height)
+        await openPastedText(page, WIDE_PASSAGE)
+        await selectText(page, WIDE_SENTENCE)
+        const article = page.locator('.reading-preview').first()
+        const snapshot = page.locator('#reading-lookup')
+        const translation = snapshot.locator('.translation-text')
+        const hint = snapshot.locator('.hint-text').first()
+        const answer = snapshot.locator('.answer')
+        const analysis = snapshot.locator('.reading-sentence-structure .sentence-analysis')
+        await translation.waitFor()
+        assert.equal(await fontSize(article), '18px')
+        assert.equal(await fontSize(translation), '18px')
+        await page.locator('#reading-lookup-guide').click()
+        await snapshot.locator('[data-hint-more]').click()
+        await snapshot.getByRole('button', { name: 'Reveal answer', exact: true }).click()
+        await analysis.waitFor()
+        assert.equal(await fontSize(answer), '18px')
+        assert.equal(await fontSize(hint), '16px')
+        assert.equal(await fontSize(analysis), '16px')
+
+        for (const width of [widest, ...[2560, 1920].filter((width) => width < widest)]) {
+          if (width !== widest) await resizeWindow(app, page, width, height)
+          await snapshot.locator('[data-hints]').waitFor()
+          const layout = await article.evaluate((node) => {
+            const prose = node.getBoundingClientRect()
+            const sidebar = document.querySelector('.reading-lookup-dock').getBoundingClientRect()
+            return {
+              gap: sidebar.left - prose.right,
+              leftMargin: prose.left,
+              rightMargin: innerWidth - sidebar.right,
+              sidebar: sidebar.width,
+              overflow: document.documentElement.scrollWidth > innerWidth,
+            }
+          })
+          assert.ok(!layout.overflow && layout.gap >= 0 && layout.gap <= 72,
+            `keep the sidebar near the prose at ${width}px: ${JSON.stringify(layout)}`)
+          if (width >= 1920) {
+            assert.ok(layout.sidebar >= 410 && layout.sidebar <= 500, 'wide windows should give the sidebar room')
+            assert.ok(Math.abs(layout.leftMargin - layout.rightMargin) <= 72, 'the reading and lookup columns should be centered together')
+          }
+          if (width === widest) await shot?.(page, 'main-article-lookup-wide')
+        }
+
+        await page.locator('#btn-settings').click()
+        await page.locator('.settings-nav').getByRole('link', { name: 'Reading', exact: true }).click()
+        await page.locator('#opt-reading-lookup-font').selectOption('22')
+        await page.locator('#btn-close-settings').click()
+        assert.equal(await fontSize(article), '18px', 'changing the lookup size should leave the prose unchanged')
+        assert.equal(await fontSize(answer), '22px')
+        assert.equal(await fontSize(hint), '20px')
+        assert.equal(await fontSize(analysis), '20px')
+        await page.waitForFunction(async () =>
+          (await chrome.storage.sync.get('desktop_prefs')).desktop_prefs?.articleAppearance?.lookupFont === 22)
+        await page.reload()
+        await openPastedText(page, WIDE_PASSAGE)
+        await selectText(page, WIDE_SENTENCE)
+        await hint.waitFor()
+        assert.equal(await fontSize(article), '18px')
+        assert.equal(await fontSize(hint), '20px', 'the lookup text size should survive a reload')
+      })
+    } finally {
+      mock.resetHandler()
+      await app.evaluate(({ BrowserWindow }, bounds) =>
+        BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('index.html')).setBounds(bounds), bounds)
+      await page.reload()
     }
   })
 }

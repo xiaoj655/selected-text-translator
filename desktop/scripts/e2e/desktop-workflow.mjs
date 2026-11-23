@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { makeMemoryKey } from '../../../src/translation-memory.js'
+import { withSpeechCommands } from './cloud-speech.mjs'
 
 const SOURCE = 'The supplier put off the launch because the packaging was delayed.'
 const QUESTIONS = [
@@ -188,6 +189,74 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       releaseResponse()
       mock.resetHandler()
       await clearHistory(page)
+    }
+  })
+
+  await check('guided shortcuts: workbench reveals one hint and reads the original', async () => {
+    const text = 'settle in'
+    const guide = {
+      guideType: 'term',
+      hints: ['Think about a new place.', 'Consider how it feels after a few days.', 'Focus on becoming comfortable.'],
+      answer: { meaning: 'to become comfortable in a new place', explanation: 'It takes time to adjust.', example: 'She settled in quickly.' },
+    }
+    const input = page.locator('#input')
+    const stream = page.locator('#stream')
+    const hints = stream.locator('.hint-text')
+    const guideMode = page.locator('.mode[data-mode=guide]')
+    const translateMode = page.locator('.mode[data-mode=translate]')
+    const started = mock.requests.length
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      if (!body.messages[0].content.includes('You are a patient reading tutor.')) return defaultResponse({ body, res })
+      if (body.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(guide) } }] })}\n\ndata: [DONE]\n\n`)
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(guide) } }] }))
+      }
+    })
+    try {
+      await withSpeechCommands(page, async (commands) => {
+        await guideMode.click()
+        await input.fill(text)
+        await page.locator('#btn-send').click()
+        await stream.locator('[data-hint-more]').waitFor()
+        assert.equal(await stream.evaluate((node) => document.activeElement === node), true)
+        assert.deepEqual(await hints.allTextContents(), guide.hints.slice(0, 1))
+
+        await page.keyboard.down('Space')
+        await page.keyboard.down('Space')
+        await page.keyboard.up('Space')
+        assert.deepEqual(await hints.allTextContents(), guide.hints.slice(0, 2))
+
+        await page.keyboard.press('r')
+        const [speak] = await commands()
+        assert.equal(speak.type, 'SPEAK_TEXT')
+        assert.equal(speak.payload.text, text)
+        await page.keyboard.press('r')
+        assert.deepEqual((await commands()).at(-1), { type: 'STOP_SPEECH', payload: { speechId: speak.payload.speechId } })
+
+        await input.focus()
+        await page.keyboard.press('End')
+        await page.keyboard.press('Space')
+        await page.keyboard.press('r')
+        assert.equal(await input.inputValue(), `${text} r`)
+        assert.equal(await hints.count(), 2)
+        assert.equal((await commands()).length, 2, 'typing must not start or stop playback')
+
+        await stream.focus()
+        await page.keyboard.press('Space')
+        await page.keyboard.press('Space')
+        assert.deepEqual(await hints.allTextContents(), guide.hints)
+        assert.equal(await stream.locator('.answer').count(), 0)
+        assert.equal(mock.requests.length - started, 1, 'revealing hints must reuse the guide response')
+        await stream.getByRole('button', { name: 'Reveal answer' }).press('Space')
+        await stream.locator('.answer').waitFor()
+      })
+    } finally {
+      mock.resetHandler()
+      await clearHistory(page)
+      await translateMode.click()
     }
   })
 

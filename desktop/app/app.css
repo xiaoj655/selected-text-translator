@@ -402,6 +402,16 @@ button.is-danger:hover { background: var(--danger-soft); border-color: var(--dan
 .guide-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; font-family: var(--font-ui); }
 .guide-tools::before { content: ''; width: 100%; border-top: 1px solid var(--border); }
 .guide-tools button { font-size: 13px; padding: 6px 12px; border-radius: var(--r-pill); }
+:is([data-hint-more], [data-speech-button], #reading-lookup-speak)[aria-keyshortcuts]::after {
+  content: attr(aria-keyshortcuts) / "";
+  margin-inline-start: 6px;
+  padding-inline: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 0.82em;
+  white-space: nowrap;
+}
 .hints { margin: 10px 0; }
 .hint { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-ui); font-size: 13px; line-height: 1.7; padding: 5px 0; }
 .hint-step { flex: none; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }

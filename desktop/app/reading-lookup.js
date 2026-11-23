@@ -1,6 +1,6 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderGuidePreview, renderTranslation, sentenceStructure } from './translation-result.js'
+import { renderGuide, renderGuidePreview, renderTranslation, scrollToLatestHint, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
 import { classifyReadingSelection } from '../vendor/src/reading-support.js'
@@ -32,6 +32,7 @@ function sameSentenceScope(a, b) {
 export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup }) {
   const popover = el('section', 'reading-lookup')
   popover.id = 'reading-lookup'
+  popover.tabIndex = -1
   popover.hidden = true
   popover.setAttribute('aria-label', 'Look up selected text')
   const header = el('header', 'reading-lookup-header')
@@ -167,7 +168,11 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       meaning.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
       meaning.append(renderGuide(entry, {
-        onRevealHint(current) { current.hintCount += 1; renderMeaning() },
+        onRevealHint(current) {
+          current.hintCount += 1
+          renderMeaning()
+          scrollToLatestHint(meaning, body)
+        },
         onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; renderMeaning() },
       }))
     } else if (entry.mode === 'guide' && entry.previewHint) {
@@ -188,6 +193,13 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
 
   function renderActions() {
     const done = entry.status === 'done'
+    if (entry.mode === 'guide') {
+      speak.title = 'Read aloud or stop (R)'
+      speak.setAttribute('aria-keyshortcuts', 'R')
+    } else {
+      speak.removeAttribute('title')
+      speak.removeAttribute('aria-keyshortcuts')
+    }
     copy.disabled = !done
     save.disabled = !done || Boolean(entry.saving) || (entry.mode === 'guide' && !entry.answerRevealed)
     stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
@@ -255,6 +267,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       void chrome.storage.sync.set({ [MODE_KEY]: mode }).catch(() => {})
     }
     void request(mode)
+    if (mode === 'guide') popover.focus({ preventScroll: true })
   }
 
   async function request(mode, forceRefresh = false) {
@@ -394,6 +407,24 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     }
   }
 
+  function handleGuideShortcut(key, target) {
+    if (entry?.mode !== 'guide' || !popover.checkVisibility()) return false
+    if (target !== document.body && !scroller.contains(target) && !popover.contains(target)) return false
+    if (popover.dataset.placement === 'inline') {
+      const panelBounds = popover.getBoundingClientRect()
+      const articleBounds = scroller.getBoundingClientRect()
+      if (panelBounds.bottom <= articleBounds.top || panelBounds.top >= articleBounds.bottom) return false
+    }
+    if (key === 'r') {
+      void toggleSpeech()
+      return true
+    }
+    const nextHint = meaning.querySelector('[data-hint-more]')
+    if (!nextHint) return false
+    nextHint.click()
+    return true
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
     const payload = message?.payload
     if (message?.type === 'SPEECH_EVENT' && speechId && payload?.speechId === speechId) {
@@ -463,5 +494,6 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       articles.set(material, article)
     },
     close,
+    handleGuideShortcut,
   }
 }

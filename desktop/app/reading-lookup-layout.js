@@ -96,14 +96,14 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
   function applyWidth(value = preferredWidth, anchor) {
     if (placement !== 'side') return
     const { min, max } = widthLimits()
-    const wanted = value ?? Math.max(310, Math.min(384, innerWidth * 0.29))
+    const wanted = value ?? Math.max(310, Math.min(460, shell.clientWidth * 0.30))
     const width = Math.round(Math.max(min, Math.min(max, wanted)))
     resize.setAttribute('aria-valuemin', String(min))
     resize.setAttribute('aria-valuemax', String(max))
     resize.setAttribute('aria-valuenow', String(width))
     if (Math.abs(dock.getBoundingClientRect().width - width) < 0.5) return
     const held = anchor === undefined ? readingAnchor(scroller) : anchor
-    dock.style.setProperty('--reading-lookup-width', `${width}px`)
+    shell.style.setProperty('--reading-lookup-width', `${width}px`)
     if (held && scroller.contains(held.range.startContainer)) {
       scroller.scrollTop += held.range.getBoundingClientRect().top - held.top
     }
@@ -125,7 +125,13 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
   resize.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || placement !== 'side') return
     event.preventDefault()
-    drag = { pointerId: event.pointerId, x: event.clientX, width: dock.getBoundingClientRect().width,
+    const shellBounds = shell.getBoundingClientRect()
+    const style = getComputedStyle(shell)
+    const articleWidth = style.getPropertyValue('--article-width').trim()
+    const readingLimit = articleWidth.endsWith('%') ? shellBounds.width
+      : parseFloat(articleWidth) + parseFloat(style.getPropertyValue('--reading-column-gutter'))
+    const offset = dock.getBoundingClientRect().left - event.clientX - shellBounds.left
+    drag = { pointerId: event.pointerId, offset, shellWidth: shellBounds.width, readingLimit,
       anchor: readingAnchor(scroller), moved: false }
     resize.setPointerCapture(event.pointerId)
     shell.classList.add('is-resizing-lookup')
@@ -133,7 +139,10 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
   resize.addEventListener('pointermove', (event) => {
     if (!drag || drag.pointerId !== event.pointerId) return
     const { min, max } = widthLimits()
-    preferredWidth = Math.round(Math.max(min, Math.min(max, drag.width + drag.x - event.clientX)))
+    const divider = event.clientX + drag.offset
+    // Once the article reaches its maximum width, both outside margins grow as the dock shrinks.
+    const wanted = Math.min(drag.shellWidth - divider, drag.shellWidth + drag.readingLimit - 2 * divider)
+    preferredWidth = Math.round(Math.max(min, Math.min(max, wanted)))
     widthTouched = drag.moved = true
     applyWidth(preferredWidth, drag.anchor)
   })

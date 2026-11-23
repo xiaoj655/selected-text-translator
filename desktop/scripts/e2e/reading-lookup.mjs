@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { withSpeechCommands } from './cloud-speech.mjs'
 
 const PASSAGE = 'We will record the interview, then keep a record for the team. The editor’s well-known method helps engineers put off a risky release.'
 const SENTENCE = 'We will record the interview, then keep a record for the team.'
@@ -174,6 +175,52 @@ export async function withState(page, run) {
 }
 
 export async function verifyReadingLookup({ app, page, mock, check, shot, readingFeeds }) {
+  await check('guided shortcuts: article works from the selection and pauses when minimized', async () => {
+    const inputs = []
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const data = sourceData(body)
+      if (!data) return defaultResponse({ body, res })
+      if (needsStructure(body)) return reply(res, { structure: [] })
+      const isGuide = body.messages[0].content.includes('You are a patient reading tutor.')
+      if (isGuide) inputs.push(data.selectedText)
+      reply(res, isGuide ? guide(data) : { translation: translation(data) })
+    })
+    const hints = page.locator('#reading-lookup-result .hint-text')
+    try {
+      await withState(page, async () => {
+        await withSpeechCommands(page, async (commands) => {
+          await openPastedText(page, PASSAGE)
+          await selectText(page, 'put off')
+          await page.locator('#reading-lookup-guide').click()
+          await hints.first().waitFor()
+          await page.keyboard.press('Space')
+          assert.equal(await hints.count(), 2)
+          await page.keyboard.press('r')
+          const [speak] = await commands()
+          assert.equal(speak.type, 'SPEAK_TEXT')
+          assert.equal(speak.payload.text, 'put off')
+          await page.keyboard.press('r')
+          assert.deepEqual((await commands()).at(-1), { type: 'STOP_SPEECH', payload: { speechId: speak.payload.speechId } })
+
+          await page.locator('#reading-lookup-minimize').click()
+          await page.keyboard.press('r')
+          assert.equal((await commands()).length, 2)
+          await page.locator('#reading-lookup-reopen').click()
+          assert.equal(await hints.count(), 2)
+
+          await clickWord(page, 'engineers')
+          await hints.first().waitFor()
+          await page.keyboard.press('Space')
+          assert.equal(await hints.count(), 2)
+          assert.deepEqual(inputs, ['put off', 'engineers'])
+          assert.equal(await page.locator('#reading-lookup-result .answer').count(), 0)
+        })
+      })
+    } finally {
+      mock.resetHandler()
+    }
+  })
+
   await check('article lookup: backward cross-line word snap and persistent sentence lookup', async () => {
     const inputs = []
     const sentenceResponse = deferred()

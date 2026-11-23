@@ -2,7 +2,7 @@
 .reading-sentence-heading { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
 .reading-sentence-details > summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-2); }
 .reading-sentence-details[open] > summary { margin-block-end: 12px; color: var(--text); }
-.reading-sentence-source { margin: 10px 0; padding: 0; border: 0; font-family: var(--font-reading); font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+.reading-sentence-source { margin: 10px 0; padding: 0; border: 0; font-family: var(--font-reading); font-size: var(--reading-lookup-detail-size, 15px); line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
 .reading-sentence-source + .reading-sentence-source { padding-block-start: 10px; border-block-start: 1px solid var(--border); }
 .reading-sentence-status { margin: 8px 0; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .reading-sentence-structure[data-status="error"] .reading-sentence-status { color: var(--error, var(--text-2)); }

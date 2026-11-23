@@ -323,7 +323,7 @@ export async function runE2E(mode = 'core') {
       await verifyReadingSentenceScope({ page: mainPage, mock, check, shot })
       await verifyRichReading({ app, page: mainPage, mock, check, shot })
       await verifyReadingHistory({ app, page: mainPage, check, shot })
-      await verifyReadingLookupResize({ app, page: mainPage, check, shot })
+      await verifyReadingLookupResize({ app, page: mainPage, mock, check, shot })
     }
 
     if (mode === 'core' || mode === 'all' || mode === 'layout') {

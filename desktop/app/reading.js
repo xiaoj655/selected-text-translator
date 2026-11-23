@@ -52,13 +52,15 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
     refresh() {
       if (!reviewPanel.hidden) review.refresh()
     },
-    setArticleAppearance({ font, width, fit }) {
+    setArticleAppearance({ font, width, fit, lookupFont }) {
       const anchor = readingAnchor(rootEl)
-      rootEl.style.setProperty('--article-font-size', `${font}px`)
-      rootEl.style.setProperty('--article-width', fit ? '100%' : `${width}px`)
+      shell.style.setProperty('--article-font-size', `${font}px`)
+      shell.style.setProperty('--article-width', fit ? '100%' : `${width}px`)
+      shell.style.setProperty('--reading-lookup-font-size', `${lookupFont}px`)
       if (anchor) rootEl.scrollTop += anchor.range.getBoundingClientRect().top - anchor.top
     },
     close() { reading.close() },
+    handleGuideShortcut: reading.handleGuideShortcut,
   }
 }
 
@@ -679,6 +681,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
 
   return {
     close() { rememberPosition(); savePosition(); lookup.close() },
+    handleGuideShortcut: lookup.handleGuideShortcut,
     open() {
       const target = activePanel?.querySelector('h3, textarea, input') || heading
       target.focus({ preventScroll: true })

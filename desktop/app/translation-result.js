@@ -171,6 +171,19 @@ export function revealedHints(entry, hints) {
   return Math.max(1, Math.min(Number.isFinite(n) ? n : 1, hints.length))
 }
 
+export function scrollToLatestHint(result, scroller) {
+  const hint = result.querySelector('[data-hints] > :last-child')
+  if (!hint) return
+  const hintBounds = hint.getBoundingClientRect()
+  const top = scroller.getBoundingClientRect().top + scroller.clientTop
+  const bottom = top + scroller.clientHeight
+  if (hintBounds.top < top || hintBounds.height > scroller.clientHeight) {
+    scroller.scrollTop += hintBounds.top - top
+  } else if (hintBounds.bottom > bottom) {
+    scroller.scrollTop += hintBounds.bottom - bottom
+  }
+}
+
 export function hintNode(hint, index, isNew) {
   const node = el('div', isNew ? 'hint is-new' : 'hint')
   node.append(el('span', 'hint-step', String(index + 1)))
@@ -204,6 +217,8 @@ export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceL
       const more = el('button', '', `Next hint (${guide.hints.length - revealed} left)`)
       more.type = 'button'
       more.dataset.hintMore = 'true'
+      more.title = 'Next hint (Space)'
+      more.setAttribute('aria-keyshortcuts', 'Space')
       more.addEventListener('click', () => onRevealHint?.(entry))
       tools.append(more)
     }

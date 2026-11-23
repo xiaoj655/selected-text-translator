@@ -1,7 +1,7 @@
 import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import {
-  renderLexical, renderGuide, renderGuidePreview, renderTranslation, revealedHints, hintNode,
+  renderLexical, renderGuide, renderGuidePreview, renderTranslation, revealedHints, hintNode, scrollToLatestHint,
   sentenceStructure, markSentence, renderSentenceLegend,
 } from './translation-result.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
@@ -29,8 +29,9 @@ const DETECTED_LANGUAGE_TAGS = {
 const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
 const SPEECH_PREVIEW_ID = 'speech-preview'
 const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
-const DEFAULT_ARTICLE_APPEARANCE = { font: 20, width: 840, fit: false }
+const DEFAULT_ARTICLE_APPEARANCE = { font: 18, width: 840, fit: false, lookupFont: 18 }
 const ARTICLE_FONT_SIZES = [18, 20, 22, 24]
+const LOOKUP_FONT_SIZES = [16, 18, 20, 22]
 
 const state = {
   mode: 'translate',
@@ -156,12 +157,12 @@ function setTargetLanguage(value, retranslate) {
   else setStatus(`Target language set to ${label}`)
 }
 
-function retranslateCurrent(message) {
+function retranslateCurrent(message, focusTarget) {
   const text = $('input').value.trim()
   if (state.workspace === 'translate' && state.configured && text
     && (state.liveTranslate || state.lastSubmittedText === text)) {
     const lookup = state.lastSubmittedText === text ? state.lastLookup : undefined
-    submit({ keepInput: true, lookup })
+    submit({ keepInput: true, lookup, focusTarget })
     setStatus(`${message} · Translating again…`)
     return
   }
@@ -661,11 +662,13 @@ function applyArticleAppearance() {
   const maxWidth = Number(widthInput.max)
   const widthStep = Number(widthInput.step)
   const font = ARTICLE_FONT_SIZES.includes(saved?.font) ? saved.font : DEFAULT_ARTICLE_APPEARANCE.font
+  const lookupFont = LOOKUP_FONT_SIZES.includes(saved?.lookupFont) ? saved.lookupFont : DEFAULT_ARTICLE_APPEARANCE.lookupFont
   const width = Number.isFinite(saved?.width) && saved.width >= minWidth && saved.width <= maxWidth
     && (saved.width - minWidth) % widthStep === 0 ? saved.width : DEFAULT_ARTICLE_APPEARANCE.width
   const fit = saved?.fit === true
-  state.prefs.articleAppearance = { font, width, fit }
+  state.prefs.articleAppearance = { font, width, fit, lookupFont }
   $('opt-article-font').value = String(font)
+  $('opt-reading-lookup-font').value = String(lookupFont)
   widthInput.value = String(width)
   widthInput.disabled = fit
   $('article-width-value').value = `${width} px`
@@ -1175,6 +1178,7 @@ function renderModes() {
 
 async function setMode(mode) {
   if (!['translate', 'guide'].includes(mode) || mode === state.mode) return
+  const activeControl = document.activeElement
   state.mode = mode
   renderModes()
   try {
@@ -1182,8 +1186,11 @@ async function setMode(mode) {
   } catch {
     // mode still applies for this session
   }
-  retranslateCurrent(`Switched to ${MODE_LABELS[mode]}`)
-  if (state.workspace === 'translate') $('input').focus()
+  if (state.mode !== mode) return
+  const canMoveFocus = state.workspace === 'translate' && document.activeElement === activeControl
+  const focusTarget = mode === 'guide' ? $('stream') : $('input')
+  retranslateCurrent(`Switched to ${MODE_LABELS[mode]}`, canMoveFocus ? focusTarget : null)
+  if (canMoveFocus && document.activeElement === activeControl) $('input').focus()
 }
 
 function sendRequest(entry, forceRefresh = false) {
@@ -1366,7 +1373,8 @@ function submit(options = {}) {
   } else {
     sendRequest(entry)
   }
-  $('input').focus()
+  if (options.focusTarget === undefined) $('input').focus()
+  else options.focusTarget?.focus({ preventScroll: true })
 }
 
 function handleTranslationEvent(payload) {
@@ -1521,12 +1529,14 @@ function revealNextHint(entry) {
   if (!guide || !Array.isArray(guide.hints)) return
   const count = revealedHints(entry, guide.hints)
   if (count >= guide.hints.length) return
-  const node = document.querySelector(`[data-entry-id="${entry.id}"]`)
+  const stream = $('stream')
+  const node = stream.querySelector(`[data-entry-id="${entry.id}"]`)
   const hints = node?.querySelector('[data-hints]')
   const more = node?.querySelector('[data-hint-more]')
   if (!hints || !more) {
     entry.hintCount = count + 1
     renderEntry(entry)
+    scrollToLatestHint(stream, stream)
     return
   }
   entry.hintCount = count + 1
@@ -1535,6 +1545,7 @@ function revealNextHint(entry) {
   if (remaining > 0) more.textContent = `Next hint (${remaining} left)`
   else more.remove()
   persistHistory()
+  scrollToLatestHint(node, stream)
   updateScrollFab()
 }
 
@@ -1628,6 +1639,7 @@ function startCompanionEntry(entry, mode) {
   state.entries.push(companion)
   state.activeEntryId = companion.id
   render()
+  if (mode === 'guide') $('stream').focus({ preventScroll: true })
   if (cached) {
     setStatus('From translation memory')
     persistHistory()
@@ -1690,6 +1702,10 @@ function renderActions(entry) {
   speechButton.type = 'button'
   speechButton.dataset.speechButton = 'true'
   speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
+  if (entry.mode === 'guide' && isEnglishSource(entry)) {
+    speechButton.title = 'Read aloud or stop (R)'
+    speechButton.setAttribute('aria-keyshortcuts', 'R')
+  }
   speechButton.addEventListener('click', () => toggleSpeech(entry))
   bar.append(speechButton)
 
@@ -1847,6 +1863,8 @@ function render(forceBottom = true) {
   const active = state.entries.find((item) => item.id === state.activeEntryId)
     || state.entries[state.entries.length - 1]
   if (active) state.activeEntryId = active.id
+  if (active?.mode === 'guide') stream.tabIndex = 0
+  else stream.removeAttribute('tabindex')
   const stick = forceBottom || isNearBottom()
   stream.replaceChildren()
   if (!active) stream.append(renderEmpty())
@@ -1942,6 +1960,36 @@ function regenerate(entry) {
   sendRequest(entry, true)
 }
 
+function isEnglishSource(entry) {
+  const language = String(entry.sourceLanguage || 'auto').toLowerCase()
+  return (language === 'auto' ? detectSourceLanguage(entry.text) : language) === 'english'
+}
+
+function handleGuideShortcut(event) {
+  const key = event.key.toLowerCase()
+  if (key !== ' ' && key !== 'r') return false
+  if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+    || isTyping(event.target)) return false
+  if (key === ' ' && event.target.closest?.('button, a[href], summary, audio[controls], video[controls], [role="button"], [role="separator"]')) return false
+  if (isSidebarOpen() || isExportOpen() || !$('more-menu').hidden || !$('help-overlay').hidden || !$('settings-panel').hidden
+    || document.querySelector('.action-menu:popover-open')) return false
+  if (state.workspace === 'tutor') return tutor.handleGuideShortcut(key, event.target)
+
+  const stream = $('stream')
+  if (event.target !== document.body && !stream.contains(event.target)) return false
+  const entry = state.entries.find((item) => item.id === state.activeEntryId)
+  if (entry?.mode !== 'guide' || entry.status === 'error' || state.collapsed.has(entry.id)) return false
+  if (key === 'r') {
+    if (!isEnglishSource(entry)) return false
+    toggleSpeech(entry)
+    return true
+  }
+  const nextHint = stream.querySelector('[data-hint-more]')
+  if (!nextHint) return false
+  nextHint.click()
+  return true
+}
+
 function toggleSpeech(entry, text = entry.text) {
   if (state.speechId) {
     const isSameEntry = state.speechEntryId === entry.id
@@ -2017,7 +2065,7 @@ function bind() {
   const form = $('translation-form')
   form.addEventListener('submit', (event) => {
     event.preventDefault()
-    submit()
+    submit(state.mode === 'guide' ? { focusTarget: $('stream') } : {})
   })
   $('btn-translate-workspace').addEventListener('click', () => switchWorkspace('translate'))
   $('btn-tutor-workspace').addEventListener('click', () => switchWorkspace('tutor'))
@@ -2219,6 +2267,9 @@ function bind() {
   $('opt-article-font').addEventListener('change', (event) => {
     updateArticleAppearance({ font: Number(event.target.value) })
   })
+  $('opt-reading-lookup-font').addEventListener('change', (event) => {
+    updateArticleAppearance({ lookupFont: Number(event.target.value) })
+  })
   $('opt-article-width').addEventListener('input', (event) => {
     updateArticleAppearance({ width: event.target.valueAsNumber }, false)
   })
@@ -2379,8 +2430,15 @@ function bind() {
     if (item) jumpToEntry(item.dataset.entryId)
   })
 
+  let consumedGuideSpace = false
   document.addEventListener('keydown', (event) => {
+    const isSpace = event.key === ' '
+    if (isSpace && !event.repeat) consumedGuideSpace = false
     if (event.isComposing || state.isComposing || $('request-debug').open) return
+    if (isSpace && event.repeat && consumedGuideSpace && !isTyping(event.target)) {
+      event.preventDefault()
+      return
+    }
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key.toLowerCase() === 'k' && $('help-overlay').hidden) {
       event.preventDefault()
@@ -2403,6 +2461,11 @@ function bind() {
     if ((mod && event.key === '/') || (event.key === '?' && !isTyping(event.target))) {
       event.preventDefault()
       toggleHelp()
+      return
+    }
+    if (handleGuideShortcut(event)) {
+      if (isSpace) consumedGuideSpace = true
+      event.preventDefault()
       return
     }
     if (event.key === 'Escape') {

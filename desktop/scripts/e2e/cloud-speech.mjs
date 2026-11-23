@@ -6,6 +6,30 @@ import { setTimeout as delay } from 'node:timers/promises'
 const PREVIEW = 'Could you record the meeting? I need a record of what we decided.'
 const ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 
+export async function withSpeechCommands(page, run) {
+  await page.evaluate(() => {
+    const sendMessage = chrome.runtime.sendMessage
+    window.speechCommands = []
+    window.restoreSpeechCommands = () => { chrome.runtime.sendMessage = sendMessage }
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.type !== 'SPEAK_TEXT' && message.type !== 'STOP_SPEECH') return sendMessage(message, callback)
+      window.speechCommands.push(message)
+      const response = { ok: true }
+      callback?.(response)
+      return Promise.resolve(response)
+    }
+  })
+  try {
+    await run(() => page.evaluate(() => window.speechCommands))
+  } finally {
+    await page.evaluate(() => {
+      window.restoreSpeechCommands()
+      delete window.restoreSpeechCommands
+      delete window.speechCommands
+    })
+  }
+}
+
 async function installSpeechMock(app, key) {
   const samples = 12000
   const tone = Buffer.alloc(samples * 2)
