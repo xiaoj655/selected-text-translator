@@ -12,6 +12,7 @@ import { verifyResultMenu } from './result-menu.mjs'
 import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
 import { verifyCloudSpeech } from './cloud-speech.mjs'
 import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
+import { verifyCustomReadingFeeds } from './reading-custom-feeds.mjs'
 import { verifyReadingLookup } from './reading-lookup.mjs'
 import { verifyRichReading } from './reading-rich.mjs'
 import { verifyReadingHistory } from './reading-history.mjs'
@@ -250,7 +251,7 @@ export async function runE2E(mode = 'core') {
     }
   }
 
-  try {
+  async function launchApp() {
     app = await playwrightElectron.launch({
       executablePath: electronBinary,
       args: [desktopDir, `--user-data-dir=${userDataDir}`, '--no-sandbox'],
@@ -265,6 +266,11 @@ export async function runE2E(mode = 'core') {
     const mainPage = await waitForMainPage(app)
     const readingFeeds = await installReadingFeeds(app)
     watchErrors(mainPage, pageErrors)
+    return { mainPage, readingFeeds }
+  }
+
+  try {
+    const { mainPage, readingFeeds } = await launchApp()
     await setConfig(mainPage, {
       base_url: mockUrl,
       api_key: 'e2e-mock-key',
@@ -1735,6 +1741,17 @@ export async function runE2E(mode = 'core') {
           await shot(cardPage, `visual-${variant.name}`)
         })
       }
+    }
+
+    if (mode === 'core' || mode === 'all') {
+      await verifyCustomReadingFeeds({
+        app, page: mainPage, check, shot,
+        async restart() {
+          await app.close()
+          const { mainPage: page } = await launchApp()
+          return { app, page }
+        },
+      })
     }
 
     await check('no renderer errors during the whole run', async () => {

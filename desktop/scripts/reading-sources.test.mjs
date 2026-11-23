@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { createReadingDiscovery, discoverReadingArticles, READING_SOURCES } from '../src/reading-sources.js'
+import { createStorage } from '../src/storage.js'
 
 test('article discovery preserves full plain text and sanitized feed formatting', async () => {
   const [ars, verge] = READING_SOURCES.news
@@ -176,4 +181,128 @@ test('a refresh keeps eight latest articles per source and reuses old entries on
   assert.deepEqual(recovered.unavailableSources, [])
   assert.deepEqual(recovered.staleSources, [])
   assert.ok(recovered.articles.every(({ title }) => title.includes('3-')))
+})
+
+function feedResponse(url, xml, statusCode = 200) {
+  const response = Readable.from([Buffer.from(xml)])
+  response.statusCode = statusCode
+  response.headers = { 'content-type': 'application/xml; charset=UTF-8' }
+  return { url: new URL(url), response }
+}
+
+test('custom subscriptions use the redirected URL, reuse the initial response, and survive restart', async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'stt-rss-'))
+  t.after(() => rm(profile, { recursive: true, force: true }))
+  const typed = 'https://rss.reader-sample.com/redirect#feed'
+  const canonical = 'https://rss.reader-sample.com/blog/feed.xml'
+  const xml = `<rss><channel>
+    <!-- <title>Ignore this</title> -->
+    <title><![CDATA[News &amp; notes]]></title>
+    <item><title>A headline</title><link>posts/one#top</link></item>
+    <item><title>A full article</title><link>https://reader-sample.com/two</link>
+      <pubDate>Mon, 23 Nov 2026 12:00:00 GMT</pubDate>
+      <content:encoded><![CDATA[<p>This is <em>readable</em> text.</p><script>ignore me</script>]]></content:encoded>
+    </item>
+    <item><title>Private article</title><link>https://127.0.0.1/local</link></item>
+  </channel></rss>`
+  const requested = []
+  const openResource = async (url, options) => {
+    requested.push(url)
+    assert.ok(options.signal instanceof AbortSignal)
+    assert.equal(options.headers.Cookie, undefined)
+    return feedResponse(canonical, xml)
+  }
+  const discovery = createReadingDiscovery({ storage: createStorage(profile), openResource })
+  const added = await discovery.addFeed(typed)
+  assert.deepEqual(requested, ['https://rss.reader-sample.com/redirect'])
+  const [source] = added.sources
+  assert.deepEqual({ name: source.name, url: source.url }, { name: 'News & notes', url: canonical })
+  assert.deepEqual(added.articles.map(({ title }) => title), ['A full article', 'A headline'])
+  assert.match(added.articles[0].html, /<em>readable<\/em>/)
+  assert.doesNotMatch(added.articles[0].html, /ignore me/)
+  assert.equal(added.articles[1].url, 'https://rss.reader-sample.com/blog/posts/one')
+  assert.equal(added.articles[1].text, '')
+  assert.match(added.articles[0].id, /^custom-feed-[a-f0-9]{64}$/)
+  assert.equal(discovery.getArticle(added.articles[0].id)?.title, 'A full article')
+  await assert.rejects(discovery.addFeed(canonical), /already added/)
+  assert.equal(requested.length, 1)
+  await assert.rejects(discovery.addFeed(typed), /already added/)
+  assert.equal(requested.length, 2)
+
+  const restarted = createReadingDiscovery({ storage: createStorage(profile), openResource })
+  assert.deepEqual(await restarted.discover('custom'), added)
+  assert.equal(requested.at(-1), canonical)
+  const removed = await restarted.removeFeed(source.id)
+  assert.deepEqual(removed.sources, [])
+  assert.deepEqual(removed.articles, [])
+  assert.equal(restarted.getArticle(added.articles[0].id), undefined)
+  assert.deepEqual(await createReadingDiscovery({ storage: createStorage(profile), openResource }).discover('custom'), removed)
+})
+
+test('custom refresh keeps prior articles on failure, deduplicates links, and cannot restore a removed subscription', async () => {
+  const first = 'https://reader-one.com/feed.xml'
+  const second = 'https://reader-two.com/feed.xml'
+  const xml = (name) => `<feed xmlns="http://www.w3.org/2005/Atom"><title>${name}</title>
+    <entry><title>A shared article</title><link href="https://reader-sample.com/shared" />
+    <summary>Article text.</summary></entry></feed>`
+  let mode = 'ready'
+  const started = Promise.withResolvers()
+  const finish = Promise.withResolvers()
+  const discovery = createReadingDiscovery({ openResource: async (url) => {
+    if (url === first && mode === 'pending') {
+      started.resolve()
+      await finish.promise
+    }
+    if (url === first && mode !== 'ready') return feedResponse(url, '', 503)
+    return feedResponse(url, xml(url === first ? 'First' : 'Second'))
+  } })
+  const [one, two] = await Promise.all([discovery.addFeed(first), discovery.addFeed(second)])
+  const source = [...one.sources, ...two.sources].find(({ url }) => url === first)
+  mode = 'failure'
+  const stale = await discovery.discover('custom')
+  assert.equal(stale.sources.length, 2)
+  assert.equal(stale.articles.length, 1)
+  assert.equal(discovery.getArticle(stale.articles[0].id), stale.articles[0])
+  assert.deepEqual(stale.unavailableSources, ['First'])
+  assert.deepEqual(stale.staleSources, ['First'])
+  assert.match(stale.sourceErrors[source.id], /HTTP 503/)
+
+  mode = 'pending'
+  const refresh = discovery.discover('custom')
+  await started.promise
+  const removed = await discovery.removeFeed(source.id)
+  assert.deepEqual(removed.sources.map(({ name }) => name), ['Second'])
+  finish.resolve()
+  assert.deepEqual(await refresh, removed)
+})
+
+test('custom source addition rejects invalid URLs and non-feed pages, and accepts a valid empty Atom feed', async () => {
+  const empty = 'https://rss.reader-sample.com/empty.xml'
+  const requests = []
+  const discovery = createReadingDiscovery({ openResource: async (url) => {
+    requests.push(url)
+    return feedResponse(url, url === empty
+      ? '<feed xmlns="http://www.w3.org/2005/Atom"><title>Empty</title></feed>'
+      : '<html><body><rss><channel><title>Nested</title></channel></rss></body></html>')
+  } })
+  await assert.rejects(discovery.addFeed('http://rss.reader-sample.com/feed'), /public HTTPS/)
+  await assert.rejects(discovery.addFeed('https://192.168.0.1/feed'), /public HTTPS/)
+  assert.equal(requests.length, 0)
+  await assert.rejects(discovery.addFeed('https://rss.reader-sample.com/'), /did not return an RSS or Atom feed/)
+  const result = await discovery.addFeed(empty)
+  assert.equal(result.sources[0].name, 'Empty')
+  assert.deepEqual(result.articles, [])
+  assert.deepEqual(result.unavailableSources, [])
+})
+
+test('simultaneous aliases of the same source save only one subscription', async () => {
+  const canonical = 'https://rss.reader-sample.com/feed'
+  const discovery = createReadingDiscovery({ openResource: async () => feedResponse(canonical, '<feed/>') })
+  const results = await Promise.allSettled([discovery.addFeed(`${canonical}/`), discovery.addFeed(canonical)])
+  const added = results.filter(({ status }) => status === 'fulfilled')
+  const rejected = results.filter(({ status }) => status === 'rejected')
+  assert.equal(added.length, 1)
+  assert.equal(rejected.length, 1)
+  assert.match(rejected[0].reason.message, /already added/)
+  assert.deepEqual(await discovery.discover('custom'), added[0].value)
 })

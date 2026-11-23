@@ -186,6 +186,17 @@
 .reading-list li { display: block; border-block-start: 1px solid var(--border); padding: 11px 0 12px; }
 .reading-list .reading-meta { margin: 1px 0 0; }
 .reading-list .reading-article-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reading-feed-actions { margin-block-start: 12px; }
+.reading-feed-actions[hidden] { display: none; }
+.reading-feed-sources li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reading-feed-source { min-width: 0; overflow-wrap: anywhere; }
+.reading-feed-name { margin: 0; font-weight: 600; }
+.reading-feed-sources button { flex: none; }
 .reading-detail { max-width: var(--article-width); margin-inline: auto; }
 .reading-article-title, .reading-back {
   background: transparent;

@@ -163,6 +163,8 @@ window.sttDesktop = {
   openBailianConsole: () => ipcRenderer.invoke('stt:open-bailian-console'),
   reading: {
     discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
+    addFeed: (url) => ipcRenderer.invoke('stt:reading-feed-add', url),
+    removeFeed: (id) => ipcRenderer.invoke('stt:reading-feed-remove', id),
     importPage: (url) => ipcRenderer.invoke('stt:reading-import', url),
     paste: (text) => ipcRenderer.invoke('stt:reading-paste', text),
     history: () => ipcRenderer.invoke('stt:reading-history'),

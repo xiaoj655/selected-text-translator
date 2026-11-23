@@ -114,7 +114,7 @@ function installRequestDebugIpc(requestDebug) {
 function installReadingIpc(storage, fetcher) {
   const readingTutor = createReadingTutor({ storage, fetcher })
   const readingHistory = createReadingHistory(app.getPath('userData'))
-  const readingDiscovery = createReadingDiscovery({ fetchImpl: net.fetch })
+  const readingDiscovery = createReadingDiscovery({ fetchImpl: net.fetch, storage })
   const articles = new Map()
   function rememberArticle(article) {
     articles.delete(article.id)
@@ -126,6 +126,20 @@ function installReadingIpc(storage, fetcher) {
       const result = await readingDiscovery.discover(category)
       for (const article of result.articles) rememberArticle(article)
       return result
+    },
+    async 'stt:reading-feed-add'(url) {
+      try {
+        return await readingDiscovery.addFeed(url)
+      } catch (error) {
+        throw coachError(error.message)
+      }
+    },
+    async 'stt:reading-feed-remove'(id) {
+      try {
+        return await readingDiscovery.removeFeed(id)
+      } catch {
+        throw coachError('Could not remove this feed. Try again.')
+      }
     },
     async 'stt:reading-import'(url) {
       const saved = await storage.sync.get('desktop_iqs_api_key')

@@ -96,6 +96,7 @@ const CATEGORIES = {
   news: 'Recent news',
   engineering: 'Engineering blogs',
   ideas: 'Tech ideas',
+  custom: 'My feeds',
 }
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
 const wordCountFormat = new Intl.NumberFormat('en')
@@ -134,6 +135,12 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     button(label, `reading-category-${id}`, () => selectCategory(id)))
   filters.append(...categoryButtons, historyButton)
 
+  const feedActions = el('div', 'reading-tools reading-feed-actions')
+  feedActions.hidden = true
+  const addFeed = button('Add feed', 'reading-feed-add', openAddFeed, 'primary')
+  const manageFeeds = button('Manage feeds', 'reading-feed-manage', openFeedManagement)
+  feedActions.append(addFeed, manageFeeds)
+
   const listStatus = el('p', 'reading-meta reading-list-status')
   listStatus.setAttribute('role', 'status')
   const list = el('ul', 'reading-list')
@@ -141,7 +148,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   const historyList = el('ul', 'reading-list reading-history-list')
   historyList.id = 'reading-history-list'
   historyList.hidden = true
-  index.append(header, filters, listStatus, list, historyList)
+  index.append(header, filters, feedActions, listStatus, list, historyList)
   const notice = el('div', 'reading-import-notice')
   notice.id = 'reading-import-notice'
   notice.hidden = true
@@ -153,12 +160,23 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   notice.append(noticeText, noticeOpen, noticeDismiss)
   rootEl.append(notice, index)
 
+  const feedManagement = el('section')
+  const managementTitle = el('h3', 'reading-heading', 'Manage feeds')
+  managementTitle.tabIndex = -1
+  const managementStatus = el('p', 'reading-meta reading-list-status')
+  managementStatus.id = 'reading-feed-management-status'
+  managementStatus.setAttribute('role', 'status')
+  const managedSources = el('ul', 'reading-list reading-feed-sources')
+  managedSources.id = 'reading-feed-sources'
+  feedManagement.append(backButton(manageFeeds), managementTitle, managementStatus, managedSources)
+
   let category = 'news'
   let activePanel = null
   let showingHistory = false
   let completedImport = null
   let positionTimer = 0
   let restoringPosition = false
+  let changingFeeds = false
   const feeds = new Map()
   const sessions = new Map()
   const panelStates = new WeakMap()
@@ -244,6 +262,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     heading.textContent = 'Reading history'
     historyButton.setAttribute('aria-pressed', 'true')
     refresh.hidden = true
+    feedActions.hidden = true
     clearHistory.hidden = false
     filters.hidden = false
     for (const categoryButton of categoryButtons) categoryButton.setAttribute('aria-pressed', 'false')
@@ -318,17 +337,23 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
 
   function renderIndex() {
     if (showingHistory) return
+    const custom = category === 'custom'
     const feed = feeds.get(category)
     for (const [idx, id] of Object.keys(CATEGORIES).entries()) {
       categoryButtons[idx].setAttribute('aria-pressed', String(id === category))
     }
-    refresh.disabled = Boolean(feed?.pending)
+    refresh.disabled = Boolean(feed?.pending || (custom && changingFeeds))
+    feedActions.hidden = !custom
+    addFeed.disabled = changingFeeds
+    manageFeeds.disabled = changingFeeds
     list.setAttribute('aria-busy', String(Boolean(feed?.pending)))
     if (feed?.pending) {
       listStatus.textContent = 'Loading articles…'
     } else if (feed?.refreshFailed && feed.articles.length) {
       listStatus.textContent = 'Couldn’t refresh. You can still open the articles already loaded.'
-    } else if (feed?.articles?.length) {
+    } else if (custom && feed?.refreshFailed) {
+      listStatus.textContent = 'Couldn’t load your feeds. Try refreshing.'
+    } else if (feed?.articles?.length || (custom && feed?.unavailableSources?.length)) {
       const unavailable = feed.unavailableSources.length
         ? `Couldn’t load ${feed.unavailableSources.join(', ')}.`
         : ''
@@ -336,6 +361,10 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
         ? ` Showing previous results from ${feed.staleSources.join(', ')}.`
         : ''
       listStatus.textContent = unavailable + stale
+    } else if (custom) {
+      listStatus.textContent = feed?.sources?.length
+        ? 'No articles from your feeds yet.'
+        : 'Add an RSS or Atom feed to see its latest articles.'
     } else {
       listStatus.textContent = 'No articles are available right now. Refresh or paste your own text.'
     }
@@ -348,7 +377,8 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
         const words = article.text.match(/\S+/gu)?.length ?? 0
         meta.append(' · About ', wordCountFormat.format(words), ' words in feed')
       } else {
-        meta.append(' · Summary only · Import for full article')
+        const availability = article.excerpt ? 'Summary only' : 'Headline only'
+        meta.append(' · ', availability, ' · Import for full article')
       }
       item.append(open)
       if (article.excerpt) item.append(englishText('p', 'reading-meta reading-article-excerpt', article.excerpt))
@@ -360,15 +390,22 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
   async function loadArticles() {
     const selected = category
     const previous = feeds.get(selected)
-    if (previous?.pending) return
-    feeds.set(selected, { ...previous, pending: true })
+    if (previous?.pending || (selected === 'custom' && changingFeeds)) return
+    const pending = { ...previous, pending: true }
+    feeds.set(selected, pending)
     renderIndex()
+    let result
     try {
-      feeds.set(selected, await api.discover(selected))
+      result = await api.discover(selected)
     } catch {
-      feeds.set(selected, { ...previous, articles: previous?.articles || [], refreshFailed: true })
+      result = { ...previous, articles: previous?.articles || [], refreshFailed: true }
     }
+    if (feeds.get(selected) !== pending) return
+    feeds.set(selected, result)
     if (selected === category) renderIndex()
+    if (selected === 'custom' && activePanel === feedManagement && !changingFeeds) {
+      renderManagedSources()
+    }
   }
 
   function selectCategory(id) {
@@ -407,6 +444,109 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       if (origin.isConnected) origin.focus()
       else heading.focus()
     }, 'reading-back')
+  }
+
+  async function changeCustomFeeds(update) {
+    changingFeeds = true
+    if (category === 'custom') renderIndex()
+    try {
+      feeds.set('custom', await update())
+    } finally {
+      changingFeeds = false
+      if (category === 'custom') renderIndex()
+    }
+  }
+
+  function openAddFeed() {
+    const form = el('form', 'reading-paste-form')
+    form.noValidate = true
+    const label = el('label', '', 'RSS or Atom feed URL')
+    const input = el('input', 'reading-input')
+    input.id = 'reading-feed-url'
+    input.type = 'url'
+    input.maxLength = 4096
+    input.placeholder = 'https://'
+    input.required = true
+    label.htmlFor = input.id
+    const submit = el('button', 'primary', 'Add feed')
+    submit.id = 'reading-feed-submit'
+    submit.type = 'submit'
+    const status = el('span', 'reading-meta')
+    status.id = 'reading-feed-status'
+    status.setAttribute('role', 'status')
+    form.append(backButton(addFeed), label, input, submit, status)
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      if (changingFeeds) return
+      const url = input.value.trim()
+      if (!url) {
+        status.textContent = 'Enter a public HTTPS feed URL.'
+        input.focus()
+        return
+      }
+      input.readOnly = true
+      submit.disabled = true
+      status.textContent = 'Checking feed…'
+      try {
+        await changeCustomFeeds(() => api.addFeed(url))
+        if (activePanel === form) {
+          showPanel(null)
+          addFeed.focus({ preventScroll: true })
+        }
+      } catch (error) {
+        status.textContent = coachErrorText(error, 'Couldn’t add the feed. Try again.')
+        if (activePanel === form) input.focus({ preventScroll: true })
+      } finally {
+        input.readOnly = false
+        submit.disabled = false
+      }
+    })
+    showPanel(form)
+    input.focus()
+  }
+
+  function openFeedManagement() {
+    renderManagedSources()
+    showPanel(feedManagement)
+    managementTitle.focus()
+  }
+
+  function renderManagedSources(message = '') {
+    const feed = feeds.get('custom')
+    const sources = feed?.sources || []
+    if (message) {
+      managementStatus.textContent = message
+    } else if (feed?.pending && !sources.length) {
+      managementStatus.textContent = 'Loading feeds…'
+    } else if (feed?.refreshFailed && !sources.length) {
+      managementStatus.textContent = 'Couldn’t load your feeds. Try refreshing.'
+    } else {
+      managementStatus.textContent = sources.length ? '' : 'No feeds added yet.'
+    }
+    managedSources.replaceChildren(...sources.map(({ id, name, url }) => {
+      const item = el('li')
+      const content = el('div', 'reading-feed-source')
+      content.append(el('p', 'reading-feed-name', name), el('p', 'reading-meta', url))
+      const failure = feed.sourceErrors?.[id]
+      if (failure) content.append(el('p', 'reading-meta', failure))
+      const remove = button('Remove', '', () => void removeCustomFeed(id))
+      remove.setAttribute('aria-label', `Remove ${name}`)
+      item.append(content, remove)
+      return item
+    }))
+  }
+
+  async function removeCustomFeed(id) {
+    if (changingFeeds) return
+    for (const remove of managedSources.querySelectorAll('button')) remove.disabled = true
+    managementStatus.textContent = 'Removing feed…'
+    try {
+      await changeCustomFeeds(() => api.removeFeed(id))
+      renderManagedSources()
+      if (activePanel === feedManagement) managementTitle.focus({ preventScroll: true })
+    } catch (error) {
+      renderManagedSources(coachErrorText(error, 'Couldn’t remove the feed. Try again.'))
+    }
   }
 
   function openPaste() {
