@@ -223,7 +223,7 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
         const analysis = snapshot.locator('.reading-sentence-structure .sentence-analysis')
         await translation.waitFor()
         await snapshot.locator('.reading-sentence-paraphrase').waitFor()
-        assert.equal(await snapshot.locator('#reading-sentence-toggle').evaluate((node) => node.open), false)
+        assert.equal(await snapshot.locator('#reading-sentence-toggle').getAttribute('open'), '')
         assert.equal(await fontSize(article), '18px')
         assert.equal(await fontSize(translation), '18px')
         await page.locator('#reading-lookup-guide').click()

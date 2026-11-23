@@ -204,13 +204,13 @@ export async function runLiveSentenceE2E() {
       await lookup.locator('.translation-text').waitFor()
       const paraphrase = await verifyArticleAnalysis(lookup)
       const grammar = lookup.locator('#reading-sentence-toggle')
-      assert.equal(await grammar.getAttribute('open'), null)
+      const hasRoles = await grammar.locator('.reading-sentence-source .sentence-mark').count() > 0
+      assert.equal(await grammar.getAttribute('open'), hasRoles ? '' : null)
       const translated = (await lookup.locator('.translation-text').textContent()).trim()
       assert.ok(translated, 'The completed real translation should be nonempty.')
-      await screenshot('live-sentence-article-direct')
-      await grammar.locator('summary').click()
       const roles = await articleRoles(page)
       if (roles.verb.length) assertMainRoles(roles)
+      await screenshot('live-sentence-article-direct')
       return { translatedLength: translated.length, paraphrase, roles }
     })
 
@@ -219,9 +219,11 @@ export async function runLiveSentenceE2E() {
       await lookup.locator('.hint').first().waitFor()
       const explanation = lookup.locator('#reading-sentence-explanation')
       assert.equal(await explanation.getAttribute('open'), null)
+      await explanation.locator('#reading-sentence-structure[data-status="done"]').waitFor({ state: 'attached' })
+      const roles = await articleRoles(page)
       await explanation.locator(':scope > summary').click()
       const paraphrase = await verifyArticleAnalysis(lookup)
-      const roles = await articleRoles(page)
+      assert.deepEqual(await articleRoles(page), roles)
       assert.equal(await lookup.locator('.answer').count(), 0, 'Exploring clauses must not reveal the answer.')
       await screenshot('live-sentence-article-guided')
       return { paraphrase, roles }

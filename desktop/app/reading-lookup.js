@@ -68,11 +68,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const sentenceSummary = el('summary', '', 'Sentence explanation')
   sentenceSummary.hidden = true
   sentenceDisclosure.append(sentenceSummary, structure)
-  sentenceDisclosure.addEventListener('toggle', () => {
-    if (!entry) return
-    renderHighlights()
-    layout.position()
-  })
+  sentenceDisclosure.addEventListener('toggle', () => layout.position())
   result.append(meaning, sentenceDisclosure)
   const feedback = el('p', 'reading-lookup-feedback')
   feedback.setAttribute('role', 'status')
@@ -138,7 +134,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function renderHighlights() {
     if (!CSS.highlights || typeof Highlight !== 'function') return false
     clearStructureHighlights()
-    const spans = sentenceDisclosure.open && entry.analysis.detailExpanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
+    const spans = entry.analysis.detailExpanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
     const ranges = readingSentenceStructureRanges(entry, spans)
     if (!ranges.length) {
       CSS.highlights.set(SELECTION_HIGHLIGHT, new Highlight(entry.range))
@@ -459,6 +455,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         analysis.result = payload.result
         analysis.status = 'done'
         analysis.requestId = null
+        analysis.detailExpanded = sentenceStructure(readingAnalysisEntry(entry)).length > 0
       } else if (['error', 'missing-configuration'].includes(payload.status)) {
         analysis.status = 'error'
         analysis.error = localizeErrorMessage(payload)
