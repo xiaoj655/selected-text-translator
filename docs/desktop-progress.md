@@ -1,16 +1,20 @@
 # 桌面版长期任务进度
 
-本文件是桌面版移植的**唯一进度来源**。每次新会话先读本文件与 `docs/desktop-plan.md`,再说「继续」即可接着做,不依赖对话记忆。完成一项就勾选、记下验证结果。
+本页记录当前桌面版基线、验收边界与历史里程碑。最新功能见[桌面更新记录](../desktop/CHANGELOG.md)，方向见[迭代路线](desktop-roadmap.md)。[早期移植方案](desktop-plan.md)只用于回顾历史。
 
 ## 当前基线与迭代方向
 
-截至 2026-11-22，当前桌面分支版本为 **v0.9.74**。早期路线见下方里程碑，逐版变更见 [桌面更新记录](../desktop/CHANGELOG.md)。
+截至 2026-11-23，`desktop` 分支源码为 **0.9.87**；已发布的安装包以 [GitHub Releases](https://github.com/xiaoj655/selected-text-translator/releases) 为准，源码版本不一定已经发布。
 
 - **翻译工作台**启动即打开，默认粘贴即翻译。下一次粘贴替换原文并发起新查询。「直接翻译」和「引导理解」在工作台内切换。全局热键取词暂停。
 - **English Coach** 默认从公开订阅源获取近期科技新闻、工程博客和技术思考。文章正文、展开文本和粘贴材料支持点词或划选后原地翻译、看提示、朗读和收藏，查询带原文及准确位置。带读后可自由追问，短语和句子查询继续用于「Review」。
-- 文章字号和阅读栏宽度在「Settings → Appearance → Article reading」调整，并保存在本机。
+- 「My feeds」支持自定义 RSS / Atom 订阅；导入网页和粘贴文章会保存到本地 History，并在重启后恢复阅读位置。「Settings → Reading」可分别调整正文和查询栏字号；拖动正文与侧栏之间的分隔线可调整查询栏宽度。
 - 主窗口可用 `Ctrl/⌘` 加 `+`（或 `=`）、`-`、`0` 放大、缩小或恢复默认比例。
 - 点击「更多」查看已安装版本和 GitHub 发布页。Windows 和 Linux 窗口在创建时显式移除 Electron 应用菜单。
+
+v0.9.87 Linux 云桌面：本地构建并启动了 x64 AppImage，实拍验证了导入示例文章、点词看译文和展开句子结构。文章与接口响应使用本地模拟数据；不代表真实模型质量、线上网页解析或 macOS / Windows 实机验收。
+
+以下为历次验证记录：
 
 v0.9.70 本地验证：`npm run verify --prefix desktop` 通过（含 smoke、请求隔离、带读逻辑检查和 Electron E2E 59/59）；最后调整后文章查询专项 4/4 通过。已检查浅色、矮窗口深色及展开词典的截图。API 使用本地模拟，真实模型效果与 macOS / Windows 实机交互待验收。
 
@@ -40,7 +44,7 @@ v0.9.74 本地验证：通过 Linux Electron 的放大、缩小、重置及窄�
 
 - 本轮核对的本地环境:Ubuntu / Node 22.22.1 / npm 9.2.0;现有 Electron E2E 使用 Playwright 与 Xvfb,可验证模拟输入和渲染行为。
 - CI 使用 GitHub 托管的 `macos-latest` 和 `windows-latest` runner 产出安装包。安装和系统交互仍需在实机验收。
-- 用户无法方便提供目标平台环境,**实机交互测试全部由用户手动执行**,我按回传迭代。
+- 常规迭代优先在 Linux 桌面或虚拟显示环境验收可运行的交互，保留关键截图或短视频。macOS / Windows 的安装、输入法、系统托盘和真实音色在对应平台单独验收。
 - Linux 内可自动操作受控测试页面与 Electron 窗口;目标平台的系统授权弹窗、跨应用选词、原生输入法和真实音色仍由你验证。
 - 真实 API 凭据仅在获准的验证中使用,从环境变量或仓库外私有配置读取,不进仓库、提交、日志或截图;临时凭据文件用完删除。
 
@@ -84,8 +88,8 @@ v0.9.74 本地验证：通过 Linux Electron 的放大、缩小、重置及窄�
 - [ ] 验收:**全部行为由你按清单 3 手动验证**
 
 ### 阶段 4 — 分发
-- [x] electron-builder 配置(dmg / nsis / AppImage)、双架构 macOS
-- [x] GitHub Actions 配置 macOS + Windows + Linux 安装包构建与 Artifact 上传
+- [x] electron-builder 可打包 dmg / nsis / AppImage；当前 macOS CI 只发布 Apple Silicon（arm64）
+- [x] GitHub Actions 构建并上传 macOS arm64 与 Windows x64 安装包；Linux AppImage 仅作本地构建
 - [ ] 签名 + 公证(需你的 Apple 账号与证书)
 - [x] Windows NSIS 检查、下载和重启安装
 - [ ] macOS 和 Linux 自动更新

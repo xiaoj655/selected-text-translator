@@ -14,13 +14,15 @@
 
 「Article reading」拉取公开订阅源中的近期科技新闻、工程博客和技术思考。选一篇文章可以查看来源、时间和订阅源提供的正文，或打开原文；只有摘要时可点「Import full article」导入网页全文。也可以用「Paste text」阅读自己粘贴的英文，正文没有 12,000 字符截断。对话保留在当前应用会话中。
 
-点击「Open link」可以导入公开网页，支持直接粘贴 URL 或 Markdown 链接。在「Settings → Reading → Web import」保存 IQS API Key 后，导入使用阿里云网页解析增强版，设置中可直接打开 Key 获取页。未配置 Key 时在本机提取，导入失败会显示原因并提供重试和粘贴入口。正文保留标题、段落、列表、引用、表格、代码、图片和图注的结构及顺序，字号、宽度和配色使用应用的阅读设置。公开直连视频可用原生播放器播放；嵌入、格式或资源不支持时提供原文入口。请求超时和响应体积保护独立于正文长度，超限会明确报错。[IQS Key 获取页面](https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape)
+从 0.9.87 起，可在「My feeds」粘贴 RSS 或 Atom 地址来添加和管理自定义订阅。订阅保存在本机，每个源最多显示最近 8 篇；单个源刷新失败时仍可查看已加载的文章。
+
+在「Article reading」点击「Open link」可以导入公开网页，支持直接粘贴 URL 或 Markdown 链接。在「Settings → Reading → Web import」保存 IQS API Key 后，导入使用阿里云网页解析增强版，设置中可直接打开 Key 获取页。未配置 Key 时在本机提取，导入失败会显示原因并提供重试和粘贴入口。正文保留标题、段落、列表、引用、表格、代码、图片和图注的结构及顺序，字号、宽度和配色使用应用的阅读设置。公开直连视频可用原生播放器播放；嵌入、格式或资源不支持时提供原文入口。请求超时和响应体积保护独立于正文长度，超限会明确报错。[IQS Key 获取页面](https://aisearch.aliyun.com/web-parsing?tab=docs&apiTab=scrape)
 
 成功导入和粘贴的文章自动保存到「History」，按最近访问排序，重启后直接读取本地正文并恢复阅读位置。相同网址更新已有记录，正文变化时重置位置；支持单篇删除和清空。历史最多保存最近 100 篇、总计约 50 MB。导入期间离开表单，完成后仍会写入历史并提示打开。
 
 在文章正文中单击单词可原地查询；拖选短语或句子后，选择「Translate」或「Guided Reading」。查询带上选中内容所在的完整句子或多句、前后各一句及准确位置，并记住上次使用的模式。查询结果可逐条展开提示、查看答案、复制、朗读和收藏；收藏包含原句及可用的来源链接。滚动正文时结果继续保留，可收起面板或按 `Esc` 关闭。文章查询与翻译工作台各自管理请求。
 
-单词查询先显示词义，点击「Sentence structure」后分析所在完整句子；短语、半句和跨句选区自动分析覆盖的完整句子，译文仍只对应选中部分。主干同时标在正文和侧栏的完整原句上，从句细节可展开「Explore sentence」。分析等待和失败重试独立于译文；同句查询复用临时分析缓存。右侧分隔线可以拖动调宽，双击恢复默认，宽度偏好在本机保存。
+单词查询先显示词义，点击「Sentence structure」后分析所在完整句子；短语、半句和跨句选区自动分析覆盖的完整句子，译文仍只对应选中部分。主干同时标在正文和侧栏的完整原句上，从句细节可展开「Explore sentence」。分析等待和失败重试独立于译文；同句查询复用临时分析缓存。引导模式可按空格逐条展开提示，按 `R` 朗读或停止，答案仍由「Reveal answer」单独打开。右侧分隔线可以拖动调宽，双击恢复默认，宽度偏好在本机保存。可在「Settings → Reading」分别调整正文与查询栏字号。
 
 点击「Read with Coach」了解文章的背景和主要观点，然后追问论据、技术细节或英文表达。AI 上下文与阅读正文分开：预算内发送全文，长文章使用覆盖全篇或与问题、当前阅读位置相关的选段，并显示选段提示；正文预算为 12,000 字符，对话历史总预算为 8,000 字符。图片和视频不会自动发送给学习模型，打开文章和滚动不会调用学习模型。
 
@@ -38,7 +40,7 @@ English Coach使用已配置的通用学习模型。翻译模型为通用模型�
 
 需要查看控制台或网络请求时，在应用窗口按 `F12` 或 `Ctrl+Shift+I`（macOS 为 `⌘⌥I`）打开独立的开发者工具，再选「Console」或「Network」；在应用窗口再次按快捷键可关闭。也可从系统托盘菜单选择「Open Developer Tools」打开主窗口的开发者工具。
 
-从 0.9.64 起，Windows `.exe` 安装版会在后台检查和下载更新，也可以在「More actions」里手动检查。下载完成后在同一菜单点「Restart and update」。0.9.62 及更早版本需要手动覆盖安装一次，Windows 便携 ZIP 可在发布页下载新版。
+从 0.9.64 起，Windows `.exe` 安装版会在后台检查和下载更新，也可以在「More actions」里手动检查。下载完成后在同一菜单点「Restart and update」。没有自动更新的旧版本可以手动覆盖安装一次，Windows 便携 ZIP 可在发布页下载新版。
 
 | 位置 | 操作 |
 | --- | --- |
@@ -92,7 +94,7 @@ npm run dist -- --win zip '-c.directories.output=dist/portable'  # Windows 便�
 npm run dist -- --linux
 ```
 
-本地构建产物位于 `desktop/dist/`。推送 `desktop` 分支相关代码、推送 `desktop-v*` 标签或手动触发后，可在 Actions 运行页的 Artifacts 下载以下文件：
+本地构建产物位于 `desktop/dist/`。`--linux` 生成本地 Linux 构建（含 AppImage），当前 GitHub Actions 不分发 Linux 包。推送 `desktop` 分支相关代码、推送 `desktop-v*` 标签或手动触发后，可在 Actions 运行页的 Artifacts 下载以下文件：
 
 - macOS Apple Silicon（arm64）的 DMG 和 ZIP。
 - Windows x64 的 `Selected.Text.Translator.Setup.<版本>.exe` 安装包和便携 ZIP。
