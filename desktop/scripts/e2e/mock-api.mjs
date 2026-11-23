@@ -2,6 +2,10 @@ import { createServer } from 'node:http'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+export function isArticleExplanation(body) {
+  return Boolean(body?.messages?.[0]?.content?.includes('You explain complete source sentences to a reader who needs to understand the thought.'))
+}
+
 function lastUserText(body) {
   const messages = Array.isArray(body?.messages) ? body.messages : []
   const content = messages.at(-1)?.content
@@ -30,7 +34,9 @@ export function createMockApi({ translationFor = (text) => `译:${text}`, lexica
       res.end()
       return
     }
-    const content = JSON.stringify({ translation, ...(lexicalFor(text) || {}) })
+    const content = JSON.stringify(isArticleExplanation(body)
+      ? { paraphrase: 'The full sentence is explained here.' }
+      : { translation, ...(lexicalFor(text) || {}) })
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ choices: [{ message: { content } }] }))
   }

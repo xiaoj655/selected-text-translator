@@ -1,6 +1,6 @@
 import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
-import { renderGuide, renderGuidePreview, renderTranslation, scrollToLatestHint, sentenceStructure } from './translation-result.js'
+import { expandNextResultDetail, renderGuide, renderGuidePreview, renderTranslation, scrollToLatestHint, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
 import { classifyReadingSelection } from '../vendor/src/reading-support.js'
@@ -9,6 +9,7 @@ import { createReadingLookupLayout } from './reading-lookup-layout.js'
 import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
+const EXPLANATION_KIND = 'article-explanation'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
 const SELECTION_HIGHLIGHT = 'reading-lookup-selection'
 const STRUCTURE_HIGHLIGHTS = {
@@ -34,7 +35,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   popover.id = 'reading-lookup'
   popover.tabIndex = -1
   popover.hidden = true
-  popover.setAttribute('aria-label', 'Look up selected text')
+  popover.setAttribute('aria-label', 'Article lookup')
   const header = el('header', 'reading-lookup-header')
   const title = el('strong', 'reading-lookup-text')
   title.id = 'reading-lookup-text'
@@ -59,17 +60,31 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const result = el('div', 'result')
   result.id = 'reading-lookup-result'
   const meaning = el('div', 'result')
+  meaning.id = 'reading-lookup-meaning'
   const structure = el('div')
-  result.append(meaning, structure)
+  const sentenceDisclosure = el('details', 'reading-sentence-disclosure')
+  sentenceDisclosure.id = 'reading-sentence-explanation'
+  sentenceDisclosure.open = true
+  const sentenceSummary = el('summary', '', 'Sentence explanation')
+  sentenceSummary.hidden = true
+  sentenceDisclosure.append(sentenceSummary, structure)
+  sentenceDisclosure.addEventListener('toggle', () => {
+    if (!entry) return
+    renderHighlights()
+    layout.position()
+  })
+  result.append(meaning, sentenceDisclosure)
   const feedback = el('p', 'reading-lookup-feedback')
   feedback.setAttribute('role', 'status')
   body.append(result, feedback)
   const actions = el('footer', 'reading-lookup-actions')
   const copy = button('Copy result', 'reading-lookup-copy', () => void copyResult())
   const speak = button('Read aloud', 'reading-lookup-speak', () => void toggleSpeech())
+  speak.title = 'Read aloud or stop (R)'
+  speak.setAttribute('aria-keyshortcuts', 'R')
   const save = button('Save', 'reading-lookup-save', () => void saveResult())
   const stop = button('Stop', 'reading-lookup-stop', stopRequest)
-  const retry = button('Retry', 'reading-lookup-retry', () => void request(entry?.mode || lastMode, true))
+  const retry = button('Retry lookup', 'reading-lookup-retry', () => void request(entry?.mode || lastMode, true))
   const settings = button('Open settings', 'reading-lookup-settings', () => { close(); onOpenSettings?.() })
   actions.append(copy, speak, save, stop, retry, settings)
   popover.append(header, modes, body, actions)
@@ -112,7 +127,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const requestId = analysis.requestId
     analysis.requestId = null
     void chrome.runtime.sendMessage({ type: 'CANCEL_TRANSLATION', payload: {
-      requestId, requestScope: 'reading', kind: 'structure',
+      requestId, requestScope: 'reading', kind: EXPLANATION_KIND,
     } }).catch(() => {})
   }
 
@@ -123,7 +138,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function renderHighlights() {
     if (!CSS.highlights || typeof Highlight !== 'function') return false
     clearStructureHighlights()
-    const spans = entry.analysis.expanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
+    const spans = sentenceDisclosure.open && entry.analysis.detailExpanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
     const ranges = readingSentenceStructureRanges(entry, spans)
     if (!ranges.length) {
       CSS.highlights.set(SELECTION_HIGHLIGHT, new Highlight(entry.range))
@@ -156,12 +171,13 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
 
   function renderMeaning() {
     const scrollTop = body.scrollTop
-    const structurePanel = scrollTop > 0 ? structure.firstElementChild : null
+    const structurePanel = scrollTop > 0 && sentenceDisclosure.open ? structure.firstElementChild : null
     const structureTop = structurePanel?.getBoundingClientRect().top
     const viewingStructure = structurePanel && structureTop <= body.getBoundingClientRect().top
     translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
     guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
     meaning.replaceChildren()
+    meaning.dataset.status = entry.status
     meaning.classList.toggle('is-error', ['error', 'cancelled'].includes(entry.status))
     meaning.setAttribute('aria-busy', String(ACTIVE.has(entry.status)))
     if (entry.status === 'error' || entry.status === 'cancelled') {
@@ -193,13 +209,6 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
 
   function renderActions() {
     const done = entry.status === 'done'
-    if (entry.mode === 'guide') {
-      speak.title = 'Read aloud or stop (R)'
-      speak.setAttribute('aria-keyshortcuts', 'R')
-    } else {
-      speak.removeAttribute('title')
-      speak.removeAttribute('aria-keyshortcuts')
-    }
     copy.disabled = !done
     save.disabled = !done || Boolean(entry.saving) || (entry.mode === 'guide' && !entry.answerRevealed)
     stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
@@ -211,16 +220,14 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function renderAnalysis() {
     const scrollTop = body.scrollTop
     renderHighlights()
-    if (!entry.singleWord || entry.status === 'done' || structure.firstElementChild) {
-      structure.replaceChildren(renderReadingSentence(entry, {
-        onToggle(expanded) {
-          entry.analysis.expanded = expanded
-          if (expanded && entry.analysis.status === 'idle') void requestAnalysis()
-          else renderAnalysis()
-        },
-        onRetry() { void requestAnalysis(true) },
-      }))
-    }
+    structure.replaceChildren(renderReadingSentence(entry, {
+      onToggle(expanded) {
+        entry.analysis.detailExpanded = expanded
+        renderHighlights()
+        layout.position()
+      },
+      onRetry() { void requestAnalysis(true) },
+    }))
     body.scrollTop = scrollTop
     layout.position()
   }
@@ -231,14 +238,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       layout.reopen()
       return
     }
-    const singleWord = classifyReadingSelection(selected.text) === 'word'
-    const preserveAnalysis = !singleWord && sameMaterial && entry.analysis.status === 'loading'
-      && sameSentenceScope(entry.sentenceScope, selected.sentenceScope)
+    const singleWord = selected.wordClick || classifyReadingSelection(selected.text) === 'word'
+    const preserveAnalysis = sameMaterial && sameSentenceScope(entry.sentenceScope, selected.sentenceScope)
     const analysis = preserveAnalysis ? entry.analysis
       : { status: 'idle', detailExpanded: false, requestId: null, result: null, error: '' }
-    analysis.expanded = !singleWord
     close({ preserveAnalysis })
-    const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', singleWord, analysis }
+    const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', analysis }
     entry = current
     title.textContent = selected.text
     title.title = selected.text
@@ -249,15 +254,15 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     structure.replaceChildren()
     body.scrollTop = 0
     layout.open(current)
-    if (lastMode) void request(lastMode)
+    if (singleWord) void request('translate')
+    else if (lastMode) void request(lastMode)
     else {
       renderMeaning()
       void modeReady.then(() => {
         if (entry === current && !current.mode) void request(lastMode)
       })
     }
-    if (singleWord || preserveAnalysis) renderAnalysis()
-    else void requestAnalysis()
+    void requestAnalysis()
   }
 
   function selectMode(mode) {
@@ -275,11 +280,18 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     if (!forceRefresh && entry.mode === mode && (ACTIVE.has(entry.status) || entry.status === 'done')) return
     cancel()
     const current = entry
+    const modeChanged = current.mode !== mode
+    const guided = mode === 'guide'
     const requestId = id()
     Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null,
       sentenceAnalysis: null, analysisExpanded: false, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
-    if (mode === 'guide') layout.expand()
+    if (modeChanged) {
+      sentenceDisclosure.classList.toggle('is-guided', guided)
+      sentenceSummary.hidden = !guided
+      sentenceDisclosure.open = !guided
+    }
+    if (guided) layout.expand()
     feedback.textContent = ''
     save.textContent = 'Save'
     renderMeaning()
@@ -320,9 +332,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     Object.assign(analysis, { status: 'loading', requestId, error: '', result: null })
     renderAnalysis()
     try {
+      const { desktop_target_language: targetLanguage } = await chrome.storage.sync.get('desktop_target_language')
+      if (entry?.analysis !== analysis || analysis.requestId !== requestId) return
+      const { text, context, contextStart, contextEnd } = current.sentenceScope
       const response = await chrome.runtime.sendMessage({ type: 'START_TRANSLATION', payload: {
-        selectionId: current.id, requestId, requestScope: 'reading', kind: 'structure', forceRefresh,
-        text: current.sentenceScope.text, sourceLanguage: 'english',
+        selectionId: current.id, requestId, requestScope: 'reading', kind: EXPLANATION_KIND, forceRefresh,
+        text, sourceLanguage: 'english', targetLanguage: targetLanguage || 'auto', context, contextStart, contextEnd,
       } })
       if (entry?.analysis === analysis && analysis.requestId === requestId && !response?.accepted) {
         analysis.status = 'error'
@@ -407,8 +422,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     }
   }
 
-  function handleGuideShortcut(key, target) {
-    if (entry?.mode !== 'guide' || !popover.checkVisibility()) return false
+  function handleResultShortcut(key, target) {
+    if (!entry || !popover.checkVisibility()) return false
     if (target !== document.body && !scroller.contains(target) && !popover.contains(target)) return false
     if (popover.dataset.placement === 'inline') {
       const panelBounds = popover.getBoundingClientRect()
@@ -419,6 +434,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       void toggleSpeech()
       return true
     }
+    if (entry.mode === 'translate') return expandNextResultDetail(result)
     const nextHint = meaning.querySelector('[data-hint-more]')
     if (!nextHint) return false
     nextHint.click()
@@ -477,7 +493,6 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       default: return
     }
     renderMeaning()
-    if (entry.singleWord && entry.status === 'done' && !structure.firstElementChild) renderAnalysis()
   })
 
   document.addEventListener('keydown', (event) => {
@@ -494,6 +509,6 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       articles.set(material, article)
     },
     close,
-    handleGuideShortcut,
+    handleResultShortcut,
   }
 }

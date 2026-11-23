@@ -1,4 +1,4 @@
-import { buildGenericRequest, isQwenMtModel } from './translation-contracts.js'
+import { buildGenericRequest, getTargetLanguage, isQwenMtModel } from './translation-contracts.js'
 import { detectSourceLanguage } from './source-language.js'
 
 export const READING_STORAGE_KEYS = Object.freeze({
@@ -88,13 +88,15 @@ function getSelectionOccurrence(context, text, contextStart, contextEnd) {
 }
 
 export function buildReadingRequest({ model, text, context = '', kind = 'guide', contextStart, contextEnd,
-  includeSentenceStructure = false, sourceLanguage, stream = false }) {
+  includeSentenceStructure = false, sourceLanguage, targetLanguage, stream = false }) {
   const request = buildGenericRequest({ model, text: '' })
   request.stream = stream && kind === 'guide'
   const selectedText = String(text || '').slice(0, 12000)
   const surroundingContext = String(context || '').slice(0, 2400)
   const selectionType = classifyReadingSelection(selectedText)
-  const task = kind === 'structure'
+  const articleExplanation = kind === 'article-explanation'
+  const task = articleExplanation ? ARTICLE_EXPLANATION_INSTRUCTIONS
+    : kind === 'structure'
     ? [
         'Return only a JSON object with the key "structure" and optional "sentenceAnalysis". Use an empty structure array if no complete English main clause is selected.',
         ...SENTENCE_STRUCTURE_INSTRUCTIONS,
@@ -125,12 +127,42 @@ export function buildReadingRequest({ model, text, context = '', kind = 'guide',
         selectedText,
         surroundingContext,
         selectionType,
+        ...(articleExplanation ? { targetLanguage: getTargetLanguage(selectedText, targetLanguage) } : {}),
         ...getSelectionOccurrence(surroundingContext, selectedText, contextStart, contextEnd),
       }),
     },
   ]
   return request
 }
+
+const ARTICLE_EXPLANATION_INSTRUCTIONS = [
+  'You explain complete source sentences to a reader who needs to understand the thought.',
+  'Return {"paraphrase":"...","sentenceAnalysis":{"connections":[],"clauses":[],"fragments":[]},"structure":[]}.',
+  'Fill each applicable array. Leave an array empty when its content would not help.',
+  'Write the required paraphrase first, in plain, natural targetLanguage (Simplified Chinese when targetLanguage is Chinese).',
+  'Start directly with the restatement. Restate every sentence or expression in selectedText in source order, as full thoughts.',
+  'Preserve the actors, events, time, uncertainty, negation, and logic. Use surroundingContext to resolve pronouns and references when clear.',
+  'Preserve ambiguity when the source and context allow different readings. Keep inferred reasons or outcomes out of the restatement.',
+  'For "The sooner, the better.", say that doing it earlier produces a better outcome. Explain the comparison in a note and omit role labels.',
+  'For a genuinely cut-off fragment, explain the words present without inventing the missing thought, and identify it in "fragments".',
+  'When the idea depends on a relationship such as a condition, contrast, reference, double negative, inversion, or omission,',
+  'explain how the words express that relationship in one or two concise "connections" notes in targetLanguage.',
+  'For example, explain "can\'t ... without" as making the "without" action necessary. Explain "Only when ..." as excluding earlier times.',
+  'Skip notes about routine grammar or meanings that are already obvious from the words.',
+  'Each note is {"text":"exact source quote","explanation":"one concise explanation"}.',
+  'Use "clauses" for deeper clause relationships with the same note fields. Include an exact quote of a relative clause and say what noun it modifies.',
+  'For a sentence with a clear main clause, put its main roles in top-level "structure": {"role":"verb","text":"could reduce"}.',
+  'Use only the roles "subject", "verb", "object", and "complement". Skip absent or uncertain roles; never force a subject, verb, or object.',
+  'Use short, disjoint fragments in source order. Use the core noun phrase for a subject, object, or complement modified by a relative clause.',
+  'Every highlighting fragment must be contiguous. In "Only then did we leave", the roles in order are "did" (verb), "we" (subject), "leave" (verb).',
+  'Keep negation and auxiliaries with the verb when contiguous. Label an inverted auxiliary and its main verb as separate fragments.',
+  'In "There are some kinds of work that you cannot do alone.", highlight "There" as subject, "are" as verb, and "some kinds of work" as complement.',
+  'The "that" clause modifies "work". Put "that you cannot do alone" in "clauses", and put its roles only in that note: "that" as object, "you" as subject, and "cannot do" as verb.',
+  'Main-clause roles must exclude relative-clause words. Adverbs like "well" are never objects. Phrases like "without help" are adjuncts here.',
+  'A clause that fills a main role can itself be highlighted, such as the object in "I know that she left." Do not label adverbs as objects.',
+  'Copy every quote and highlight exactly from selectedText, case and spaces included. Never span two source sentences.',
+  'When a quote or highlight repeats, add "occurrence": its 1-based whole-fragment match across all of selectedText, including other sentences.',
+]
 
 const SENTENCE_STRUCTURE_INSTRUCTIONS = [
   'Analyze each complete English sentence in selectedText, including complete sentences with no final punctuation. Add a top-level',
@@ -243,6 +275,7 @@ function buildGuideInstructions(includeSentenceStructure, stream) {
 
 const STRUCTURE_ROLES = new Set(['subject', 'verb', 'object', 'complement'])
 const WORD_CHARACTER = '[\\p{L}\\p{M}\\p{N}]'
+const RELATIVE_CLAUSE = /^(?:that|which|who|whom|whose)\s+\S/iu
 
 function locateStructureFragment(text, fragment, occurrence) {
   const exact = fragment.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
@@ -254,19 +287,36 @@ function locateStructureFragment(text, fragment, occurrence) {
   return undefined
 }
 
+function normalizeStructurePart(part, text) {
+  const { role, text: fragment, occurrence } = part || {}
+  if (!STRUCTURE_ROLES.has(role) || typeof fragment !== 'string' || !fragment
+    || fragment.length > text.length || fragment !== fragment.trim()) return null
+  const start = locateStructureFragment(text, fragment, occurrence)
+  return start === undefined ? null : { role, start, end: start + fragment.length }
+}
+
 function normalizeSentenceStructure(parts, text) {
   if (!Array.isArray(parts) || !parts.some((part) => part?.role === 'verb')) return []
   const structure = []
-  for (const part of parts) {
-    const { role, text: fragment, occurrence } = part || {}
-    if (!STRUCTURE_ROLES.has(role) || typeof fragment !== 'string' || !fragment
-      || fragment.length > text.length || fragment !== fragment.trim()) return []
-    const start = locateStructureFragment(text, fragment, occurrence)
-    if (start === undefined) return []
-    structure.push({ role, start, end: start + fragment.length })
+  for (const raw of parts) {
+    const part = normalizeStructurePart(raw, text)
+    if (!part) return []
+    structure.push(part)
   }
   structure.sort((left, right) => left.start - right.start)
   return structure.some((part, index) => index > 0 && structure[index - 1].end > part.start) ? [] : structure
+}
+
+function normalizeArticleStructure(parts, text, { start = 0, end = text.length } = {}) {
+  const structure = []
+  if (!Array.isArray(parts)) return structure
+  for (const raw of parts.slice(0, 64)) {
+    const part = normalizeStructurePart(raw, text)
+    if (!part || part.start < start || part.end > end || raw.text.includes('\n\n')) continue
+    if (structure.some((previous) => previous.start < part.end && previous.end > part.start)) continue
+    structure.push(part)
+  }
+  return structure.sort((left, right) => left.start - right.start)
 }
 
 function normalizeAnalysisItem(item, text) {
@@ -278,7 +328,7 @@ function normalizeAnalysisItem(item, text) {
   return start === undefined ? null : { start, end: start + item.text.length, explanation }
 }
 
-function normalizeSentenceAnalysis(analysis, text) {
+function normalizeSentenceAnalysis(analysis, text, article = false) {
   if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) return undefined
   const result = {}
   for (const [category, limit] of [['connections', 3], ['clauses', 6], ['fragments', 2]]) {
@@ -288,9 +338,11 @@ function normalizeSentenceAnalysis(analysis, text) {
     for (const raw of analysis[category].slice(0, 24)) {
       const item = normalizeAnalysisItem(raw, text)
       if (!item || items.some(({ start, end }) => start === item.start && end === item.end)) continue
+      if (article && raw.text.includes('\n\n')) continue
       if (category === 'clauses') {
-        const structure = normalizeSentenceStructure(raw.structure, text)
-        if (!structure.length || structure.some(({ start, end }) => start < item.start || end > item.end)) continue
+        const structure = article ? normalizeArticleStructure(raw.structure, text, item)
+          : normalizeSentenceStructure(raw.structure, text)
+        if (!article && (!structure.length || structure.some(({ start, end }) => start < item.start || end > item.end))) continue
         item.structure = structure
       }
       items.push(item)
@@ -301,16 +353,14 @@ function normalizeSentenceAnalysis(analysis, text) {
   return Object.keys(result).length ? result : undefined
 }
 
-function mainSentenceStructure(parts, text, sentenceAnalysis) {
-  const structure = normalizeSentenceStructure(parts, text)
-  const clauses = sentenceAnalysis?.clauses
+function removeClauseHighlights(structure, text, clauses, { preserveClauseArguments = false } = {}) {
   if (!clauses?.length || !structure.length) return structure
-  const main = structure.flatMap((part) => {
+  return structure.flatMap((part) => {
     let pieces = [part]
     for (const clause of clauses) {
       // A whole clause may itself be an essential subject, object, or complement.
       // Its presence in deeper detail is not evidence that this main role is a modifier.
-      if (part.role !== 'verb' && clause.start <= part.start && clause.end >= part.end) continue
+      if (preserveClauseArguments && part.role !== 'verb' && clause.start <= part.start && clause.end >= part.end) continue
       pieces = pieces.flatMap((piece) => {
         if (clause.end <= piece.start || clause.start >= piece.end) return [piece]
         const remaining = []
@@ -326,7 +376,48 @@ function mainSentenceStructure(parts, text, sentenceAnalysis) {
       return start < end ? [{ role: piece.role, start, end }] : []
     })
   })
+}
+
+function mainSentenceStructure(parts, text, sentenceAnalysis) {
+  const structure = normalizeSentenceStructure(parts, text)
+  const main = removeClauseHighlights(structure, text, sentenceAnalysis?.clauses, { preserveClauseArguments: true })
   return main.some(({ role }) => role === 'verb') ? main : []
+}
+
+function followsNoun(part, start, text) {
+  return part.role !== 'verb' && part.start < start
+    && (part.end >= start || /^[\s,]*$/u.test(text.slice(part.end, start)))
+}
+
+function removeArticleRelativeHighlights(structure, text, clauses = []) {
+  const modifiers = clauses.filter(({ start, end }) => {
+    if (!RELATIVE_CLAUSE.test(text.slice(start, end))) return false
+    const fillsRole = structure.some((part) => part.role !== 'verb' && part.start === start && part.end >= end)
+    return !fillsRole && structure.some((part) => followsNoun(part, start, text))
+  })
+
+  for (const [index, subject] of structure.entries()) {
+    const verb = structure[index + 1]
+    const noun = structure[index + 2]
+    if (subject.role !== 'subject' || text.slice(subject.start, subject.end).toLowerCase() !== 'there'
+      || (subject.start > 0 && text.slice(subject.start - 2, subject.start) !== '\n\n')
+      || verb?.role !== 'verb' || !/^(?:is|are|was|were)$/iu.test(text.slice(verb.start, verb.end))
+      || noun?.role !== 'complement'
+      || !/^\s+$/u.test(text.slice(subject.end, verb.start))
+      || !/^\s+$/u.test(text.slice(verb.end, noun.start))) continue
+
+    // The existential opening identifies a noun modifier even when the model
+    // leaves out the clause note. Stop before separate coordinated material.
+    const rest = text.slice(noun.start).split(/\n\n|[.!?;:]|,\s+(?:and|but|or|nor|so|yet|for)\b/iu, 1)[0]
+    const relative = /\s+(?=(?:that|which|who|whom|whose)\s+\S)/iu.exec(rest)
+    if (!relative) continue
+    const start = noun.start + relative.index + relative[0].length
+    if (followsNoun(noun, start, text) && !modifiers.some((clause) => clause.start === start)) {
+      modifiers.push({ start, end: noun.start + rest.length })
+    }
+  }
+
+  return removeClauseHighlights(structure, text, modifiers)
 }
 
 export function parseReadingResponse(content, kind = 'guide', options = {}) {
@@ -335,6 +426,15 @@ export function parseReadingResponse(content, kind = 'guide', options = {}) {
     parsed = JSON.parse(content)
   } catch {
     throw new Error('The learning model returned invalid JSON. Please try again.')
+  }
+  if (kind === 'article-explanation') {
+    const paraphrase = typeof parsed?.paraphrase === 'string' ? parsed.paraphrase.trim() : ''
+    if (!paraphrase) throw new Error('The learning model did not explain the sentence. Please try again.')
+    const text = options.text || ''
+    const sentenceAnalysis = normalizeSentenceAnalysis(parsed?.sentenceAnalysis, text, true)
+    const spans = normalizeArticleStructure(parsed?.structure, text)
+    const structure = removeArticleRelativeHighlights(spans, text, sentenceAnalysis?.clauses)
+    return { paraphrase, structure, ...(sentenceAnalysis ? { sentenceAnalysis } : {}) }
   }
   const selectionType = options.selectionType || (options.text ? classifyReadingSelection(options.text) : '')
   const phonetic = (!selectionType || selectionType === 'word') && typeof parsed?.phonetic === 'string'

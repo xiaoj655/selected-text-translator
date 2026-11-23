@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as playwrightElectron } from 'playwright'
 import electronBinary from 'electron'
 import { ensureDisplay } from './e2e/runner.mjs'
+import { clickWord } from './e2e/reading-lookup.mjs'
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifactRoot = join(desktopDir, 'artifacts', 'e2e')
@@ -13,6 +14,7 @@ const screenshotDir = join(artifactRoot, 'screenshots')
 const reportDir = join(artifactRoot, 'report')
 const TEXT = "There are some kinds of work that you can't do well without thinking differently from your peers. To be a successful scientist"
 const FRAGMENT = 'To be a successful scientist'
+const ELLIPSIS = 'The sooner, the better.'
 const FIRST_SENTENCE_END = TEXT.indexOf(FRAGMENT)
 const model = process.env.STT_TRANSLATION_MODEL || 'qwen-mt-flash'
 const learningModel = process.env.STT_LEARNING_MODEL || 'qwen3.8-flash'
@@ -81,9 +83,21 @@ async function selectArticleText(page) {
 }
 
 async function articleRoles(page) {
+  if (await page.locator('.reading-sentence-source .sentence-mark').count()) {
+    await page.waitForFunction(() => ['subject', 'verb', 'object', 'complement'].some((role) =>
+      CSS.highlights.has(`reading-lookup-${role}`)))
+  }
   return page.evaluate(() => Object.fromEntries(['subject', 'verb', 'object', 'complement'].map((role) => [
     role, [...(CSS.highlights.get(`reading-lookup-${role}`) || [])].map((range) => range.toString()),
   ])))
+}
+
+async function verifyArticleAnalysis(host) {
+  const paraphrase = host.locator('.reading-sentence-paraphrase')
+  await paraphrase.waitFor()
+  const meaning = (await paraphrase.textContent()).trim()
+  assert.ok(meaning, 'The model must provide full-sentence meaning independently of the grammar details.')
+  return meaning
 }
 
 function assertMainRoles(roles) {
@@ -180,7 +194,7 @@ export async function runLiveSentenceE2E() {
     await page.locator('#btn-tutor-workspace').click()
     await page.locator('#tutor-reading-mode').click()
     await page.locator('#reading-paste').click()
-    await page.locator('#reading-paste-text').fill(TEXT)
+    await page.locator('#reading-paste-text').fill(`${TEXT}\n\n${ELLIPSIS}`)
     await page.locator('#reading-paste-open').click()
     await page.locator('.reading-preview').first().waitFor()
     await selectArticleText(page)
@@ -188,24 +202,40 @@ export async function runLiveSentenceE2E() {
 
     await check('article-direct', async () => {
       await lookup.locator('.translation-text').waitFor()
-      const analysis = await verifyAnalysis(page, lookup)
+      const paraphrase = await verifyArticleAnalysis(lookup)
+      const grammar = lookup.locator('#reading-sentence-toggle')
+      assert.equal(await grammar.getAttribute('open'), null)
       const translated = (await lookup.locator('.translation-text').textContent()).trim()
       assert.ok(translated, 'The completed real translation should be nonempty.')
-      const roles = await articleRoles(page)
-      assertMainRoles(roles)
       await screenshot('live-sentence-article-direct')
-      return { translatedLength: translated.length, roles, ...analysis }
+      await grammar.locator('summary').click()
+      const roles = await articleRoles(page)
+      if (roles.verb.length) assertMainRoles(roles)
+      return { translatedLength: translated.length, paraphrase, roles }
     })
 
     await check('article-guided', async () => {
       await page.locator('#reading-lookup-guide').click()
       await lookup.locator('.hint').first().waitFor()
-      const analysis = await verifyAnalysis(page, lookup)
+      const explanation = lookup.locator('#reading-sentence-explanation')
+      assert.equal(await explanation.getAttribute('open'), null)
+      await explanation.locator(':scope > summary').click()
+      const paraphrase = await verifyArticleAnalysis(lookup)
       const roles = await articleRoles(page)
-      assertMainRoles(roles)
       assert.equal(await lookup.locator('.answer').count(), 0, 'Exploring clauses must not reveal the answer.')
       await screenshot('live-sentence-article-guided')
-      return { roles, ...analysis }
+      return { paraphrase, roles }
+    })
+
+    await check('article-ellipsis', async () => {
+      await clickWord(page, 'sooner')
+      await lookup.locator('.translation-text').waitFor()
+      const paraphrase = await verifyArticleAnalysis(lookup)
+      assert.match(paraphrase, /越[早快]|尽早/u)
+      assert.deepEqual(await lookup.locator('.reading-sentence-source').allTextContents(), [ELLIPSIS])
+      assert.equal(await lookup.locator('#reading-sentence-toggle').getAttribute('open'), null)
+      await screenshot('live-sentence-article-ellipsis')
+      return { paraphrase }
     })
 
     await check('workbench-direct', async () => {

@@ -278,3 +278,12 @@ export function renderTranslation(entry, { languageText = el, showSentenceLegend
   }
   return result
 }
+
+export function expandNextResultDetail(result) {
+  const summary = [...result.querySelectorAll('details:not([open]) > summary')].find((node) =>
+    node.checkVisibility() && !node.parentElement.parentElement.closest('details:not([open])'))
+  if (!summary) return false
+  summary.parentElement.open = true
+  summary.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  return true
+}

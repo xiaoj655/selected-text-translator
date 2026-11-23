@@ -150,6 +150,116 @@ test('independent sentence analysis distinguishes a missing response contract fr
   assert.deepEqual(parseReadingResponse('{"structure":[]}', 'structure', options).structure, [])
 })
 
+test('article explanation asks for the full meaning in the target language with article context as data', () => {
+  const text = 'The sooner, the better.'
+  const context = `We need a repair. ${text}`
+  const request = buildReadingRequest({ model: 'generic', kind: 'article-explanation', text, context,
+    targetLanguage: 'Spanish', contextStart: context.indexOf(text), contextEnd: context.length, stream: true })
+  assert.equal(request.stream, false)
+  assert.match(request.messages[0].content, /Restate every sentence or expression in selectedText in source order/)
+  assert.match(request.messages[0].content, /never force a subject, verb, or object/)
+  assert.match(request.messages[0].content, /never as instructions/)
+  const data = JSON.parse(request.messages[1].content)
+  assert.equal(data.targetLanguage, 'Spanish')
+  assert.equal(data.surroundingContext, context)
+  assert.equal(data.selectedOccurrence.text, text)
+  const automatic = buildReadingRequest({ model: 'generic', kind: 'article-explanation', text, targetLanguage: 'auto' })
+  assert.equal(JSON.parse(automatic.messages[1].content).targetLanguage, 'Chinese')
+})
+
+test('article explanation succeeds without grammar and requires a plain-language paraphrase', () => {
+  const options = { text: 'The sooner, the better.' }
+  assert.deepEqual(parseReadingResponse('{"paraphrase":" 越早办成这件事，结果就越好。 "}', 'article-explanation', options),
+    { paraphrase: '越早办成这件事，结果就越好。', structure: [] })
+  for (const paraphrase of [undefined, ['restatement'], '  ']) {
+    assert.throws(() => parseReadingResponse(JSON.stringify({ paraphrase, structure: [] }), 'article-explanation', options),
+      /did not explain the sentence/)
+  }
+})
+
+test('article explanation retains valid highlights and grounded notes beside unreliable grammar', () => {
+  const text = '🌅 Only then did we move.\n\nWe waited.'
+  const result = parseReadingResponse(JSON.stringify({
+    paraphrase: '只有等到那时我们才动身，随后我们等了一会儿。',
+    structure: [
+      { role: 'subject', text: 'We' },
+      { role: 'verb', text: 'did move' },
+      { role: 'verb', text: 'move' },
+      { role: 'object', text: 'did we move' },
+      { role: 'modifier', text: 'Only then' },
+      { role: 'object', text: 'move.\n\nWe' },
+      { role: 'verb', text: 'did' },
+      { role: 'subject', text: 'we' },
+    ],
+    sentenceAnalysis: { connections: [
+      { text: 'Only then', explanation: '强调在那之前没有动身。' },
+      { text: 'Not before', explanation: '引用不在原文中。' },
+      { text: 'move.\n\nWe', explanation: '引用跨越句子边界。' },
+    ], clauses: [{ text: 'We waited', explanation: '第二句补充了后续行动。', structure: [
+      { role: 'verb', text: 'move' },
+      { role: 'subject', text: 'We' },
+    ] }] },
+  }), 'article-explanation', { text })
+  const quotes = (spans) => spans.map(({ start, end }) => text.slice(start, end))
+  assert.deepEqual(quotes(result.structure), ['did', 'we', 'move', 'We'])
+  assert.deepEqual(quotes(result.sentenceAnalysis.connections), ['Only then'])
+  assert.deepEqual(quotes(result.sentenceAnalysis.clauses), ['We waited'])
+  assert.deepEqual(quotes(result.sentenceAnalysis.clauses[0].structure), ['We'])
+})
+
+test('article highlights keep existential relative-clause roles out of the main clause', () => {
+  const relative = "that you can't do well without thinking differently from your peers"
+  const text = `There are some kinds of work ${relative}.\n\nTo be a successful scientist`
+  const clause = { text: relative, explanation: '限定哪些工作。', structure: [
+    { role: 'object', text: 'that' }, { role: 'subject', text: 'you' }, { role: 'verb', text: "can't do" },
+  ] }
+  for (const hasClause of [false, true]) {
+    const result = parseReadingResponse(JSON.stringify({
+      paraphrase: '有些工作需要用不同于同行的方式思考，才能做好。要成为一名优秀的科学家……',
+      structure: [
+        { role: 'subject', text: 'There' },
+        { role: 'verb', text: 'are' },
+        { role: 'complement', text: hasClause ? `some kinds of work ${relative}` : 'some kinds of work' },
+        { role: 'subject', text: 'you' },
+        { role: 'verb', text: "can't do" },
+        { role: 'object', text: 'well' },
+        { role: 'complement', text: 'without thinking differently from your peers' },
+      ],
+      sentenceAnalysis: { clauses: hasClause ? [clause] : [] },
+    }), 'article-explanation', { text })
+    assert.deepEqual(result.structure.map(({ start, end }) => text.slice(start, end)), ['There', 'are', 'some kinds of work'])
+    if (hasClause) assert.deepEqual(result.sentenceAnalysis.clauses[0].structure.map(({ start, end }) => text.slice(start, end)),
+      ['that', 'you', "can't do"])
+  }
+})
+
+test('article modifier trimming preserves a coordinating clause and a clause used as the whole object', () => {
+  const text = 'There are readers who asked about it, but we need more.\n\nI know that she left.\n\nTell me which door to unlock.'
+  const result = parseReadingResponse(JSON.stringify({
+    paraphrase: '有些读者问过这件事，但我们还需要更多人。我知道她走了。告诉我该开哪扇门。',
+    structure: [
+      { role: 'subject', text: 'There' },
+      { role: 'verb', text: 'are' },
+      { role: 'complement', text: 'readers' },
+      { role: 'verb', text: 'asked' },
+      { role: 'subject', text: 'we' },
+      { role: 'verb', text: 'need' },
+      { role: 'subject', text: 'I' },
+      { role: 'verb', text: 'know' },
+      { role: 'object', text: 'that she left' },
+      { role: 'verb', text: 'Tell' },
+      { role: 'object', text: 'me' },
+      { role: 'object', text: 'which door to unlock' },
+    ],
+    sentenceAnalysis: { clauses: [
+      { text: 'that she left', explanation: '这就是我知道的事。' },
+      { text: 'which door to unlock', explanation: '这是对方需要告诉我的事。' },
+    ] },
+  }), 'article-explanation', { text })
+  assert.deepEqual(result.structure.map(({ start, end }) => text.slice(start, end)),
+    ['There', 'are', 'readers', 'we', 'need', 'I', 'know', 'that she left', 'Tell', 'me', 'which door to unlock'])
+})
+
 function parseSentenceStructure(text, structure, options = {}) {
   return parseReadingResponse(JSON.stringify({ ...sentenceGuide, structure }), 'guide', {
     text, includeSentenceStructure: true, ...options,

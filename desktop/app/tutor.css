@@ -323,7 +323,7 @@
 .reading-lookup[data-placement="inline"]:not(.is-detailed) .reading-lookup-actions:not(:has(#reading-lookup-stop:not([hidden]))) {
   display: none;
 }
-.reading-lookup[data-placement="inline"] .reading-lookup-body { max-height: 8em; }
+.reading-lookup[data-placement="inline"] .reading-lookup-body { max-height: min(14em, 35vh); }
 .reading-lookup:not([data-placement="inline"]) #reading-lookup-expand { display: none; }
 .reading-lookup-header { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
 .reading-lookup-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }

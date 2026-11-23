@@ -44,10 +44,14 @@ export function readingSentenceScope(text, start, end, sentences = sentenceSpans
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > text.length) {
     return { text: '', sentences: [], unavailable: 'No sentence is available for this selection.' }
   }
-  const covered = sentences.filter((sentence) => sentence.end > start && sentence.start < end)
-  if (!covered.length) return { text: '', sentences: [], unavailable: 'No sentence is available for this selection.' }
+  const first = sentences.findIndex((sentence) => sentence.end > start)
+  if (first < 0 || sentences[first].start >= end) {
+    return { text: '', sentences: [], unavailable: 'No sentence is available for this selection.' }
+  }
+  let last = first
+  while (last + 1 < sentences.length && sentences[last + 1].start < end) last += 1
   let source = ''
-  const mapped = covered.map((sentence) => {
+  const mapped = sentences.slice(first, last + 1).map((sentence) => {
     if (source) source += '\n\n'
     const analysisStart = source.length
     source += text.slice(sentence.start, sentence.end)
@@ -56,7 +60,16 @@ export function readingSentenceScope(text, start, end, sentences = sentenceSpans
   if (source.length > MAX_STRUCTURE_LENGTH) {
     return { text: '', sentences: [], unavailable: 'These sentences are too long to analyze together. Select a shorter passage.' }
   }
-  return { text: source, sentences: mapped, unavailable: '' }
+  const scope = { text: source, sentences: mapped, unavailable: '' }
+  const previous = sentences[first - 1]
+  const following = sentences[last + 1]
+  const before = previous ? `${text.slice(previous.start, previous.end)}\n\n` : ''
+  const after = following ? `\n\n${text.slice(following.start, following.end)}` : ''
+  for (const [prefix, suffix] of [[before, after], [before, ''], ['', after]]) {
+    if ((!prefix && !suffix) || prefix.length + source.length + suffix.length > MAX_CONTEXT_LENGTH) continue
+    return { ...scope, context: prefix + source + suffix, contextStart: prefix.length, contextEnd: prefix.length + source.length }
+  }
+  return scope
 }
 
 // Keep whole sentences around the selection. The length limit is only a
@@ -165,6 +178,25 @@ function firstEndingAtOrAfter(spans, offset) {
   return from
 }
 
+function nearestWordOnLine(material, candidates, y) {
+  let nearest = null
+  let nearestDistance = Infinity
+  for (const word of candidates) {
+    if (!word) continue
+    const range = rangeForOffsets(material, word.start, word.end)
+    for (const rect of range.getClientRects()) {
+      if (!rect.width) continue
+      const distance = Math.max(rect.top - y, y - rect.bottom, 0)
+      if (distance === 0) return word
+      if (distance < nearestDistance) {
+        nearest = word
+        nearestDistance = distance
+      }
+    }
+  }
+  return nearest
+}
+
 function wordAtPoint(root, x, y, dragStart = null) {
   const caret = document.caretRangeFromPoint(x, y)
   const material = caret && materialFor(caret.startContainer, root)
@@ -174,10 +206,12 @@ function wordAtPoint(root, x, y, dragStart = null) {
   const { words } = textIndex(material)
   const index = firstEndingAtOrAfter(words, offset)
   if (dragStart) {
-    // Crossing punctuation or spaces as part of a drag still resolves to a whole word.
+    // At a wrap, a caret in trailing whitespace can land at the start of the next line.
+    // Prefer a word on the pointer's line, using drag direction for same-line whitespace.
     const next = words[index]
     const previous = words[index - 1]
-    return offset < dragStart.start && next?.start > offset ? previous || next : next || previous
+    const backwardGap = offset < dragStart.start && next?.start > offset
+    return nearestWordOnLine(material, backwardGap ? [previous, next] : [next, previous], y)
   }
   const word = words[index]
   if (!word || word.start > offset) return null
@@ -450,7 +484,7 @@ export function installReadingSelection(root, onSelect, scroller) {
     if (!word) return
     if (selection) window.getSelection()?.removeAllRanges()
     lastWordRange = word.range
-    onSelect(word)
+    onSelect({ ...word, wordClick: true })
   }, true)
 
   root.addEventListener('keydown', (event) => {

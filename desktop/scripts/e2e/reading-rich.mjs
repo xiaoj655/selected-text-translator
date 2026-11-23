@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { isArticleExplanation } from './mock-api.mjs'
 
 const ARTICLE_URL = 'https://reader.example.org/articles/rich-fixture'
 const TITLE = 'Reading the complete calibration report'
@@ -139,17 +140,12 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
       await chrome.storage.sync.set({ model: 'mock-generic', learning_model: 'mock-generic', desktop_iqs_api_key: '', desktop_reading_lookup_mode: 'translate' })
     })
     mock.setHandler(async ({ body, res, defaultResponse }) => {
+      if (isArticleExplanation(body)) return defaultResponse({ body, res })
       let input
       try { input = JSON.parse(body.messages.at(-1).content) } catch { return defaultResponse({ body, res }) }
       const isDiscussion = body.messages?.[0]?.content?.includes('Read an English article together')
-      const isStructure = body.messages?.[0]?.content?.includes('Return only a JSON object with the key "structure"')
       if (isDiscussion) discussionInputs.push(input)
-      else if (input.selectedText && !isStructure) translationInputs.push(input)
-      else if (isStructure) {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ choices: [{ message: { content: '{"structure":[]}' } }] }))
-        return
-      }
+      else if (input.selectedText) translationInputs.push(input)
       else return defaultResponse({ body, res })
       const content = isDiscussion ? { reply: COACH_REPLY, quote: FOCUS_TEXT.split('. ')[0] + '.', followups: [] }
         : { translation: `Meaning of ${input.selectedText}`, structure: [], phonetic: '/ˈrɛkərd/' }

@@ -260,6 +260,41 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
     }
   })
 
+  await check('translation shortcuts: workbench expands dictionary details and reads the original', async () => {
+    const text = 'compass'
+    const stream = page.locator('#stream')
+    const dictionary = stream.locator('.lexical-details')
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      if (body.messages.at(-1).content !== text) return defaultResponse({ body, res })
+      const content = JSON.stringify({ translation: '指南针', phonetic: '/ˈkʌmpəs/' })
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content } }] }))
+    })
+    try {
+      await withSpeechCommands(page, async (commands) => {
+        await page.locator('.mode[data-mode=translate]').click()
+        await paste(page, text)
+        await dictionary.locator('summary').waitFor()
+        assert.equal(await dictionary.evaluate((node) => node.open), false)
+
+        await stream.focus()
+        await page.keyboard.press('Space')
+        assert.equal(await dictionary.evaluate((node) => node.open), true)
+        await dictionary.getByText('/ˈkʌmpəs/', { exact: true }).waitFor()
+
+        await page.keyboard.press('r')
+        const [speak] = await commands()
+        assert.equal(speak.type, 'SPEAK_TEXT')
+        assert.equal(speak.payload.text, text)
+        await page.keyboard.press('r')
+        assert.deepEqual((await commands()).at(-1), { type: 'STOP_SPEECH', payload: { speechId: speak.payload.speechId } })
+      })
+    } finally {
+      mock.resetHandler()
+      await clearHistory(page)
+    }
+  })
+
   await check('sentence structure: workbench marks the source, with fresh and verbatim cache entries', async () => {
     const sentence = 'The changes that the team proposed last month could reduce costs without affecting quality.'
     const spaced = sentence.replace('last month', 'last  month')
@@ -437,6 +472,9 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
   })
 
   await check('English Coach: derives a lesson from a real lookup, preserves answers and schedules review', async () => {
+    const activityKey = 'desktop_tutor_v1'
+    const priorActivity = await page.evaluate((key) => chrome.storage.local.get(key), activityKey)
+    await page.evaluate((key) => chrome.storage.local.remove(key), activityKey)
     let lessonRequests = 0
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       if (!body.messages?.[0]?.content?.includes('Create an English reading comprehension lesson')) {
@@ -489,6 +527,10 @@ export async function verifyDesktopWorkflow({ app, page, mock, check, shot }) {
       mock.resetHandler()
       await page.locator('#btn-translate-workspace').click()
       await clearHistory(page)
+      await page.evaluate(async ({ key, priorActivity }) => {
+        await chrome.storage.local.remove(key)
+        await chrome.storage.local.set(priorActivity)
+      }, { key: activityKey, priorActivity })
     }
   })
 }

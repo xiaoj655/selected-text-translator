@@ -64,6 +64,11 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 })
 let debugLoggingEnabled = false
 
+function isDesktopReadingAnalysis(payload) {
+  return !IS_EXTENSION_SERVICE_WORKER && payload?.requestScope === 'reading'
+    && ['structure', 'article-explanation'].includes(payload.kind)
+}
+
 void initDebugLoggingSetting()
 chrome.commands?.onCommand.addListener((command) => {
   if (command !== 'open-reading-assistant') return
@@ -91,9 +96,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const frameId = sender.frameId || 0
   // Desktop article analysis runs independently of the selected-text result.
   // Keep it in its own fixed slot so retrying analysis cannot cancel a translation.
-  const structureScope = !IS_EXTENSION_SERVICE_WORKER && message.payload?.requestScope === 'reading'
-    && message.payload?.kind === 'structure'
-  const key = `${tabId}:${frameId}${structureScope ? ':structure' : ''}`
+  const analysisScope = isDesktopReadingAnalysis(message?.payload)
+  const key = `${tabId}:${frameId}${analysisScope ? ':analysis' : ''}`
   if (message?.type === 'CANCEL_TRANSLATION') {
     const active = activeRequests.get(key)
     if (active?.requestId === message.payload?.requestId) active.controller.abort()
@@ -144,9 +148,9 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const requestId = String(payload?.requestId || '')
   const text = String(payload?.text || '').trim()
   const kind = ['guide', 'pronunciation'].includes(payload?.kind)
-    || (!IS_EXTENSION_SERVICE_WORKER && payload?.requestScope === 'reading' && payload?.kind === 'structure')
+    || isDesktopReadingAnalysis(payload)
     ? payload.kind : 'translate'
-  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage,
+  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage, targetLanguage: payload?.targetLanguage,
     includeSentenceStructure: !IS_EXTENSION_SERVICE_WORKER && payload?.includeSentenceStructure !== false,
     includeSentenceAnalysis: kind === 'structure', requireStructure: kind === 'structure' }
   const contextSentence = getContextSentence({ text, context: payload?.context,
@@ -186,8 +190,10 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       const reading = await readReadingSettings()
       model = getLearningModel(settings.model, reading.learningModel)
       if (!model) {
-        emit({ status: TRANSLATION_EVENT_STATUS.MISSING_CONFIGURATION,
-          message: 'Add a general-purpose learning model in settings for hints and phonetics. You can still listen.' })
+        emit({ status: TRANSLATION_EVENT_STATUS.MISSING_CONFIGURATION, kind,
+          message: kind === 'article-explanation'
+            ? 'Choose a general-purpose learning model in Settings to explain sentences.'
+            : 'Add a general-purpose learning model in settings for hints and phonetics. You can still listen.' })
         return
       }
     }

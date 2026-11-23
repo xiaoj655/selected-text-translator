@@ -2,7 +2,7 @@ import { localizeErrorMessage } from './messages.js'
 import { resultText, resultPlainText } from './result-text.js'
 import {
   renderLexical, renderGuide, renderGuidePreview, renderTranslation, revealedHints, hintNode, scrollToLatestHint,
-  sentenceStructure, markSentence, renderSentenceLegend,
+  sentenceStructure, markSentence, renderSentenceLegend, expandNextResultDetail,
 } from './translation-result.js'
 import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './reading.js'
@@ -1702,7 +1702,7 @@ function renderActions(entry) {
   speechButton.type = 'button'
   speechButton.dataset.speechButton = 'true'
   speechButton.setAttribute('aria-pressed', speaking ? 'true' : 'false')
-  if (entry.mode === 'guide' && isEnglishSource(entry)) {
+  if (entry.mode === 'translate' || (entry.mode === 'guide' && isEnglishSource(entry))) {
     speechButton.title = 'Read aloud or stop (R)'
     speechButton.setAttribute('aria-keyshortcuts', 'R')
   }
@@ -1863,7 +1863,7 @@ function render(forceBottom = true) {
   const active = state.entries.find((item) => item.id === state.activeEntryId)
     || state.entries[state.entries.length - 1]
   if (active) state.activeEntryId = active.id
-  if (active?.mode === 'guide') stream.tabIndex = 0
+  if (active) stream.tabIndex = 0
   else stream.removeAttribute('tabindex')
   const stick = forceBottom || isNearBottom()
   stream.replaceChildren()
@@ -1965,7 +1965,7 @@ function isEnglishSource(entry) {
   return (language === 'auto' ? detectSourceLanguage(entry.text) : language) === 'english'
 }
 
-function handleGuideShortcut(event) {
+function handleResultShortcut(event) {
   const key = event.key.toLowerCase()
   if (key !== ' ' && key !== 'r') return false
   if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
@@ -1973,17 +1973,18 @@ function handleGuideShortcut(event) {
   if (key === ' ' && event.target.closest?.('button, a[href], summary, audio[controls], video[controls], [role="button"], [role="separator"]')) return false
   if (isSidebarOpen() || isExportOpen() || !$('more-menu').hidden || !$('help-overlay').hidden || !$('settings-panel').hidden
     || document.querySelector('.action-menu:popover-open')) return false
-  if (state.workspace === 'tutor') return tutor.handleGuideShortcut(key, event.target)
+  if (state.workspace === 'tutor') return tutor.handleResultShortcut(key, event.target)
 
   const stream = $('stream')
   if (event.target !== document.body && !stream.contains(event.target)) return false
   const entry = state.entries.find((item) => item.id === state.activeEntryId)
-  if (entry?.mode !== 'guide' || entry.status === 'error' || state.collapsed.has(entry.id)) return false
+  if (!entry || entry.status === 'error' || state.collapsed.has(entry.id)) return false
   if (key === 'r') {
-    if (!isEnglishSource(entry)) return false
+    if (entry.mode === 'guide' && !isEnglishSource(entry)) return false
     toggleSpeech(entry)
     return true
   }
+  if (entry.mode === 'translate') return expandNextResultDetail(stream)
   const nextHint = stream.querySelector('[data-hint-more]')
   if (!nextHint) return false
   nextHint.click()
@@ -2430,12 +2431,12 @@ function bind() {
     if (item) jumpToEntry(item.dataset.entryId)
   })
 
-  let consumedGuideSpace = false
+  let consumedResultSpace = false
   document.addEventListener('keydown', (event) => {
     const isSpace = event.key === ' '
-    if (isSpace && !event.repeat) consumedGuideSpace = false
+    if (isSpace && !event.repeat) consumedResultSpace = false
     if (event.isComposing || state.isComposing || $('request-debug').open) return
-    if (isSpace && event.repeat && consumedGuideSpace && !isTyping(event.target)) {
+    if (isSpace && event.repeat && consumedResultSpace && !isTyping(event.target)) {
       event.preventDefault()
       return
     }
@@ -2463,8 +2464,8 @@ function bind() {
       toggleHelp()
       return
     }
-    if (handleGuideShortcut(event)) {
-      if (isSpace) consumedGuideSpace = true
+    if (handleResultShortcut(event)) {
+      if (isSpace) consumedResultSpace = true
       event.preventDefault()
       return
     }

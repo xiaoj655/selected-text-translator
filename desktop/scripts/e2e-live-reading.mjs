@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { ensureDisplay } from './e2e/runner.mjs'
+import { clickWord } from './e2e/reading-lookup.mjs'
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifactDir = join(desktopDir, 'artifacts', 'e2e')
@@ -122,9 +123,19 @@ async function waitForAnalysis() {
     document.getElementById('reading-sentence-structure')?.dataset.status))
   assert.equal(await page.locator('#reading-sentence-structure').getAttribute('data-status'), 'done',
     await page.locator('#reading-sentence-structure').textContent())
+  const paraphrase = await page.locator('.reading-sentence-paraphrase').textContent()
+  assert.ok(paraphrase.trim(), 'The article should show its full-sentence meaning.')
+  return paraphrase.trim()
 }
 
 async function roles() {
+  const details = page.locator('#reading-sentence-toggle')
+  if (await details.getAttribute('open') === null) await details.locator('summary').click()
+  await page.locator('.reading-sentence-source').first().waitFor()
+  if (await details.locator('.reading-sentence-source .sentence-mark').count()) {
+    await page.waitForFunction(() => ['subject', 'verb', 'object', 'complement'].some((role) =>
+      CSS.highlights.has(`reading-lookup-${role}`)))
+  }
   return page.evaluate(() => Object.fromEntries(['subject', 'verb', 'object', 'complement'].map((role) => [
     role, [...(CSS.highlights.get(`reading-lookup-${role}`) || [])].map((range) => range.toString()),
   ])))
@@ -194,38 +205,41 @@ try {
     await page.locator(`.reading-history-open[data-history-id="${importedHistoryId}"]`).click()
     await selectText('thinking differently from your peers')
     await page.locator('#reading-lookup-result .translation-text').waitFor()
-    await waitForAnalysis()
+    const paraphrase = await waitForAnalysis()
     assert.deepEqual(await page.locator('.reading-sentence-source').allTextContents(), [
       "There are some kinds of work that you can't do well without thinking differently from your peers.",
     ])
     const main = await roles()
     assert.deepEqual(main.verb, ['are'], 'The relative-clause verb belongs in the clause details.')
     assert.deepEqual(main.object, [], 'Existential there has no main-clause object.')
-    const details = page.locator('#reading-sentence-structure .sentence-explore')
-    await details.locator('summary').click()
-    await details.locator('.sentence-clause-source .sentence-mark').first().waitFor()
+    const details = page.locator('#reading-sentence-toggle')
     await screenshot('imported-article')
-    return { roles: main, clauseCount: await details.locator('.sentence-clause').count() }
+    return { paraphrase, roles: main, clauseCount: await details.locator('.sentence-clause').count() }
   })
 
-  await check('single word waits for explicit sentence expansion', async () => {
+  await check('one word click requests meaning and sentence explanation, then shares it with the next word', async () => {
     await backToIndex()
     await page.locator('#reading-paste').click()
     await page.locator('#reading-paste-text').fill(text)
     await page.locator('#reading-paste-open').click()
     await page.locator('#reading-detail .reading-preview').waitFor()
-    const before = await page.evaluate(() => window.__readingLiveRequests.filter((request) => request.kind === 'structure').length)
-    await selectText('costs')
+    const before = await page.evaluate(() => window.__readingLiveRequests.length)
+    await clickWord(page, 'costs')
     await page.locator('#reading-lookup-result .translation-text').waitFor()
+    const paraphrase = await waitForAnalysis()
     assert.equal(await page.locator('#reading-sentence-toggle').getAttribute('open'), null)
-    assert.equal(await page.evaluate(() => window.__readingLiveRequests.filter((request) => request.kind === 'structure').length), before)
-    await page.locator('#reading-sentence-toggle > summary').click()
-    await waitForAnalysis()
+    await screenshot('point-word')
     assert.deepEqual(await page.locator('.reading-sentence-source').allTextContents(), [first])
     const main = await roles()
     assert.ok(main.verb.includes('could reduce'), JSON.stringify(main))
     assert.ok(main.subject.includes('The changes'), JSON.stringify(main))
-    return { roles: main, sentenceRequests: 1 }
+    await clickWord(page, 'proposed', 0, { keepOpen: true })
+    await page.locator('#reading-lookup-result .translation-text').waitFor()
+    assert.equal(await waitForAnalysis(), paraphrase)
+    const requests = await page.evaluate((start) => window.__readingLiveRequests.slice(start), before)
+    assert.deepEqual(requests.filter(({ kind }) => kind === 'article-explanation').map(({ text }) => text), [first])
+    assert.deepEqual(requests.filter(({ kind }) => kind === 'translate').map(({ text }) => text), ['costs', 'proposed'])
+    return { paraphrase, roles: main, sentenceRequests: 1 }
   })
 
   await check('partial clause translates selection and analyzes the full sentence', async () => {

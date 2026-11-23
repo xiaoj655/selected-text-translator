@@ -9,7 +9,8 @@ const ERROR_MESSAGES = new Map([
 export function localizeErrorMessage(payload) {
   const message = String(payload?.message || '')
   if (payload?.status === 'missing-configuration') {
-    if (/learning model/i.test(message)) return 'Choose a learning model in Settings to use guided mode.'
+    if (/learning model/i.test(message)) return payload.kind === 'article-explanation'
+      ? message : 'Choose a learning model in Settings to use guided mode.'
     return 'Enter your API URL, key, and model in Settings.'
   }
   if (!message) return 'Request failed. Try again.'

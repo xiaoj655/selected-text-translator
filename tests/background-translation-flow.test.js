@@ -253,7 +253,7 @@ test('late optional sentence analysis cannot overwrite a newer desktop lookup', 
   assert.equal(harness.events.some(({ status }) => status === 'structure'), false);
 });
 
-test('article sentence analysis runs independently and retries without replacing a completed translation', async (t) => {
+test('article sentence explanation runs independently, retries, and caches by target language', async (t) => {
   let finishTranslation;
   let finishAnalysis;
   const translationGate = new Promise((resolve) => { finishTranslation = resolve; });
@@ -262,7 +262,7 @@ test('article sentence analysis runs independently and retries without replacing
   let analyses = 0;
   const signals = {};
   const harness = await createHarness(t, async (body, signal) => {
-    if (body.messages[0].content.includes('Return only a JSON object with the key "structure"')) {
+    if (body.messages[0].content.includes('You explain complete source sentences')) {
       const data = JSON.parse(body.messages.at(-1).content);
       analyses += 1;
       signals.analysis = signal;
@@ -271,7 +271,8 @@ test('article sentence analysis runs independently and retries without replacing
         return new Response('', { status: 503 });
       }
       assert.equal(data.selectedText, 'The room was quiet.');
-      return Response.json({ choices: [{ message: { content: JSON.stringify({ structure: guide.structure }) } }] });
+      const paraphrase = data.targetLanguage === 'French' ? 'La pièce était silencieuse.' : '房间里几乎没有声音。';
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ paraphrase, structure: guide.structure }) } }] });
     }
     signals.translation = signal;
     await translationGate;
@@ -279,36 +280,39 @@ test('article sentence analysis runs independently and retries without replacing
   }, { model: 'generic' });
   harness.start('was quiet', 'translate', 'translation', { requestScope: 'reading', includeSentenceStructure: false });
   await harness.event('started', 'translation');
-  harness.start('The room was quiet.', 'structure', 'analysis', { requestScope: 'reading' });
+  harness.start('The room was quiet.', 'article-explanation', 'analysis', { requestScope: 'reading' });
   await harness.event('started', 'analysis');
   assert.equal(signals.translation.aborted, false, 'analysis must not cancel the selected-text request');
   finishTranslation();
   assert.equal((await harness.event('success', 'translation')).translatedText, '安静');
   finishAnalysis();
   assert.match((await harness.event('error', 'analysis')).message, /503/);
-  harness.start('The room was quiet.', 'structure', 'retry', { requestScope: 'reading', forceRefresh: true });
+  harness.start('The room was quiet.', 'article-explanation', 'retry', { requestScope: 'reading', forceRefresh: true });
   const result = await harness.event('success', 'retry');
+  assert.equal(result.result.paraphrase, '房间里几乎没有声音。');
   assert.deepEqual(result.result.structure.map(({ role }) => role), ['subject', 'verb', 'complement']);
   assert.equal(harness.events.filter(({ status, requestId }) => status === 'success' && requestId === 'translation').length, 1);
-  harness.start('The room was quiet.', 'structure', 'cached', { requestScope: 'reading' });
+  harness.start('The room was quiet.', 'article-explanation', 'cached', { requestScope: 'reading' });
   const cached = (await harness.event('success', 'cached')).result;
-  assert.deepEqual(cached.structure, result.result.structure);
-  assert.equal(cached.sentenceAnalysis, result.result.sentenceAnalysis);
+  assert.deepEqual(cached, result.result);
   assert.equal(analyses, 2, 'reopening the same sentence reuses its analysis');
+  harness.start('The room was quiet.', 'article-explanation', 'french', { requestScope: 'reading', targetLanguage: 'French' });
+  assert.equal((await harness.event('success', 'french')).result.paraphrase, 'La pièce était silencieuse.');
+  assert.equal(analyses, 3, 'different target languages have separate results');
 });
 
 test('cancelling article analysis leaves a simultaneous selected-text request active', async (t) => {
   const signals = {};
   const harness = await createHarness(t, (body, signal) => {
-    const analysis = body.messages[0].content.includes('Return only a JSON object with the key "structure"');
+    const analysis = body.messages[0].content.includes('You explain complete source sentences');
     signals[analysis ? 'analysis' : 'translation'] = signal;
     return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
   }, { model: 'generic' });
   harness.start('was quiet', 'translate', 'translation', { requestScope: 'reading', includeSentenceStructure: false });
   await harness.event('started', 'translation');
-  harness.start('The room was quiet.', 'structure', 'analysis', { requestScope: 'reading' });
+  harness.start('The room was quiet.', 'article-explanation', 'analysis', { requestScope: 'reading' });
   await harness.event('started', 'analysis');
-  harness.cancel('analysis', { requestScope: 'reading', kind: 'structure' });
+  harness.cancel('analysis', { requestScope: 'reading', kind: 'article-explanation' });
   assert.equal(signals.analysis.aborted, true);
   assert.equal(signals.translation.aborted, false);
   harness.cancel('translation', { requestScope: 'reading' });

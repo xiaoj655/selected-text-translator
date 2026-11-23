@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { isArticleExplanation } from './mock-api.mjs'
 import { openPastedText, selectText, withState } from './reading-lookup.mjs'
 
 const WIDTH_KEY = 'desktop_reading_lookup_width'
@@ -180,8 +181,9 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
     mock.setHandler(async ({ body, res }) => {
       const prompt = body.messages[0].content
       let result = { translation: '工程师先测试了软件包的本地副本，然后才操作公开索引。' }
-      if (prompt.includes('Return only a JSON object with the key "structure"')) {
+      if (isArticleExplanation(body)) {
         result = {
+          paraphrase: 'The engineers checked a local copy before making any changes to the public index.',
           structure: [
             { role: 'subject', text: 'The engineers' }, { role: 'verb', text: 'tested' },
             { role: 'object', text: 'a local copy of the package' },
@@ -220,11 +222,14 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
         const answer = snapshot.locator('.answer')
         const analysis = snapshot.locator('.reading-sentence-structure .sentence-analysis')
         await translation.waitFor()
+        await snapshot.locator('.reading-sentence-paraphrase').waitFor()
+        assert.equal(await snapshot.locator('#reading-sentence-toggle').evaluate((node) => node.open), false)
         assert.equal(await fontSize(article), '18px')
         assert.equal(await fontSize(translation), '18px')
         await page.locator('#reading-lookup-guide').click()
         await snapshot.locator('[data-hint-more]').click()
         await snapshot.getByRole('button', { name: 'Reveal answer', exact: true }).click()
+        await snapshot.locator('#reading-sentence-explanation > summary').click()
         await analysis.waitFor()
         assert.equal(await fontSize(answer), '18px')
         assert.equal(await fontSize(hint), '16px')

@@ -60,7 +60,7 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
       if (anchor) rootEl.scrollTop += anchor.range.getBoundingClientRect().top - anchor.top
     },
     close() { reading.close() },
-    handleGuideShortcut: reading.handleGuideShortcut,
+    handleResultShortcut: reading.handleResultShortcut,
   }
 }
 
@@ -821,7 +821,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
 
   return {
     close() { rememberPosition(); savePosition(); lookup.close() },
-    handleGuideShortcut: lookup.handleGuideShortcut,
+    handleResultShortcut: lookup.handleResultShortcut,
     open() {
       const target = activePanel?.querySelector('h3, textarea, input') || heading
       target.focus({ preventScroll: true })
