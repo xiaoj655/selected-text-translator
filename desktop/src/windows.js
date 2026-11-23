@@ -31,22 +31,22 @@ function bindDeveloperTools(contents) {
   })
 }
 
-function bindMainZoom(contents) {
+function bindMainZoom(contents, getFactor, setFactor) {
   contents.setZoomMode('isolated')
   contents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || input.isComposing || input.alt) return
     const modifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta
     if (!modifier) return
 
-    const current = contents.getZoomFactor()
+    const current = getFactor()
     let next
-    if (input.key === '+' || input.key === '=') next = MAIN_ZOOM_FACTORS.find((factor) => factor > current + 0.001)
-    else if (input.key === '-') next = MAIN_ZOOM_FACTORS.findLast((factor) => factor < current - 0.001)
+    if (input.key === '+' || input.key === '=') next = MAIN_ZOOM_FACTORS.find((factor) => factor > current)
+    else if (input.key === '-') next = MAIN_ZOOM_FACTORS.findLast((factor) => factor < current)
     else if (input.key === '0') next = 1
     else return
 
     event.preventDefault()
-    if (next !== undefined) contents.setZoomFactor(next)
+    if (next !== undefined) setFactor(next)
   })
 }
 
@@ -58,7 +58,7 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
-export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
+export function createWindows({ desktopDir, userDataDir, initialZoom, saveZoom, logger = () => {} }) {
   const appDir = join(desktopDir, 'app')
   const assetsDir = join(desktopDir, 'assets')
   const { appIcon, trayIcon } = loadDesktopIcons(assetsDir)
@@ -75,6 +75,21 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
   let alwaysOnTop = false
   let windowBackground = '#ffffff'
   let tray = null
+  let mainZoom = MAIN_ZOOM_FACTORS.includes(initialZoom) ? initialZoom : 1
+
+  function getMainZoom() {
+    return { factor: mainZoom, factors: MAIN_ZOOM_FACTORS }
+  }
+
+  function setMainZoom(factor) {
+    if (MAIN_ZOOM_FACTORS.includes(factor) && factor !== mainZoom) {
+      mainZoom = factor
+      main.webContents.setZoomFactor(factor)
+      main.webContents.send('stt:main-zoom-changed', factor)
+      void saveZoom(factor).catch((error) => logger('save-zoom-failed', error))
+    }
+    return mainZoom
+  }
 
   function createWindow(options) {
     const win = new BrowserWindow({ ...options, icon: appIcon })
@@ -143,6 +158,7 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       backgroundColor: windowBackground,
       show: false,
       webPreferences: {
+        zoomFactor: mainZoom,
         preload: preloadPath,
         contextIsolation: false,
         nodeIntegration: false,
@@ -150,9 +166,12 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
       },
     })
     mainReady = new Promise((resolve) => {
-      main.webContents.once('did-finish-load', resolve)
+      main.webContents.once('did-finish-load', () => {
+        main.webContents.setZoomFactor(mainZoom)
+        resolve()
+      })
     })
-    bindMainZoom(main.webContents)
+    bindMainZoom(main.webContents, () => mainZoom, setMainZoom)
     // Article links are opened through the reading IPC, never in the app page.
     main.webContents.on('will-navigate', (event) => event.preventDefault())
     main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -398,6 +417,8 @@ export function createWindows({ desktopDir, userDataDir, logger = () => {} }) {
     setCardPinned,
     setAlwaysOnTop,
     setTheme,
+    getMainZoom,
+    setMainZoom,
     getAlwaysOnTop: () => alwaysOnTop,
     open,
     createTray,

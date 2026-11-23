@@ -20,6 +20,7 @@ import { verifyReadingHistory } from './reading-history.mjs'
 import { verifyReadingLookupResize } from './reading-lookup-resize.mjs'
 import { verifyReadingSentenceScope } from './reading-sentence.mjs'
 import { verifySettings } from './settings.mjs'
+import { verifyInterfaceZoom, verifyWorkbenchLayout } from './workbench-layout.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -268,6 +269,12 @@ export async function runE2E(mode = 'core') {
     const readingFeeds = await installReadingFeeds(app)
     watchErrors(mainPage, pageErrors)
     return { mainPage, readingFeeds }
+  }
+
+  async function restart() {
+    await app.close()
+    const { mainPage: page } = await launchApp()
+    return { app, page }
   }
 
   try {
@@ -1745,15 +1752,14 @@ export async function runE2E(mode = 'core') {
       }
     }
 
+    if (mode === 'core' || mode === 'all' || mode === 'layout') {
+      await verifyWorkbenchLayout({ app, page: mainPage, check, shot, openSettings,
+        source: LONG_EN, translation: LONG_TRANSLATION })
+    }
+
     if (mode === 'core' || mode === 'all') {
-      await verifyCustomReadingFeeds({
-        app, page: mainPage, check, shot,
-        async restart() {
-          await app.close()
-          const { mainPage: page } = await launchApp()
-          return { app, page }
-        },
-      })
+      const page = await verifyInterfaceZoom({ app, page: mainPage, check, openSettings, restart })
+      await verifyCustomReadingFeeds({ app, page, check, shot, restart })
     }
 
     await check('no renderer errors during the whole run', async () => {

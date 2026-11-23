@@ -258,6 +258,28 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
           if (width === widest) await shot?.(page, 'main-article-lookup-wide')
         }
 
+        await resizeWindow(app, page, 1280, 860)
+        const initialRatio = await page.evaluate(() => devicePixelRatio)
+        const zoom = page.getByLabel('Interface zoom')
+        const preferences = page.locator('.settings-nav').getByRole('link', { name: 'Preferences', exact: true })
+        await page.locator('#btn-settings').click()
+        await preferences.click()
+        try {
+          await zoom.selectOption('1.25')
+          await page.waitForFunction(() => Math.abs(innerWidth - 1024) <= 1)
+          await page.locator('#btn-close-settings').click()
+          await snapshot.locator('[data-hints]').waitFor()
+          assert.equal(await snapshot.getAttribute('data-placement'), 'side', 'keep the lookup alongside the article when there is room at 125%')
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+        } finally {
+          if (!(await zoom.isVisible())) await page.locator('#btn-settings').click()
+          await preferences.click()
+          await zoom.selectOption('1')
+          await page.waitForFunction((ratio) => Math.abs(devicePixelRatio - ratio) < 0.001, initialRatio)
+          await page.locator('#btn-close-settings').click()
+          await resizeWindow(app, page, widest, height)
+        }
+
         await page.locator('#btn-settings').click()
         await page.locator('.settings-nav').getByRole('link', { name: 'Reading', exact: true }).click()
         await page.locator('#opt-reading-lookup-font').selectOption('22')

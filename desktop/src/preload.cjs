@@ -99,6 +99,15 @@ try {
 }
 
 window.sttDesktop = {
+  getMainZoom() {
+    return ipcRenderer.invoke('stt:get-main-zoom')
+  },
+  setMainZoom(factor) {
+    return ipcRenderer.invoke('stt:set-main-zoom', factor)
+  },
+  onMainZoomChanged(callback) {
+    ipcRenderer.on('stt:main-zoom-changed', (_event, factor) => callback(factor))
+  },
   onSelection(callback) {
     ipcRenderer.on('stt:selection', (_event, payload) => callback(payload))
   },

@@ -2555,8 +2555,24 @@ function bind() {
   })
 }
 
+async function bindInterfaceZoom() {
+  const zoom = $('opt-interface-zoom')
+  const desktop = window.sttDesktop
+  let latestFactor
+  desktop.onMainZoomChanged((factor) => {
+    latestFactor = factor
+    zoom.value = String(factor)
+  })
+  const { factor, factors } = await desktop.getMainZoom()
+  zoom.replaceChildren(...factors.map((value) => new Option(`${Math.round(value * 100)}%`, String(value))))
+  zoom.value = String(latestFactor ?? factor)
+  zoom.disabled = false
+  zoom.addEventListener('change', () => void desktop.setMainZoom(Number(zoom.value)))
+}
+
 async function init() {
   bind()
+  void bindInterfaceZoom()
   try {
     const saved = await chrome.storage.sync.get(['reading_mode'])
     state.mode = saved?.reading_mode === 'guide' ? 'guide' : 'translate'

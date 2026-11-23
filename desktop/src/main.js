@@ -230,6 +230,12 @@ function installIpc(storage, history, requestDebug) {
     alwaysOnTop: windows.getAlwaysOnTop(),
     loginItem: app.getLoginItemSettings().openAtLogin,
   }))
+  ipcMain.handle('stt:get-main-zoom', (event) => {
+    if (isMainWindowEvent(event)) return windows.getMainZoom()
+  })
+  ipcMain.handle('stt:set-main-zoom', (event, factor) => {
+    if (isMainWindowEvent(event)) return windows.setMainZoom(factor)
+  })
   ipcMain.handle('stt:set-theme', (_event, theme) => {
     windows.setTheme(theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors))
     return true
@@ -326,7 +332,12 @@ async function bootstrap() {
     readCloudSettings: () => storage.sync.get(['desktop_tts_cloud', 'desktop_tts_api_key', 'base_url', 'api_key']),
     synthesize: (text, options) => synthesizeDashScopeSpeech(text, { ...options, fetchImpl: fetchSpeech }),
   })
-  windows = createWindows({ desktopDir, userDataDir, logger })
+  const { desktop_main_zoom } = await storage.local.get('desktop_main_zoom')
+  windows = createWindows({
+    desktopDir, userDataDir, logger,
+    initialZoom: desktop_main_zoom,
+    saveZoom: (factor) => storage.local.set({ desktop_main_zoom: factor }),
+  })
   try {
     const flags = await storage.sync.get(['desktop_always_on_top', 'desktop_login_item', ...API_CREDENTIAL_KEYS])
     for (const key of API_CREDENTIAL_KEYS) requestDebug.setCredential(key, flags[key])
