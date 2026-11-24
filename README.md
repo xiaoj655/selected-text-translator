@@ -5,6 +5,7 @@
 | 版本 | 适合怎么用 | 从哪里开始 |
 | --- | --- | --- |
 | **桌面版 · English Coach** | 粘贴文本即译，或导入技术文章，边读边查词、拆长句、追问文章内容 | [桌面版下载](https://github.com/xiaoj655/selected-text-translator/releases) · [桌面版使用说明](desktop/README.md) |
+| **Android 预览版** | 在其他应用里选中文字或分享文字，打开底部翻译面板，查完回到原应用 | [安装和使用说明](android/README.md) |
 | **Chrome 扩展** | 不离开原网页：划选词句，在旁边打开翻译、英文提示或朗读卡片 | [Chrome 扩展安装](#安装-chrome-扩展) |
 
 ### 不急着翻译，先试着读懂

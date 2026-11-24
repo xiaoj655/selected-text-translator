@@ -1,0 +1,88 @@
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace = 'io.github.selectedtext.translator'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'io.github.selectedtext.translator'
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = '0.1.0'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = '.debug'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = true
+        compose = true
+    }
+}
+
+@CacheableTask
+abstract class GenerateModelContracts extends DefaultTask {
+    @InputFile
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract RegularFileProperty getScript()
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getSharedSources()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @Inject
+    abstract ExecOperations getExecOperations()
+
+    @TaskAction
+    void generate() {
+        execOperations.exec {
+            commandLine 'node', script.get().asFile, outputDirectory.get().asFile
+        }
+    }
+}
+
+def generateModelContracts = tasks.register('generateModelContracts', GenerateModelContracts) {
+    script.set(rootProject.layout.projectDirectory.file('scripts/generate-model-contracts.mjs'))
+    sharedSources.from(rootProject.layout.projectDirectory.dir('../src').asFileTree.matching {
+        include '**/*.js'
+    })
+    outputDirectory.set(layout.buildDirectory.dir('generated/model-contracts'))
+}
+
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    variant.sources.assets.addGeneratedSourceDirectory(generateModelContracts, GenerateModelContracts::getOutputDirectory)
+}
+
+dependencies {
+    implementation platform('androidx.compose:compose-bom:2025.12.01')
+    implementation 'androidx.activity:activity-compose:1.12.0'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.10.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.10.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'org.json:json:20240303'
+}

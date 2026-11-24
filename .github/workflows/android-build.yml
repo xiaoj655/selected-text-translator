@@ -1,0 +1,191 @@
+name: Build Android app
+
+on:
+  push:
+    branches:
+      - desktop
+    tags:
+      - 'android-v*'
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.apk.outputs.version }}
+      apk: ${{ steps.apk.outputs.name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle
+            android/**/gradle.properties
+            android/**/gradle-wrapper.properties
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Select tagged APK variant
+        id: signing
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          variant=debug
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" &&
+                -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            variant=release
+          elif [[ -n "$ANDROID_KEYSTORE_BASE64$ANDROID_KEYSTORE_PASSWORD$ANDROID_KEY_ALIAS$ANDROID_KEY_PASSWORD" ]]; then
+            echo "Configure all four Android signing secrets or leave them all unset" >&2
+            exit 1
+          fi
+          echo "variant=$variant" >> "$GITHUB_OUTPUT"
+
+      - name: Check and assemble APK
+        working-directory: android
+        env:
+          APK_VARIANT: ${{ steps.signing.outputs.variant || 'debug' }}
+        run: |
+          if [[ "$APK_VARIANT" == release ]]; then
+            ./gradlew --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+          else
+            ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+          fi
+
+      - name: Sign release APK
+        if: steps.signing.outputs.variant == 'release'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          keystore=$(mktemp)
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          unset ANDROID_KEYSTORE_BASE64
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$keystore" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out app/build/outputs/apk/release/app-release.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Verify APK
+        id: apk
+        working-directory: android
+        env:
+          APK_VARIANT: ${{ steps.signing.outputs.variant || 'debug' }}
+        run: |
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          apk="app/build/outputs/apk/$APK_VARIANT/app-$APK_VARIANT.apk"
+          package_id=io.github.selectedtext.translator
+          suffix=
+          if [[ "$APK_VARIANT" == debug ]]; then
+            package_id="$package_id.debug"
+            suffix=-preview
+          fi
+          package_line=$("$build_tools/aapt" dump badging "$apk" | sed -n '/^package: /p')
+          if [[ "$package_line" != "package: name='$package_id' "* ]]; then
+            echo "APK package name must be $package_id" >&2
+            exit 1
+          fi
+          version=$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")
+          if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Cannot read a valid Android version from $apk" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "android-v$version" ]]; then
+            echo "Release tag must match the APK version: android-v$version" >&2
+            exit 1
+          fi
+          "$build_tools/apksigner" verify --print-certs "$apk"
+          name="selected-text-translator-android-$version$suffix.apk"
+          mkdir -p dist
+          cp "$apk" "dist/$name"
+          cd dist
+          sha256sum "$name" > SHA256SUMS.txt
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: selected-text-translator-android-${{ steps.apk.outputs.version }}
+          path: |
+            android/dist/*.apk
+            android/dist/SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/android-v') && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: selected-text-translator-android-${{ needs.build.outputs.version }}
+          path: android/dist
+
+      - name: Publish Android preview
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          APK_NAME: ${{ needs.build.outputs.apk }}
+        run: |
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          awk -v heading="## $VERSION" '
+            $0 == heading { selected = 1; next }
+            selected && /^## / { exit }
+            selected { print }
+          ' CHANGELOG.md > dist/release-notes.md
+          if [[ ! -s dist/release-notes.md ]]; then
+            echo "Missing changelog for Android $VERSION" >&2
+            exit 1
+          fi
+          title="Android $VERSION"
+          if [[ "$APK_NAME" == *-preview.apk ]]; then
+            title="$title Preview"
+            printf '\n%s\n' '此 APK 是调试签名预览版，应用 ID 以 .debug 结尾。' >> dist/release-notes.md
+          fi
+          gh release create "$GITHUB_REF_NAME" "dist/$APK_NAME" dist/SHA256SUMS.txt \
+            --title "$title" --notes-file dist/release-notes.md \
+            --prerelease --latest=false --verify-tag
