@@ -38,17 +38,45 @@ class TranslationClient internal constructor(
         onPartial: (String) -> Unit,
     ): LookupResult {
         val selectedText = text.trim()
-        if (selectedText.isEmpty() || selectedText.length > MAX_INPUT_LENGTH) {
-            throw ProviderException("请输入 1 至 12,000 字符的文字。")
+        validateInput(selectedText)
+        val model = selectModel(config, mode)
+        val isMt = isQwenMt(model)
+        val request = contracts.buildRequest(model, selectedText, mode)
+        return complete(config, request, onPartial = if (isMt) onPartial else { _ -> }) { content ->
+            parseResult(content, selectedText, mode, isMt)
         }
+    }
+
+    internal suspend fun lookupArticle(config: ProviderConfig, selection: ArticleSelection): ArticleMeaning {
+        validateInput(selection.text)
+        val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings to look up articles.")
+        return complete(config, contracts.buildArticleMeaningRequest(model, selection)) { content ->
+            parseArticleMeaning(JSONObject(content), selection.kind == ArticleSelectionKind.WORD)
+        }
+    }
+
+    internal suspend fun analyzeArticleSentence(
+        config: ProviderConfig,
+        selection: ArticleSelection,
+    ): ArticleSentenceAnalysis {
+        validateInput(selection.sentence)
+        val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings for sentence analysis.")
+        return complete(config, contracts.buildArticleAnalysisRequest(model, selection.sentence)) { content ->
+            parseArticleSentenceAnalysis(JSONObject(content), selection.sentence)
+        }
+    }
+
+    private suspend fun <T> complete(
+        config: ProviderConfig,
+        requestBody: JSONObject,
+        onPartial: (String) -> Unit = {},
+        parse: (String) -> T,
+    ): T {
         val endpoint = normalizeEndpoint(config.baseUrl, allowLoopbackHttp)
         val apiKey = config.apiKey.trim()
         if (apiKey.isEmpty() || apiKey.any { it !in '!'..'~' }) {
-            throw ProviderException("请在设置中检查 API Key。")
+            throw ProviderException("Check your API Key in Settings.")
         }
-        val model = selectModel(config, mode)
-        val isMt = isQwenMt(model)
-        val requestBody = contracts.buildRequest(model, selectedText, mode)
         val request = Request.Builder()
             .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
@@ -67,14 +95,14 @@ class TranslationClient internal constructor(
                     val result = runCatching {
                         response.use {
                             val content = readResponse(it) { partial ->
-                                if (isMt && continuation.isActive) onPartial(partial)
+                                if (continuation.isActive) onPartial(partial)
                             }
-                            parseResult(content, selectedText, mode, isMt)
+                            parse(content)
                         }
                     }.recoverCatching { error ->
                         throw when (error) {
                             is IOException -> networkError(error)
-                            is JSONException -> ProviderException("模型返回的数据格式有误，请重试。")
+                            is JSONException -> ProviderException("The model returned invalid data. Try again.")
                             else -> error
                         }
                     }
@@ -89,12 +117,12 @@ class TranslationClient internal constructor(
 
         internal fun normalizeEndpoint(baseUrl: String, allowLoopbackHttp: Boolean): HttpUrl {
             val url = baseUrl.trim().toHttpUrlOrNull()
-                ?: throw ProviderException("请输入有效的 HTTPS API 地址。")
+                ?: throw ProviderException("Enter a valid HTTPS API URL.")
             val localDebug = allowLoopbackHttp && url.host in setOf("127.0.0.1", "localhost")
             if ((!url.isHttps && !localDebug) || url.username.isNotEmpty() || url.password.isNotEmpty() ||
                 url.query != null || url.fragment != null
             ) {
-                throw ProviderException("请输入有效的 HTTPS API 地址，去掉地址中的凭据、查询参数和片段标识。")
+                throw ProviderException("Enter an HTTPS API URL without credentials, query parameters, or a fragment.")
             }
             val path = url.encodedPath.trimEnd('/')
             val endpointPath = if (path.endsWith("/chat/completions")) path else "$path/chat/completions"
@@ -145,6 +173,27 @@ internal class ModelContracts(json: String) {
         }
         return request
     }
+
+    fun buildArticleMeaningRequest(model: String, selection: ArticleSelection): JSONObject =
+        articleRequest("articleMeaning", model, articleMeaningInput(selection))
+
+    fun buildArticleAnalysisRequest(model: String, sentence: String): JSONObject =
+        articleRequest(
+            "articleExplanation",
+            model,
+            JSONObject()
+                .put("selectedText", sentence)
+                .put("surroundingContext", "")
+                .put("selectionType", readingSelectionType(sentence))
+                .put("targetLanguage", "English"),
+        )
+
+    private fun articleRequest(template: String, model: String, input: JSONObject): JSONObject {
+        val request = JSONObject(contracts.getJSONObject(template).toString()).put("model", model)
+        request.getJSONArray("messages").getJSONObject(1).put("content", input.toString())
+        if (model.startsWith("qwen", ignoreCase = true)) request.put("enable_thinking", false)
+        return request
+    }
 }
 
 private const val MAX_RESPONSE_BYTES = 512_000L
@@ -157,15 +206,25 @@ private val WORD_SEPARATOR = Regex("[\\s\\p{Z}\uFEFF]+")
 
 private fun isQwenMt(model: String): Boolean = model.contains("qwen-mt", ignoreCase = true)
 
+private fun validateInput(text: String) {
+    if (text.isEmpty() || text.length > MAX_INPUT_LENGTH) {
+        throw ProviderException("Enter 1 to 12,000 characters.")
+    }
+}
+
 private fun selectModel(config: ProviderConfig, mode: LookupMode): String {
     val translationModel = config.translationModel.trim()
     if (mode == LookupMode.TRANSLATE) {
-        if (translationModel.isEmpty()) throw ProviderException("请在设置中选择翻译模型。")
+        if (translationModel.isEmpty()) throw ProviderException("Choose a translation model in Settings.")
         return translationModel
     }
-    val learningModel = config.learningModel.trim().ifEmpty { translationModel }
+    return selectLearningModel(config, "Choose a general-purpose learning model in Settings for Guided Reading.")
+}
+
+private fun selectLearningModel(config: ProviderConfig, message: String): String {
+    val learningModel = config.learningModel.trim().ifEmpty { config.translationModel.trim() }
     if (learningModel.isEmpty() || isQwenMt(learningModel)) {
-        throw ProviderException("请在设置中为引导理解选择通用模型。")
+        throw ProviderException(message)
     }
     return learningModel
 }
@@ -178,12 +237,12 @@ private fun readingSelectionType(text: String): String = when {
 
 private fun readResponse(response: Response, onPartial: (String) -> Unit): String {
     if (!response.isSuccessful) throw responseError(response.code)
-    val body = response.body ?: throw ProviderException("模型未返回内容，请重试。")
+    val body = response.body ?: throw ProviderException("The model returned no content. Try again.")
     if (body.contentType()?.let { it.type == "text" && it.subtype == "event-stream" } == true) {
         return readStream(body, onPartial)
     }
     val source = body.source()
-    if (source.request(MAX_RESPONSE_BYTES + 1)) throw ProviderException("模型返回的内容过长，请缩短原文后重试。")
+    if (source.request(MAX_RESPONSE_BYTES + 1)) throw ProviderException("The response was too long. Try selecting less text.")
     val choice = JSONObject(source.readString(body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)).firstChoice()
     val content = choice?.optJSONObject("message")?.opt("content")
     return when (content) {
@@ -191,7 +250,7 @@ private fun readResponse(response: Response, onPartial: (String) -> Unit): Strin
         is JSONArray -> (0 until content.length()).joinToString("") { index ->
             content.optJSONObject(index)?.string("text").orEmpty()
         }
-        else -> throw ProviderException("模型未返回文本，请重试。")
+        else -> throw ProviderException("The model returned no text. Try again.")
     }.trim()
 }
 
@@ -201,7 +260,7 @@ private fun readStream(body: ResponseBody, onPartial: (String) -> Unit): String 
     while (!source.exhausted()) {
         val delimiter = source.indexOf('\n'.code.toByte(), 0, MAX_RESPONSE_BYTES)
         if (delimiter < 0 && source.buffer.size >= MAX_RESPONSE_BYTES) {
-            throw ProviderException("模型返回的内容过长，请缩短原文后重试。")
+            throw ProviderException("The response was too long. Try selecting less text.")
         }
         val line = source.readUtf8Line()?.trimStart() ?: break
         if (!line.startsWith("data:")) continue
@@ -209,7 +268,7 @@ private fun readStream(body: ResponseBody, onPartial: (String) -> Unit): String 
         if (data == "[DONE]") break
         if (data.isEmpty()) continue
         val event = JSONObject(data)
-        if (event.has("error")) throw ProviderException("模型服务返回异常，请重试。")
+        if (event.has("error")) throw ProviderException("The model service returned an error. Try again.")
         val choice = event.firstChoice()
         val delta = choice?.optJSONObject("delta")?.opt("content") as? String
         val fullMessage = choice?.optJSONObject("message")?.opt("content") as? String
@@ -218,19 +277,19 @@ private fun readStream(body: ResponseBody, onPartial: (String) -> Unit): String 
             !fullMessage.isNullOrEmpty() -> content.replace(0, content.length, fullMessage)
             else -> continue
         }
-        if (content.length > MAX_RESPONSE_BYTES) throw ProviderException("模型返回的内容过长，请缩短原文后重试。")
+        if (content.length > MAX_RESPONSE_BYTES) throw ProviderException("The response was too long. Try selecting less text.")
         onPartial(content.toString())
     }
     return content.toString().trim()
 }
 
 private fun parseResult(content: String, sourceText: String, mode: LookupMode, isMt: Boolean): LookupResult {
-    if (content.isBlank()) throw ProviderException("模型未返回文本，请重试。")
+    if (content.isBlank()) throw ProviderException("The model returned no text. Try again.")
     if (isMt) return LookupResult(text = content)
     val result = JSONObject(content)
     if (mode == LookupMode.TRANSLATE) {
         val translation = result.string("translation").trim()
-        if (translation.isEmpty()) throw ProviderException("模型未返回译文，请重试。")
+        if (translation.isEmpty()) throw ProviderException("The model returned no translation. Try again.")
         val phonetic = if (SINGLE_WORD.matches(sourceText)) result.string("phonetic").trim() else ""
         return LookupResult(text = translation, phonetic = phonetic)
     }
@@ -245,7 +304,7 @@ private fun parseResult(content: String, sourceText: String, mode: LookupMode, i
     val example = answer?.string("example")?.trim().orEmpty()
     val validHints = if (isSentence) hints.size in 1..3 else hints.size == 3
     if (!validHints || meaning.isEmpty() || explanation.isEmpty() || !isSentence && example.isEmpty()) {
-        throw ProviderException("学习模型返回的引导内容不完整，请重试。")
+        throw ProviderException("The learning model returned incomplete guidance. Try again.")
     }
     return LookupResult(
         text = meaning,
@@ -266,19 +325,19 @@ private fun JSONArray?.strings(): List<String> {
 }
 
 private fun networkError(error: IOException): ProviderException = if (error is InterruptedIOException) {
-    ProviderException("请求超时，请重试。")
+    ProviderException("The request timed out. Try again.")
 } else {
-    ProviderException("无法连接模型服务，请检查网络和 API 地址。")
+    ProviderException("Could not reach the model service. Check your connection and API URL.")
 }
 
 private fun responseError(code: Int): ProviderException = ProviderException(when (code) {
-    400 -> "模型拒绝了请求，请确认它支持当前请求格式。"
-    401 -> "模型服务拒绝了 API Key，请在设置中检查。"
-    403 -> "当前 API Key 无权访问此模型。"
-    404 -> "找不到模型或服务，请检查 API 地址和模型名称。"
-    408, 504 -> "请求超时，请重试。"
-    429 -> "模型服务限制了请求频率，请稍后重试。"
-    in 300..399 -> "模型服务返回了重定向，请在设置中填写最终的 API 地址。"
-    in 500..599 -> "模型服务暂时不可用（$code），请稍后重试。"
-    else -> "模型请求失败（$code），请重试。"
+    400 -> "The model rejected this request format. Check your model settings."
+    401 -> "The model service rejected the API Key. Check it in Settings."
+    403 -> "This API Key does not have access to the model."
+    404 -> "Model or service not found. Check the API URL and model name."
+    408, 504 -> "The request timed out. Try again."
+    429 -> "The model service is rate limiting requests. Try again shortly."
+    in 300..399 -> "The model service redirected the request. Enter its final API URL in Settings."
+    in 500..599 -> "The model service is temporarily unavailable ($code). Try again shortly."
+    else -> "The model request failed ($code). Try again."
 })

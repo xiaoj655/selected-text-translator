@@ -83,6 +83,55 @@ class TranslationClientTest {
     }
 
     @Test
+    fun requestsArticleWordMeaningAndSentenceAnalysisFromTheLearningModel(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("""{"meaning":"A written account.","phonetic":"/ˈrɛkɚd/"}"""))
+            server.enqueue(jsonResponse("""
+                {"paraphrase":"We write something down every month.","structure":[{"role":"subject","text":"We"}]}
+            """.trimIndent()))
+            val client = client()
+            val config = config(server)
+            val sentence = "We record a record every month."
+            val selection = resolveArticleSelection(sentence, 14, ArticleSelectionKind.WORD)!!
+
+            val meaning = client.lookupArticle(config, selection)
+            val analysis = client.analyzeArticleSentence(config, selection)
+
+            assertEquals("A written account.", meaning.text)
+            assertEquals("/ˈrɛkɚd/", meaning.phonetic)
+            assertEquals("We write something down every month.", analysis.paraphrase)
+            assertEquals(listOf(ArticleGrammarSpan(ArticleGrammarRole.SUBJECT, 0, 2)), analysis.structure)
+            val wordPayload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+            assertEquals(config.learningModel, wordPayload.getString("model"))
+            assertFalse(wordPayload.getBoolean("enable_thinking"))
+            val wordInput = JSONObject(wordPayload.getJSONArray("messages").getJSONObject(1).getString("content"))
+            assertEquals(sentence, wordInput.getString("surroundingContext"))
+            assertEquals(12, wordInput.getInt("contextStart"))
+            assertEquals("English", wordInput.getString("targetLanguage"))
+            val sentencePayload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+            assertEquals(config.learningModel, sentencePayload.getString("model"))
+            val sentenceInput = JSONObject(sentencePayload.getJSONArray("messages").getJSONObject(1).getString("content"))
+            assertEquals(sentence, sentenceInput.getString("selectedText"))
+            assertEquals("English", sentenceInput.getString("targetLanguage"))
+        }
+    }
+
+    @Test
+    fun articleLookupRequiresAGeneralPurposeLearningModel(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val config = config(server).copy(learningModel = "")
+            val selection = resolveArticleSelection("We record every month.", 4, ArticleSelectionKind.WORD)!!
+
+            val meaningError = runCatching { client().lookupArticle(config, selection) }.exceptionOrNull()
+            val analysisError = runCatching { client().analyzeArticleSentence(config, selection) }.exceptionOrNull()
+
+            assertEquals("Choose a general-purpose learning model in Settings to look up articles.", meaningError?.message)
+            assertEquals("Choose a general-purpose learning model in Settings for sentence analysis.", analysisError?.message)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
     fun redactsProviderErrorsAndChecksHttps(): Unit = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(401).setBody("mock-key rejected"))
@@ -160,6 +209,16 @@ class TranslationClientTest {
             "stream": false,
             "response_format": { "type": "json_object" },
             "messages": [{"role":"system","content":"Guide."},{"role":"user","content":"{\"selectedText\":\"\",\"surroundingContext\":\"\"}"}]
+          },
+          "articleMeaning": {
+            "stream": false,
+            "response_format": { "type": "json_object" },
+            "messages": [{"role":"system","content":"Define the word."},{"role":"user","content":""}]
+          },
+          "articleExplanation": {
+            "stream": false,
+            "response_format": { "type": "json_object" },
+            "messages": [{"role":"system","content":"Analyze the sentence."},{"role":"user","content":""}]
           },
           "qwenMt": {
             "translation_options": {"source_lang":"auto"},

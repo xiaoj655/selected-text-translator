@@ -6,11 +6,19 @@ Android 8.0（API 26）及以上可用。首次打开，在设置中填写服务
 
 外部划词交给应用的是选中的文字。需要结合完整语境时，可以选中整句或粘贴一段原文。模型请求发送原文到用户配置的服务。收藏保存在手机本地，API Key 使用 Android Keystore 管理的密钥加密。
 
+## Reading
+
+Share a public HTTPS article from your browser to **Selected**, or open **Reading → Add article** to paste a link or article text. Selected saves the title, headings, paragraphs, and reading position on your phone so you can reopen the article offline.
+
+In **Word** mode, tap a word to see its English meaning in that sentence. Use **Analyze sentence** or switch to **Sentence** mode and tap anywhere in a sentence for its plain-English paraphrase and grammar. The result stays below the article. Use the speaker to hear the selection or the bookmark to keep it in **Saved expressions**.
+
+Word and sentence explanations require a general-purpose learning model in **Model settings**. The app sends the selected text and relevant sentence to the configured model provider when you look it up.
+
 ## 安装与更新
 
 首次安装时，在项目的 GitHub Releases 打开 `android-v*` 正式发布，下载 `selected-text-translator-android-<version>.apk`。正式版的应用 ID 为 `io.github.selectedtext.translator`。此前安装的预览版使用独立应用 ID，其设置和收藏依然保留在旧应用中。
 
-打开正式版工作台时，应用会自动检查 GitHub Releases。确认已是最新版本后，间隔 24 小时再自动检查。设置页可随时手动检查。发现新版本后，点「下载更新」。校验完成后点「安装更新」，在 Android 安装界面确认覆盖安装。首次可能需要在 Android 设置中允许 Selected 安装应用。
+打开正式版工作台时，应用会自动检查 GitHub Releases。确认已是最新版本后，间隔 24 小时再自动检查。设置页可随时手动检查。发现新版本后，点 **Download update**。校验完成后点 **Install update**，在 Android 安装界面确认覆盖安装。首次可能需要在 Android 设置中允许 Selected 安装应用。
 
 ## 开发与验证
 

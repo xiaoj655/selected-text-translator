@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Selected 翻译预览版</string>
-    <string name="process_text_label">用 Selected 翻译</string>
+    <string name="app_name">Selected Debug</string>
+    <string name="process_text_label">Translate with Selected</string>
 </resources>

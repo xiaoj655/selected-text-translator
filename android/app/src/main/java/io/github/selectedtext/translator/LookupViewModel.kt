@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 class LookupViewModel(application: Application, private val restored: SavedStateHandle) : AndroidViewModel(application) {
     private val store = (application as TranslatorApplication).store
     private val client = TranslationClient(application)
-    private val _state = MutableStateFlow(LookupUiState(input = restored[INPUT_KEY] ?: ""))
+    private val _state = MutableStateFlow(
+        LookupUiState(input = restored[INPUT_KEY] ?: "", page = restored[PAGE_KEY] ?: LookupPage.LOOKUP),
+    )
     val state = _state.asStateFlow()
 
     private val results = mutableMapOf<LookupMode, LookupResult>()
@@ -22,6 +24,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
     private var request: Job? = null
     private var settingsWrite: Job? = null
     private var pendingMode: LookupMode? = null
+    private var settingsParent: LookupPage = restored[SETTINGS_PARENT_KEY] ?: LookupPage.LOOKUP
 
     init {
         viewModelScope.launch {
@@ -55,7 +58,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
         when {
             text.isNullOrBlank() -> {
                 edit("")
-                _state.update { it.copy(error = "没有收到文字。可以选中文字再试，或到工作台粘贴。") }
+                _state.update { it.copy(error = "No text was shared. Select some text or paste it into Selected.") }
             }
             text.length > MAX_INPUT_LENGTH -> {
                 edit("")
@@ -63,7 +66,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
             }
             fromShare && WEB_LINK.matches(text.trim()) -> {
                 edit("")
-                _state.update { it.copy(error = "收到的是网页链接。请在网页中选择要翻译的文字再分享。") }
+                _state.update { it.copy(error = "To translate, select text on the webpage and share it.") }
             }
             else -> {
                 edit(text)
@@ -73,14 +76,14 @@ class LookupViewModel(application: Application, private val restored: SavedState
     }
 
     private fun showInputLimit() {
-        _state.update { it.copy(error = "请把文字缩短到 12,000 字符以内。") }
+        _state.update { it.copy(error = "Keep the text within 12,000 characters.") }
     }
 
     fun lookup(mode: LookupMode) {
         val current = _state.value
         val text = current.input.trim()
         if (text.isEmpty()) {
-            _state.update { it.copy(error = "请输入或粘贴要翻译的文字。") }
+            _state.update { it.copy(error = "Type or paste text to translate.") }
             return
         }
         if (current.mode == mode && current.busy) return
@@ -96,7 +99,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
             val config = store.config.value
             if (!config.isConfigured) {
                 pendingMode = mode
-                updateRequest(revision) { it.copy(busy = false, error = "先配置模型，保存后会继续这次查询。") }
+                updateRequest(revision) { it.copy(busy = false, error = "Set up a model to continue.") }
                 return@launch
             }
             if (resultConfig != config) {
@@ -117,7 +120,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
             } catch (error: ProviderException) {
                 updateRequest(revision) { it.copy(busy = false, partial = "", error = error.message) }
             } catch (_: Exception) {
-                updateRequest(revision) { it.copy(busy = false, partial = "", error = "查询失败，请重试。") }
+                updateRequest(revision) { it.copy(busy = false, partial = "", error = "Lookup failed. Try again.") }
             }
         }
     }
@@ -145,11 +148,18 @@ class LookupViewModel(application: Application, private val restored: SavedState
 
     fun open(page: LookupPage) {
         val current = _state.value
-        if (page == LookupPage.SETTINGS && !current.configured && current.input.isNotBlank() && pendingMode == null) {
-            pendingMode = current.mode
+        if (page == LookupPage.SETTINGS && current.page != LookupPage.SETTINGS) {
+            settingsParent = current.page
+            restored[SETTINGS_PARENT_KEY] = current.page
+            if (current.page == LookupPage.LOOKUP && !current.configured && current.input.isNotBlank() && pendingMode == null) {
+                pendingMode = current.mode
+            }
         }
+        restored[PAGE_KEY] = page
         _state.update { it.copy(page = page, settingsError = null, notice = null) }
     }
+
+    fun back() = open(if (_state.value.page == LookupPage.SETTINGS) settingsParent else LookupPage.LOOKUP)
 
     fun saveSettings(config: ProviderConfig) {
         if (settingsWrite?.isActive == true) return
@@ -157,10 +167,10 @@ class LookupViewModel(application: Application, private val restored: SavedState
             config.baseUrl.trim(), config.apiKey.trim(), config.translationModel.trim(), config.learningModel.trim(),
         )
         val problem = when {
-            runCatching { TranslationClient.normalizeEndpoint(clean.baseUrl) }.isFailure -> "请输入有效的 HTTPS API 地址。"
-            clean.translationModel.isBlank() -> "请输入翻译模型名称。"
-            clean.learningModel.contains("qwen-mt", ignoreCase = true) -> "引导理解需要使用通用模型。"
-            clean.apiKey.any { it !in '!'..'~' } -> "请检查 API Key 格式。"
+            runCatching { TranslationClient.normalizeEndpoint(clean.baseUrl) }.isFailure -> "Enter a valid HTTPS API URL."
+            clean.translationModel.isBlank() -> "Enter a translation model name."
+            clean.learningModel.contains("qwen-mt", ignoreCase = true) -> "Guided explanations need a general-purpose model."
+            clean.apiKey.any { it !in '!'..'~' } -> "Check the API key format."
             else -> null
         }
         if (problem != null) {
@@ -171,16 +181,16 @@ class LookupViewModel(application: Application, private val restored: SavedState
         settingsWrite = viewModelScope.launch {
             try {
                 store.saveConfig(clean)
-                val resume = pendingMode
+                val resume = pendingMode.takeIf { settingsParent == LookupPage.LOOKUP }
                 pendingMode = null
                 if (resultConfig != null && resultConfig != clean) clearLookup()
-                open(LookupPage.LOOKUP)
+                back()
                 _state.update { it.copy(config = clean, configured = clean.isConfigured) }
-                if (resume != null) lookup(resume) else notice("设置已保存")
+                if (resume != null) lookup(resume) else notice("Settings saved")
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                _state.update { it.copy(settingsError = "保存设置失败，请重试。") }
+                _state.update { it.copy(settingsError = "Unable to save settings. Try again.") }
             }
         }
     }
@@ -192,11 +202,11 @@ class LookupViewModel(application: Application, private val restored: SavedState
         viewModelScope.launch {
             try {
                 store.saveExpression(current.input.trim(), result.text)
-                notice("已收藏")
+                notice("Saved")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice(error.message ?: "无法收藏，请重试。")
+                notice(error.message ?: "Unable to save the expression. Try again.")
             }
         }
     }
@@ -205,11 +215,11 @@ class LookupViewModel(application: Application, private val restored: SavedState
         viewModelScope.launch {
             try {
                 store.removeExpression(id)
-                notice("已移除")
+                notice("Removed")
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                notice("无法移除，请重试。")
+                notice("Unable to remove the expression. Try again.")
             }
         }
     }
@@ -230,6 +240,8 @@ class LookupViewModel(application: Application, private val restored: SavedState
 
     private companion object {
         const val INPUT_KEY = "lookupInput"
+        const val PAGE_KEY = "workspacePage"
+        const val SETTINGS_PARENT_KEY = "settingsParent"
         val WEB_LINK = Regex("^(?:https?://|www\\.)\\S+$", RegexOption.IGNORE_CASE)
     }
 }

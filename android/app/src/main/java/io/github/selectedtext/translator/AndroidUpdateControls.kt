@@ -41,8 +41,8 @@ internal fun AndroidUpdateControls(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Text("应用更新", style = MaterialTheme.typography.titleSmall)
-            UpdateDescription("当前版本 ${BuildConfig.VERSION_NAME}")
+            Text("App updates", style = MaterialTheme.typography.titleSmall)
+            UpdateDescription("Current version ${BuildConfig.VERSION_NAME}")
             UpdateStatus(state, onCheck, onDownload, onInstall)
         }
     }
@@ -57,30 +57,30 @@ private fun UpdateStatus(
 ) {
     when (state) {
         AndroidUpdateState.Idle ->
-            TextButton(onClick = onCheck) { Text("检查更新") }
+            TextButton(onClick = onCheck) { Text("Check for updates") }
         AndroidUpdateState.Checking ->
-            UpdateDescription("正在检查更新…")
+            UpdateDescription("Checking for updates…")
         AndroidUpdateState.Current -> {
-            UpdateDescription("已是最新版本")
-            TextButton(onClick = onCheck) { Text("检查更新") }
+            UpdateDescription("You’re up to date")
+            TextButton(onClick = onCheck) { Text("Check for updates") }
         }
         is AndroidUpdateState.CheckFailed -> {
             UpdateError(state.message)
-            TextButton(onClick = onCheck) { Text("重新检查") }
+            TextButton(onClick = onCheck) { Text("Check again") }
         }
         is AndroidUpdateState.Available -> {
-            UpdateDescription("发现新版本 ${state.update.versionName}")
+            UpdateDescription("New version ${state.update.versionName}")
             state.error?.let { UpdateError(it) }
-            TextButton(onClick = onDownload) { Text(if (state.error == null) "下载更新" else "重新下载") }
+            TextButton(onClick = onDownload) { Text(if (state.error == null) "Download update" else "Download again") }
         }
         is AndroidUpdateState.Downloading -> {
-            UpdateDescription("正在下载 ${state.update.versionName}…")
+            UpdateDescription("Downloading ${state.update.versionName}…")
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp).height(2.dp))
         }
         is AndroidUpdateState.Ready -> {
-            UpdateDescription("${state.update.versionName} 已下载")
+            UpdateDescription("${state.update.versionName} downloaded")
             state.error?.let { UpdateError(it) }
-            TextButton(onClick = onInstall) { Text("安装更新") }
+            TextButton(onClick = onInstall) { Text("Install update") }
         }
     }
 }

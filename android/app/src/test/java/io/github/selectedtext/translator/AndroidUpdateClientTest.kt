@@ -100,7 +100,7 @@ class AndroidUpdateClientTest {
             request.respond("", code = 403, headers = mapOf("X-RateLimit-Remaining" to "0"))
         }
         val error = assertThrows(AndroidUpdateException::class.java) { runBlocking { client.checkForUpdate() } }
-        assertTrue(error.message.orEmpty().contains("次数已达上限"))
+        assertTrue(error.message.orEmpty().contains("rate limit"))
     }
 
     @Test
@@ -129,7 +129,7 @@ class AndroidUpdateClientTest {
         val update = runBlocking { checkNotNull(client.checkForUpdate()) }
         val error = assertThrows(AndroidUpdateException::class.java) { runBlocking { client.download(update) } }
 
-        assertTrue(error.message.orEmpty().contains("校验失败"))
+        assertTrue(error.message.orEmpty().contains("failed verification"))
         assertEquals(emptyList<File>(), temporaryFolder.root.walk().filter { it.isFile }.toList())
     }
 

@@ -51,7 +51,7 @@ internal class AndroidUpdateViewModel(application: Application) : AndroidViewMod
                     AndroidUpdateState.Available(update)
                 }
             } catch (error: IOException) {
-                AndroidUpdateState.CheckFailed(error.message ?: "检查更新失败，请重试。")
+                AndroidUpdateState.CheckFailed(error.message ?: "Unable to check for updates. Try again.")
             }
         }
     }
@@ -63,7 +63,7 @@ internal class AndroidUpdateViewModel(application: Application) : AndroidViewMod
             _state.value = try {
                 AndroidUpdateState.Ready(available.update, client.download(available.update))
             } catch (error: IOException) {
-                available.copy(error = error.message ?: "下载失败，请重试。")
+                available.copy(error = error.message ?: "Download failed. Try again.")
             }
         }
     }
@@ -73,7 +73,7 @@ internal class AndroidUpdateViewModel(application: Application) : AndroidViewMod
         _state.value = if (ready.apk.isFile) {
             ready.copy(error = message)
         } else {
-            AndroidUpdateState.Available(ready.update, "安装包已清理，请重新下载。")
+            AndroidUpdateState.Available(ready.update, "Download the update again to install it.")
         }
     }
 

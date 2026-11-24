@@ -118,6 +118,7 @@ fun LookupScreen(
     state: LookupUiState,
     actions: LookupActions,
     external: Boolean,
+    reading: @Composable () -> Unit,
     updateControls: @Composable (compact: Boolean) -> Unit,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -125,6 +126,18 @@ fun LookupScreen(
         val notice = state.notice ?: return@LaunchedEffect
         snackbar.showSnackbar(notice)
         actions.clearNotice()
+    }
+    if (state.page == LookupPage.READING && !external) {
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
+                reading()
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+            }
+        }
+        return
     }
     if (external) {
         Box(Modifier.fillMaxSize()) {
@@ -137,7 +150,7 @@ fun LookupScreen(
                         indication = null,
                         onClick = actions::close,
                     )
-                    .semantics { contentDescription = "关闭翻译" },
+                    .semantics { contentDescription = "Close translation" },
             )
             BoxWithConstraints(
                 Modifier
@@ -190,9 +203,10 @@ private fun LookupPanel(
     updateControls: @Composable (compact: Boolean) -> Unit,
 ) {
     val title = when (state.page) {
-        LookupPage.SETTINGS -> "模型设置"
-        LookupPage.SAVED -> "表达本"
-        LookupPage.LOOKUP -> if (external) "划词翻译" else "Selected"
+        LookupPage.SETTINGS -> "Model settings"
+        LookupPage.SAVED -> "Saved expressions"
+        LookupPage.READING -> "Reading"
+        LookupPage.LOOKUP -> if (external) "Translate selection" else "Selected"
     }
     Surface(
         modifier = modifier,
@@ -209,7 +223,7 @@ private fun LookupPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.page != LookupPage.LOOKUP) {
-                    IconAction(R.drawable.ic_back, "返回", { actions.open(LookupPage.LOOKUP) })
+                    IconAction(R.drawable.ic_back, "Back", actions::back)
                 } else {
                     SelectedIcon(R.drawable.ic_selected_mark, size = 25)
                 }
@@ -220,10 +234,11 @@ private fun LookupPanel(
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (state.page == LookupPage.LOOKUP && !external) {
-                    IconAction(R.drawable.ic_bookmark, "表达本", { actions.open(LookupPage.SAVED) })
-                    IconAction(R.drawable.ic_settings, "设置", { actions.open(LookupPage.SETTINGS) })
+                    TextButton(onClick = { actions.open(LookupPage.READING) }) { Text("Reading") }
+                    IconAction(R.drawable.ic_bookmark, "Saved expressions", { actions.open(LookupPage.SAVED) })
+                    IconAction(R.drawable.ic_settings, "Settings", { actions.open(LookupPage.SETTINGS) })
                 } else if (external) {
-                    IconAction(R.drawable.ic_close, "关闭", actions::close)
+                    IconAction(R.drawable.ic_close, "Close", actions::close)
                 }
             }
             val pageModifier = Modifier.weight(1f, fill = !external).fillMaxWidth()
@@ -233,6 +248,7 @@ private fun LookupPanel(
                     updateControls(false)
                 }
                 LookupPage.SAVED -> Expressions(state.saved, actions, pageModifier)
+                LookupPage.READING -> Unit
             }
             SnackbarHost(snackbar, Modifier.padding(horizontal = 16.dp))
         }
@@ -265,7 +281,7 @@ private fun LookupContent(
             if (external) {
                 if (state.input.isNotBlank()) ExternalSource(state.input)
             } else {
-                Text("翻译", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                Text("Translate", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                 updateControls()
                 Composer(state, actions)
             }
@@ -277,7 +293,7 @@ private fun LookupContent(
                 )
                 if (state.partial.isBlank() || guideOpen) {
                     Text(
-                        if (guideOpen) "正在生成线索…" else "正在翻译…",
+                        if (guideOpen) "Preparing hints…" else "Translating…",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -334,7 +350,7 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
                 .onFocusChanged { focused = it.isFocused }
-                .semantics { contentDescription = "原文" },
+                .semantics { contentDescription = "Source text" },
             textStyle = inputStyle,
             cursorBrush = SolidColor(colors.primary),
             minLines = 3,
@@ -342,7 +358,7 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
             decorationBox = { field ->
                 Box {
                     if (state.input.isEmpty()) {
-                        Text("输入或粘贴要翻译的文字", style = inputStyle, color = colors.onSurfaceVariant)
+                        Text("Type or paste text to translate", style = inputStyle, color = colors.onSurfaceVariant)
                     }
                     field()
                 }
@@ -352,7 +368,7 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
             Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextAction(R.drawable.ic_paste, "粘贴", {
+            TextAction(R.drawable.ic_paste, "Paste", {
                 focus.clearFocus()
                 actions.paste()
             })
@@ -362,7 +378,7 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
                 enabled = !state.busy && (!state.configured || state.input.isNotBlank()),
                 contentPadding = PaddingValues(horizontal = 16.dp),
             ) {
-                Text(if (state.configured) "翻译" else "配置模型")
+                Text(if (state.configured) "Translate" else "Set up a model")
                 Spacer(Modifier.width(6.dp))
                 SelectedIcon(R.drawable.ic_arrow_up, size = 16)
             }
@@ -390,7 +406,7 @@ private fun ExternalSource(source: String) {
                 onClick = { expanded = !expanded },
                 contentPadding = PaddingValues(horizontal = 0.dp),
             ) {
-                Text(if (expanded) "收起原文" else "展开原文")
+                Text(if (expanded) "Show less" else "Show full text")
             }
         }
     }
@@ -418,7 +434,7 @@ private fun GuideText(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (result.hints.isNotEmpty()) {
-            Text("理解线索", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Hints", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             for (hint in result.hints.take(visibleHints)) {
                 Text(hint, style = MaterialTheme.typography.bodyLarge)
             }
@@ -426,9 +442,9 @@ private fun GuideText(
         if (!revealed) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (visibleHints < result.hints.size) {
-                    OutlinedButton(onClick = nextHint, modifier = Modifier.weight(1f)) { Text("再提示一点") }
+                    OutlinedButton(onClick = nextHint, modifier = Modifier.weight(1f)) { Text("Next hint") }
                 }
-                Button(onClick = reveal, modifier = Modifier.weight(1f)) { Text("查看解释") }
+                Button(onClick = reveal, modifier = Modifier.weight(1f)) { Text("Show explanation") }
             }
         } else {
             TranslationText(result.text, result.phonetic)
@@ -448,14 +464,14 @@ private fun LookupButtons(
     external: Boolean = false,
 ) {
     if (external && !state.configured) {
-        Button(onClick = { actions.open(LookupPage.SETTINGS) }, modifier = Modifier.fillMaxWidth()) { Text("配置模型") }
+        Button(onClick = { actions.open(LookupPage.SETTINGS) }, modifier = Modifier.fillMaxWidth()) { Text("Set up a model") }
         return
     }
 
     val result = state.result
     val canRead = state.input.isNotBlank()
     if (external && result == null && !state.busy && state.error == null && canRead) {
-        Button(onClick = { actions.lookup(LookupMode.TRANSLATE) }, modifier = Modifier.fillMaxWidth()) { Text("翻译") }
+        Button(onClick = { actions.lookup(LookupMode.TRANSLATE) }, modifier = Modifier.fillMaxWidth()) { Text("Translate") }
     }
     if (!canRead) return
 
@@ -463,27 +479,27 @@ private fun LookupButtons(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             when {
-                state.error != null -> TextButton(onClick = { actions.lookup(state.mode) }, enabled = !state.busy) { Text("重试") }
+                state.error != null -> TextButton(onClick = { actions.lookup(state.mode) }, enabled = !state.busy) { Text("Retry") }
                 state.mode == LookupMode.GUIDE -> TextButton(
                     onClick = { actions.lookup(LookupMode.TRANSLATE) },
                     enabled = !state.busy,
-                ) { Text("看译文") }
-                result != null -> TextAction(R.drawable.ic_guide, "引导理解", { actions.lookup(LookupMode.GUIDE) })
+                ) { Text("Translation") }
+                result != null -> TextAction(R.drawable.ic_guide, "Guide", { actions.lookup(LookupMode.GUIDE) })
             }
             Spacer(Modifier.weight(1f))
             if (external && state.error != null) {
-                IconAction(R.drawable.ic_settings, "设置", { actions.open(LookupPage.SETTINGS) })
+                IconAction(R.drawable.ic_settings, "Settings", { actions.open(LookupPage.SETTINGS) })
             }
             IconAction(
                 if (state.speaking) R.drawable.ic_stop else R.drawable.ic_volume,
-                if (state.speaking) "停止朗读" else "朗读原文",
+                if (state.speaking) "Stop reading" else "Read aloud",
                 { actions.speak(state.input) },
             )
             if (canCopyResult && result != null) {
-                IconAction(R.drawable.ic_copy, "复制", { actions.copy(result.text) })
+                IconAction(R.drawable.ic_copy, "Copy", { actions.copy(result.text) })
                 IconAction(
                     if (state.isSaved) R.drawable.ic_bookmark_filled else R.drawable.ic_bookmark,
-                    if (state.isSaved) "已收藏" else "收藏",
+                    if (state.isSaved) "Saved" else "Save",
                     actions::saveExpression,
                     enabled = !state.isSaved && !state.busy,
                 )
@@ -498,7 +514,7 @@ private fun SelectedIcon(@DrawableRes icon: Int, label: String? = null, size: In
 }
 
 @Composable
-private fun IconAction(@DrawableRes icon: Int, label: String, onClick: () -> Unit, enabled: Boolean = true) {
+internal fun IconAction(@DrawableRes icon: Int, label: String, onClick: () -> Unit, enabled: Boolean = true) {
     IconButton(onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
         SelectedIcon(icon, label)
     }
@@ -539,7 +555,7 @@ private fun ModelSettings(
             baseUrl,
             { baseUrl = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("API 地址") },
+            label = { Text("API URL") },
             singleLine = true,
             shape = MaterialTheme.shapes.small,
             colors = fieldColors,
@@ -560,7 +576,7 @@ private fun ModelSettings(
             translationModel,
             { translationModel = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("翻译模型") },
+            label = { Text("Translation model") },
             singleLine = true,
             shape = MaterialTheme.shapes.small,
             colors = fieldColors,
@@ -570,8 +586,8 @@ private fun ModelSettings(
             learningModel,
             { learningModel = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("引导模型（可选）") },
-            supportingText = { Text("使用 qwen-mt 翻译时，引导理解需要另填通用模型。") },
+            label = { Text("Learning model (optional)") },
+            supportingText = { Text("Reading and guided explanations use a general-purpose model.") },
             singleLine = true,
             shape = MaterialTheme.shapes.small,
             colors = fieldColors,
@@ -589,7 +605,7 @@ private fun ModelSettings(
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("保存设置")
+            Text("Save settings")
         }
         updateControls()
     }
@@ -599,7 +615,7 @@ private fun ModelSettings(
 private fun Expressions(entries: List<SavedExpression>, actions: LookupActions, modifier: Modifier) {
     if (entries.isEmpty()) {
         Text(
-            "收藏的词句会显示在这里。",
+            "Words and phrases you save will appear here.",
             modifier.padding(horizontal = 24.dp, vertical = 16.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -620,8 +636,8 @@ private fun Expressions(entries: List<SavedExpression>, actions: LookupActions, 
                     Text(expression.result, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    IconAction(R.drawable.ic_copy, "复制", { actions.copy(expression.result) })
-                    IconAction(R.drawable.ic_remove, "移除", { actions.removeExpression(expression.id) })
+                    IconAction(R.drawable.ic_copy, "Copy", { actions.copy(expression.result) })
+                    IconAction(R.drawable.ic_remove, "Remove", { actions.removeExpression(expression.id) })
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }

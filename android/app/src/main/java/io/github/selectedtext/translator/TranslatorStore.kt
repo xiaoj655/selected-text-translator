@@ -23,6 +23,7 @@ import org.json.JSONObject
 
 class TranslatorApplication : Application() {
     internal val store by lazy { TranslatorStore(this) }
+    internal val articles by lazy { ArticleRepository(this) }
 }
 
 internal class TranslatorStore(context: Context) {
@@ -65,7 +66,7 @@ internal class TranslatorStore(context: Context) {
             } else if (config.apiKey != _config.value.apiKey) {
                 editor.putString("encryptedApiKey", KeyVault.encrypt(config.apiKey))
             }
-            if (!editor.commit()) throw IOException("无法保存模型设置。")
+            if (!editor.commit()) throw IOException("Unable to save model settings.")
             _config.value = config
         }
     }
@@ -74,7 +75,7 @@ internal class TranslatorStore(context: Context) {
         mutations.withLock {
             loadLocked()
             if (_saved.value.any { it.source == source && it.result == result }) return@withLock
-            check(_saved.value.size < MAX_EXPRESSIONS) { "收藏已满，请先移除一些表达。" }
+            check(_saved.value.size < MAX_EXPRESSIONS) { "Remove some expressions to make room for more." }
             writeExpressions(listOf(SavedExpression(UUID.randomUUID().toString(), source, result)) + _saved.value)
         }
     }
@@ -100,8 +101,8 @@ internal class TranslatorStore(context: Context) {
             data.put(JSONObject().put("id", entry.id).put("text", entry.source).put("meaning", entry.result))
         }
         val json = data.toString()
-        check(json.toByteArray().size <= MAX_EXPRESSIONS_BYTES) { "收藏已满，请先移除一些表达。" }
-        if (!preferences.edit().putString("expressions", json).commit()) throw IOException("无法保存收藏。")
+        check(json.toByteArray().size <= MAX_EXPRESSIONS_BYTES) { "Remove some expressions to make room for more." }
+        if (!preferences.edit().putString("expressions", json).commit()) throw IOException("Unable to save expressions.")
         _saved.value = entries
     }
 

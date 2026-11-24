@@ -26,7 +26,7 @@ data class LookupResult(
 
 data class SavedExpression(val id: String, val source: String, val result: String)
 
-enum class LookupPage { LOOKUP, SETTINGS, SAVED }
+enum class LookupPage { LOOKUP, READING, SETTINGS, SAVED }
 
 data class LookupUiState(
     val input: String = "",
@@ -54,6 +54,7 @@ interface LookupActions {
     fun speak(text: String)
     fun saveExpression()
     fun open(page: LookupPage)
+    fun back()
     fun saveSettings(config: ProviderConfig)
     fun removeExpression(id: String)
     fun close()

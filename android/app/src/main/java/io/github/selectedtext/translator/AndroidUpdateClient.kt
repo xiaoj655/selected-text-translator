@@ -269,24 +269,24 @@ private fun ResponseBody.readLimitedText(maxBytes: Long): String {
 
 private fun responseError(response: Response): AndroidUpdateException = when {
     response.code == 429 || response.code == 403 && response.header("X-RateLimit-Remaining") == "0" ->
-        AndroidUpdateException("GitHub 更新查询次数已达上限，请稍后重试。")
-    else -> AndroidUpdateException("GitHub 暂时无法提供更新，请稍后重试。")
+        AndroidUpdateException("GitHub’s rate limit has been reached. Try again later.")
+    else -> AndroidUpdateException("Updates are temporarily unavailable on GitHub. Try again later.")
 }
 
 private fun toUpdateError(error: Throwable): Throwable = when (error) {
     is AndroidUpdateException -> error
     is JSONException -> invalidMetadata(error)
-    is IOException -> AndroidUpdateException("连接 GitHub 失败，请检查网络后重试。", error)
+    is IOException -> AndroidUpdateException("Unable to connect to GitHub. Check your connection and try again.", error)
     else -> error
 }
 
 private fun invalidMetadata(cause: Throwable? = null) =
-    AndroidUpdateException("GitHub 上的更新信息有误，请稍后重试。", cause)
+    AndroidUpdateException("GitHub returned invalid update information. Try again later.", cause)
 
-private fun integrityError() = AndroidUpdateException("安装包下载不完整或校验失败，请重新下载。")
+private fun integrityError() = AndroidUpdateException("The APK is incomplete or failed verification. Download it again.")
 
 private fun storageError(cause: Throwable? = null) =
-    AndroidUpdateException("无法保存安装包，请检查剩余存储空间。", cause)
+    AndroidUpdateException("Unable to save the APK. Check your available storage.", cause)
 
 @Suppress("DEPRECATION")
 private fun verifyPackage(context: Context, file: File, update: AndroidUpdate) {
@@ -298,11 +298,11 @@ private fun verifyPackage(context: Context, file: File, update: AndroidUpdate) {
     if (archive == null || archive.packageName != installed.packageName ||
         archive.versionName != update.versionName || archive.versionCodeCompat != update.versionCode.toLong() ||
         archive.versionCodeCompat <= installed.versionCodeCompat
-    ) throw AndroidUpdateException("安装包的应用或版本信息与更新不符。")
+    ) throw AndroidUpdateException("The APK’s app or version does not match the update.")
     val installedSigners = installed.currentSigners()
     val archiveSigners = archive.currentSigners()
     if (installedSigners.isEmpty() || installedSigners != archiveSigners) {
-        throw AndroidUpdateException("安装包签名与当前应用不同，无法覆盖安装。")
+        throw AndroidUpdateException("The APK’s signature does not match the installed app.")
     }
 }
 

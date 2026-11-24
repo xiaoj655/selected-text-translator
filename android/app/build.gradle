@@ -14,8 +14,8 @@ android {
         applicationId = 'io.github.selectedtext.translator'
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = '0.1.3'
+        versionCode = 5
+        versionName = '0.1.4'
     }
 
     buildTypes {
@@ -25,6 +25,7 @@ android {
     }
 
     compileOptions {
+        coreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -72,6 +73,7 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
     implementation platform('androidx.compose:compose-bom:2025.12.01')
     implementation 'androidx.activity:activity-compose:1.12.0'
     implementation 'androidx.compose.foundation:foundation'
@@ -81,6 +83,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel:2.10.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.jsoup:jsoup:1.24.1'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'

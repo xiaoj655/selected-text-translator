@@ -23,22 +23,53 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 
+private const val OPEN_ARTICLE = "io.github.selectedtext.translator.OPEN_ARTICLE"
+
 class WorkspaceActivity : LookupActivity(external = false) {
     private val updates: AndroidUpdateViewModel by viewModels()
+    private val reader: ReaderViewModel by viewModels()
     private val installPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (packageManager.canRequestPackageInstalls()) {
             installDownloadedUpdate()
         } else {
-            updates.installationFailed("允许 Selected 安装应用后，即可继续更新。")
+            updates.installationFailed("Allow Selected to install apps to continue.")
         }
     }
 
     override fun onStart() {
         super.onStart()
         if (!BuildConfig.DEBUG) updates.check(automatic = true)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) openSharedArticle(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openSharedArticle(intent)
+    }
+
+    private fun openSharedArticle(intent: Intent) {
+        if (intent.action != OPEN_ARTICLE) return
+        val url = intent.dataString?.let(::sharedArticleUrl) ?: return
+        openPage(LookupPage.READING)
+        reader.importUrl(url, fromShare = true)
+    }
+
+    @Composable
+    override fun Reading(speaking: Boolean) {
+        val state by reader.uiState.collectAsStateWithLifecycle()
+        ReaderScreen(
+            state, reader, speaking, ::speakOrStop, ::stopSpeech, ::clipboardText,
+            onSettings = { openPage(LookupPage.SETTINGS) },
+            onExit = ::backPage,
+        )
     }
 
     @Composable
@@ -57,7 +88,7 @@ class WorkspaceActivity : LookupActivity(external = false) {
     private fun installDownloadedUpdate() {
         val ready = updates.state.value as? AndroidUpdateState.Ready ?: return
         if (!ready.apk.isFile) {
-            updates.installationFailed("安装包已清理，请重新下载。")
+            updates.installationFailed("Download the update again to install it.")
             return
         }
         try {
@@ -74,11 +105,11 @@ class WorkspaceActivity : LookupActivity(external = false) {
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
             )
         } catch (_: ActivityNotFoundException) {
-            updates.installationFailed("无法打开系统安装界面。")
+            updates.installationFailed("The Android installer is unavailable.")
         } catch (_: SecurityException) {
-            updates.installationFailed("系统限制了此应用安装更新。")
+            updates.installationFailed("Android blocked Selected from installing the update.")
         } catch (_: IllegalArgumentException) {
-            updates.installationFailed("无法读取安装包，请重新下载。")
+            updates.installationFailed("The update file could not be opened. Download it again.")
         }
     }
 }
@@ -101,6 +132,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         } else {
             enableEdgeToEdge()
         }
+        if (isFinishing) return
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -110,7 +142,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
                     onBackPressedDispatcher.onBackPressed()
                     isEnabled = true
                 } else {
-                    model.open(LookupPage.LOOKUP)
+                    backPage()
                 }
             }
         })
@@ -118,13 +150,18 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         setContent {
             val state by model.state.collectAsStateWithLifecycle()
             SelectedTheme {
-                LookupScreen(state, actions, external) { compact -> UpdateControls(compact) }
+                LookupScreen(state, actions, external, reading = { Reading(state.speaking) }) { compact ->
+                    UpdateControls(compact)
+                }
             }
         }
     }
 
     @Composable
     protected open fun UpdateControls(compact: Boolean) = Unit
+
+    @Composable
+    protected open fun Reading(speaking: Boolean) = Unit
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -140,8 +177,35 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
                 else -> null
             }
         }.getOrNull()
+        if (intent.action == Intent.ACTION_SEND) {
+            val url = text?.let(::sharedArticleUrl)
+            if (url != null) {
+                startActivity(
+                    Intent(this, WorkspaceActivity::class.java)
+                        .setAction(OPEN_ARTICLE)
+                        .setData(url.toUri())
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                )
+                finish()
+                return
+            }
+        }
         stopSpeech()
         model.useIncoming(text, fromShare = intent.action == Intent.ACTION_SEND)
+    }
+
+    protected fun clipboardText(): String? = clipboard?.primaryClip?.let { clip ->
+        if (clip.itemCount == 0) null else clip.getItemAt(0).text?.toString()
+    }
+
+    protected fun openPage(page: LookupPage) {
+        stopSpeech()
+        model.open(page)
+    }
+
+    protected fun backPage() {
+        stopSpeech()
+        model.back()
     }
 
     private val actions = object : LookupActions {
@@ -151,11 +215,9 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         }
 
         override fun paste() {
-            val text = clipboard?.primaryClip?.let { clip ->
-                if (clip.itemCount == 0) null else clip.getItemAt(0).text?.toString()
-            }
+            val text = clipboardText()
             if (text.isNullOrBlank()) {
-                model.notice("剪贴板中没有可粘贴的文字。")
+                model.notice("There is no text on the clipboard.")
                 return
             }
             stopSpeech()
@@ -166,21 +228,20 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
         override fun copy(text: String) {
             if (clipboard == null) {
-                model.notice("当前设备无法访问剪贴板。")
+                model.notice("The clipboard is unavailable.")
                 return
             }
             clipboard?.setPrimaryClip(ClipData.newPlainText("Selected", text))
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) model.notice("已复制")
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) model.notice("Copied")
         }
 
         override fun speak(text: String) = speakOrStop(text)
 
         override fun saveExpression() = model.saveExpression()
 
-        override fun open(page: LookupPage) {
-            if (page != LookupPage.LOOKUP) stopSpeech()
-            model.open(page)
-        }
+        override fun open(page: LookupPage) = openPage(page)
+
+        override fun back() = backPage()
 
         override fun saveSettings(config: ProviderConfig) = model.saveSettings(config)
 
@@ -191,7 +252,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         override fun clearNotice() = model.notice(null)
     }
 
-    private fun speakOrStop(text: String) {
+    protected fun speakOrStop(text: String) {
         if (model.state.value.speaking) {
             stopSpeech()
             return
@@ -212,14 +273,14 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
                         startSpeech(text, revision)
                     } else {
                         model.setSpeaking(false)
-                        model.notice("系统语音不可用。")
+                        model.notice("Text-to-speech is unavailable.")
                     }
                 }
             }
         } else if (speechReady) {
             startSpeech(text, revision)
         } else {
-            model.notice("语音正在启动，请稍后再试。")
+            model.notice("Text-to-speech is starting. Try again shortly.")
         }
     }
 
@@ -232,7 +293,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         }
         if (engine.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
             model.setSpeaking(false)
-            model.notice("系统缺少对应语言的语音。")
+            model.notice("A voice for this language is unavailable.")
             return
         }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -252,7 +313,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
             val queue = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             if (engine.speak(chunk, queue, null, id) != TextToSpeech.SUCCESS) {
                 stopSpeech()
-                model.notice("朗读失败，请重试。")
+                model.notice("Unable to read aloud. Try again.")
                 return
             }
         }
@@ -264,14 +325,14 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
             if (utteranceId.substringBefore('-') != speechRevision.toString()) return@runOnUiThread
             if (failed) {
                 stopSpeech()
-                model.notice("朗读失败，请重试。")
+                model.notice("Unable to read aloud. Try again.")
             } else if ('-' !in utteranceId) {
                 model.setSpeaking(false)
             }
         }
     }
 
-    private fun stopSpeech() {
+    protected fun stopSpeech() {
         speechRevision += 1
         speech?.stop()
         model.setSpeaking(false)

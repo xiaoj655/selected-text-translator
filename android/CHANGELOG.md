@@ -1,5 +1,11 @@
 # Android 更新日志
 
+## 0.1.4
+
+- Open Reading to import an article from a shared browser link, paste a link, or add article text. Articles and reading position are saved on the device.
+- Tap a word for its meaning in context or switch to Sentence for a plain-English paraphrase and color-coded grammar. Read selections aloud and save them to Saved expressions.
+- The Android interface, settings, and update messages now use English.
+
 ## 0.1.3
 
 - 正式签名版打开工作台时自动检查更新，设置页也可手动检查。下载后通过 Android 安装界面确认覆盖安装。
