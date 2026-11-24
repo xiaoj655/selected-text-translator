@@ -303,6 +303,10 @@ internal class ReaderViewModel(
         state.update { it.copy(activeArticle = null) }
     }
 
+    fun readingPosition(article: ReadingArticle): ArticlePosition = pendingPositions[article.id]
+        ?: library.articles.value.firstOrNull { it.id == article.id }?.position
+        ?: article.position
+
     fun savePosition(articleId: String, position: ArticlePosition) {
         if (pendingPositions[articleId] == position) return
         pendingPositions[articleId] = position
@@ -329,7 +333,8 @@ internal class ReaderViewModel(
         if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection } == true) return
         dismissResult()
         state.update { it.copy(result = ReaderResult(blockIndex, selection)) }
-        if (selection.kind == ArticleSelectionKind.SENTENCE) analyzeSentence() else retryMeaning()
+        if (selection.kind != ArticleSelectionKind.SENTENCE) retryMeaning()
+        if (selection.kind != ArticleSelectionKind.PHRASE) analyzeSentence()
     }
 
     fun dismissResult() {

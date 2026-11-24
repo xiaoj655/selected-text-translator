@@ -195,8 +195,12 @@ fun LookupScreen(
                 if (wide) WorkspaceRail(state.page, actions::open)
             }
             if (state.page == LookupPage.READING) {
-                workspaceState.SaveableStateProvider(LookupPage.READING.name) { reading(navigation, rail) }
-                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                    Box(Modifier.fillMaxSize()) {
+                        workspaceState.SaveableStateProvider(LookupPage.READING.name) { reading(navigation, rail) }
+                        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+                    }
+                }
             } else {
                 val dualPane = wide && state.page == LookupPage.LOOKUP
                 Row(Modifier.fillMaxSize()) {

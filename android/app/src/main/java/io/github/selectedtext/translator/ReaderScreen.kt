@@ -22,9 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -81,7 +81,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.net.URI
-import kotlinx.coroutines.flow.filterNotNull
 
 @Composable
 internal fun ReaderScreen(
@@ -381,7 +380,6 @@ private fun ArticleContent(
     var phraseAnchor by remember { mutableStateOf<ReadingTap?>(null) }
     var phrase by remember { mutableStateOf<ReadingTap?>(null) }
     var optionsOpen by remember { mutableStateOf(false) }
-    val list = rememberLazyListState(article.position.index, article.position.offset)
     var tap by remember { mutableStateOf<ReadingTap?>(null) }
     var panelHeight by remember { mutableIntStateOf(0) }
     val resultScroll = key(result?.blockIndex, result?.selection) { rememberScrollState() }
@@ -408,36 +406,49 @@ private fun ArticleContent(
         if (phraseAnchor != null) cancelPhrase() else back()
     }
     BackHandler(onBack = closeOrBack)
-    LaunchedEffect(result?.selection, result?.blockIndex, panelHeight) {
-        val selection = result ?: return@LaunchedEffect
-        val hit = tap?.takeIf { it.selection == selection.selection && it.blockIndex == selection.blockIndex }
-            ?: return@LaunchedEffect
-        if (panelHeight == 0 || list.isScrollInProgress) return@LaunchedEffect
-        val index = hit.blockIndex + 1
-        val layout = list.layoutInfo
-        val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
-        if (item != null) {
-            val hiddenBy = item.offset + hit.line.bottom + lineMargin - layout.viewportEndOffset
-            if (hiddenBy > 0) list.scrollBy(hiddenBy)
-        } else if (index > (layout.visibleItemsInfo.lastOrNull()?.index ?: index)) {
-            list.scrollToItem(index, (hit.line.top - lineMargin).toInt().coerceAtLeast(0))
-        }
-    }
-    LaunchedEffect(list) {
-        snapshotFlow {
-            if (list.isScrollInProgress || list.layoutInfo.totalItemsCount == 0) null
-            else ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)
-        }.filterNotNull().collect { reader.savePosition(article.id, it) }
-    }
-    DisposableEffect(list) {
-        onDispose { reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)) }
-    }
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val sideResult = maxWidth >= 900.dp && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val resultWidth = if (sideResult) (maxWidth * 0.34f).coerceIn(304.dp, 360.dp) else 0.dp
         val bodyWidth = minOf(664.dp, maxWidth - resultWidth)
         val resultHeight = maxHeight * 0.48f
         val bodyWidthPx = with(LocalDensity.current) { bodyWidth.roundToPx() }
+        // A taller viewport can temporarily clamp the first visible paragraph near the end.
+        // Start each new viewport from the last position reached by scrolling.
+        val list = remember(bodyWidthPx, constraints.maxHeight, fontSize) {
+            val position = reader.readingPosition(article)
+            LazyListState(position.index, position.offset)
+        }
+        LaunchedEffect(list, result?.selection, result?.blockIndex, panelHeight) {
+            val selection = result ?: return@LaunchedEffect
+            val hit = tap?.takeIf { it.selection == selection.selection && it.blockIndex == selection.blockIndex }
+                ?: return@LaunchedEffect
+            if (sideResult || panelHeight == 0 || list.isScrollInProgress) return@LaunchedEffect
+            val index = hit.blockIndex + 1
+            val layout = list.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
+            if (item != null) {
+                val hiddenBy = item.offset + hit.line.bottom + lineMargin - layout.viewportEndOffset
+                if (hiddenBy > 0) list.scrollBy(hiddenBy)
+            } else if (index > (layout.visibleItemsInfo.lastOrNull()?.index ?: index)) {
+                list.scrollToItem(index, (hit.line.top - lineMargin).toInt().coerceAtLeast(0))
+            }
+        }
+        LaunchedEffect(list) {
+            var wasScrolling = false
+            snapshotFlow { list.isScrollInProgress }.collect { scrolling ->
+                if (wasScrolling && !scrolling) {
+                    reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
+                }
+                wasScrolling = scrolling
+            }
+        }
+        DisposableEffect(list) {
+            onDispose {
+                if (list.isScrollInProgress) {
+                    reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
+                }
+            }
+        }
         val scrollMetrics = rememberArticleScrollMetrics(
             bodyWidthPx, article.title, source, article.blocks, titleStyle, sourceStyle, bodyStyle, headingStyle,
         )
@@ -672,7 +683,7 @@ private fun ReaderResultPanel(
                     }
                 }
                 result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
-                if (meaningSelection && result.grammar == null && !result.grammarBusy && result.grammarError == null) {
+                if (selection.kind == ArticleSelectionKind.PHRASE && result.grammar == null && !result.grammarBusy && result.grammarError == null) {
                     TextButton(onClick = reader::analyzeSentence, contentPadding = PaddingValues(horizontal = 2.dp)) {
                         Text("Analyze sentence")
                     }

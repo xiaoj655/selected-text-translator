@@ -1,5 +1,11 @@
 # Android 更新日志
 
+## 0.2.6
+
+- Keep reading text and controls legible in Android dark mode.
+- Preserve the reading position when switching between window sizes and orientations.
+- Tap a word to look up its meaning and analyze the sentence structure in parallel.
+
 ## 0.2.5
 
 - On wide screens, read the original text and translation or guided explanation side by side.
