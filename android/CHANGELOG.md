@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.2
+
+- See your place in an article with a slim scrollbar that appears while scrolling and fades when you stop.
+
 ## 0.2.1
 
 - Switch between Translate, Reading, and Saved directly from the bottom navigation. The article view keeps the full screen for reading.

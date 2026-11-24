@@ -1,6 +1,8 @@
 package io.github.selectedtext.translator
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -56,7 +59,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -74,6 +81,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.net.URI
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 
 @Composable
@@ -447,7 +456,7 @@ private fun ArticleContent(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
+                Modifier.weight(1f).fillMaxWidth().articleScrollbar(list),
                 state = list,
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -520,6 +529,52 @@ private fun ArticleContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun Modifier.articleScrollbar(list: LazyListState): Modifier {
+    val opacity = remember(list) { Animatable(0f) }
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+    LaunchedEffect(list) {
+        snapshotFlow { list.isScrollInProgress }.collectLatest { scrolling ->
+            if (scrolling) {
+                opacity.snapTo(1f)
+            } else if (opacity.value > 0f) {
+                delay(400)
+                opacity.animateTo(0f, tween(durationMillis = 250))
+            }
+        }
+    }
+
+    return drawWithContent {
+        drawContent()
+        val alpha = opacity.value
+        if (alpha == 0f || (!list.canScrollForward && !list.canScrollBackward)) return@drawWithContent
+        val indicator = list.scrollIndicatorState ?: return@drawWithContent
+        val contentHeight = indicator.contentSize
+        val viewportHeight = indicator.viewportSize
+        val trackInset = 4.dp.toPx()
+        val trackHeight = size.height - 2 * trackInset
+        if (contentHeight == Int.MAX_VALUE || viewportHeight <= 0 || contentHeight <= viewportHeight || trackHeight <= 0f) {
+            return@drawWithContent
+        }
+
+        val thumbWidth = 3.dp.toPx()
+        val thumbHeight = (trackHeight * viewportHeight / contentHeight)
+            .coerceIn(minOf(24.dp.toPx(), trackHeight), trackHeight)
+        val progress = when {
+            !list.canScrollBackward -> 0f
+            !list.canScrollForward -> 1f
+            else -> (indicator.scrollOffset.toFloat() / (contentHeight - viewportHeight)).coerceIn(0f, 1f)
+        }
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width - 5.dp.toPx() - thumbWidth, trackInset + (trackHeight - thumbHeight) * progress),
+            size = Size(thumbWidth, thumbHeight),
+            cornerRadius = CornerRadius(thumbWidth / 2),
+            alpha = alpha,
+        )
     }
 }
 
