@@ -6,9 +6,11 @@ Android 8.0（API 26）及以上可用。首次打开，在设置中填写服务
 
 外部划词交给应用的是选中的文字。需要结合完整语境时，可以选中整句或粘贴一段原文。模型请求发送原文到用户配置的服务。收藏保存在手机本地，API Key 使用 Android Keystore 管理的密钥加密。
 
-## 安装预览版
+## 安装与更新
 
-在项目的 GitHub Releases 查找 `android-v*` 预发布版本，下载 APK。文件名以 `-preview.apk` 结尾时，安装的是「Selected 翻译预览版」，应用 ID 为 `io.github.selectedtext.translator.debug`。安装包使用 CI 生成的调试签名。不同构建机的调试签名可能不同，同包名且签名不同时，Android 要求先卸载旧包，卸载会清除本地应用数据。正式签名包的应用 ID 为 `io.github.selectedtext.translator`，独立安装并保存数据。
+首次安装时，在项目的 GitHub Releases 打开 `android-v*` 正式发布，下载 `selected-text-translator-android-<version>.apk`。正式版的应用 ID 为 `io.github.selectedtext.translator`。此前安装的预览版使用独立应用 ID，其设置和收藏依然保留在旧应用中。
+
+打开正式版工作台时，应用会自动检查 GitHub Releases。确认已是最新版本后，间隔 24 小时再自动检查。设置页可随时手动检查。发现新版本后，点「下载更新」。校验完成后点「安装更新」，在 Android 安装界面确认覆盖安装。首次可能需要在 Android 设置中允许 Selected 安装应用。
 
 ## 开发与验证
 
@@ -24,7 +26,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 在设备上可验证 Chrome 网页划词、另一应用分享纯文本、粘贴中英文、翻译及引导、复制朗读和收藏。检查退出结果页后回到原应用，并在重新打开 Android 应用时核对收藏条目。
 
-在 `app/build.gradle` 中更新 `versionName`，并递增 `versionCode`。发布标签使用 `android-v<version>`。CI 验证、打包并核对 APK 的签名与版本，随后发布带 SHA-256 校验文件的 GitHub 预发行版。
+在 `app/build.gradle` 中更新 `versionName`，并递增 `versionCode`。发布标签使用 `android-v<version>`。CI 发布正式签名 APK、SHA-256 校验文件和应用内更新使用的 `update.json`。
 
-
-配置 GitHub Actions 的 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD` 后，标签构建使用同一发布密钥签名，便于后续覆盖升级。这四项都留空时，发布使用调试签名的预览包。
+首次发布前，在 GitHub 仓库的 Actions secrets 中配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。后续发布应沿用同一 Android 签名密钥，才能覆盖升级。

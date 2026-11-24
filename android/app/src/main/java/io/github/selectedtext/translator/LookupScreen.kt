@@ -114,7 +114,12 @@ fun SelectedTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun LookupScreen(state: LookupUiState, actions: LookupActions, external: Boolean) {
+fun LookupScreen(
+    state: LookupUiState,
+    actions: LookupActions,
+    external: Boolean,
+    updateControls: @Composable (compact: Boolean) -> Unit,
+) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) {
         val notice = state.notice ?: return@LaunchedEffect
@@ -150,6 +155,7 @@ fun LookupScreen(state: LookupUiState, actions: LookupActions, external: Boolean
                     external = true,
                     snackbar = snackbar,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth().heightIn(max = heightLimit),
+                    updateControls = {},
                 )
             }
         }
@@ -168,6 +174,7 @@ fun LookupScreen(state: LookupUiState, actions: LookupActions, external: Boolean
                 external = false,
                 snackbar = snackbar,
                 modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
+                updateControls = updateControls,
             )
         }
     }
@@ -180,6 +187,7 @@ private fun LookupPanel(
     external: Boolean,
     snackbar: SnackbarHostState,
     modifier: Modifier,
+    updateControls: @Composable (compact: Boolean) -> Unit,
 ) {
     val title = when (state.page) {
         LookupPage.SETTINGS -> "模型设置"
@@ -220,8 +228,10 @@ private fun LookupPanel(
             }
             val pageModifier = Modifier.weight(1f, fill = !external).fillMaxWidth()
             when (state.page) {
-                LookupPage.LOOKUP -> LookupContent(state, actions, external, pageModifier)
-                LookupPage.SETTINGS -> ModelSettings(state.config, state.settingsError, actions, pageModifier)
+                LookupPage.LOOKUP -> LookupContent(state, actions, external, pageModifier) { updateControls(true) }
+                LookupPage.SETTINGS -> ModelSettings(state.config, state.settingsError, actions, pageModifier) {
+                    updateControls(false)
+                }
                 LookupPage.SAVED -> Expressions(state.saved, actions, pageModifier)
             }
             SnackbarHost(snackbar, Modifier.padding(horizontal = 16.dp))
@@ -235,6 +245,7 @@ private fun LookupContent(
     actions: LookupActions,
     external: Boolean,
     modifier: Modifier,
+    updateControls: @Composable () -> Unit,
 ) {
     val result = state.result
     var visibleHints by rememberSaveable(state.input, state.requestRevision) { mutableIntStateOf(1) }
@@ -255,6 +266,7 @@ private fun LookupContent(
                 if (state.input.isNotBlank()) ExternalSource(state.input)
             } else {
                 Text("翻译", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                updateControls()
                 Composer(state, actions)
             }
 
@@ -507,6 +519,7 @@ private fun ModelSettings(
     error: String?,
     actions: LookupActions,
     modifier: Modifier,
+    updateControls: @Composable () -> Unit,
 ) {
     var baseUrl by rememberSaveable(config.baseUrl) { mutableStateOf(config.baseUrl) }
     var apiKey by remember(config.apiKey) { mutableStateOf(config.apiKey) }
@@ -578,6 +591,7 @@ private fun ModelSettings(
         ) {
             Text("保存设置")
         }
+        updateControls()
     }
 }
 

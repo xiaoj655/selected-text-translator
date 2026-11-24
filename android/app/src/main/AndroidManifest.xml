@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -17,6 +18,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Selected"
         android:usesCleartextTraffic="false">
+        <provider
+            android:name=".UpdateFileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+
         <activity
             android:name=".WorkspaceActivity"
             android:exported="true"
