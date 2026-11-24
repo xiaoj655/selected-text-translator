@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -17,6 +20,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -30,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,12 +57,19 @@ internal fun ReadingDiscover(
 
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f)) {
-                TextButton(onClick = { menu = true }) {
-                    Text(selectedSource?.name ?: "All sources", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { menu = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(
+                        selectedSource?.name ?: "All sources",
+                        Modifier.weight(1f, fill = false),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(painterResource(R.drawable.ic_chevron_down), null, Modifier.size(16.dp))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("All sources") }, onClick = { selectedId = null; menu = false })
@@ -79,7 +91,12 @@ internal fun ReadingDiscover(
                     }
                 }
             }
-            TextButton(onClick = { reader.refreshFeeds(selectedSource?.id) }, enabled = !state.refreshingFeeds) { Text("Refresh") }
+            IconAction(
+                R.drawable.ic_refresh,
+                "Refresh sources",
+                { reader.refreshFeeds(selectedSource?.id) },
+                enabled = !state.refreshingFeeds,
+            )
         }
         val errors = state.feedErrors.filterKeys { selectedSource == null || it == selectedSource.id }
         if (errors.isNotEmpty()) {
@@ -111,6 +128,7 @@ internal fun ReadingDiscover(
                 }
                 items(articles, key = { "${it.sourceId}:${it.url}" }) { article ->
                     val source = state.feeds.firstOrNull { it.id == article.sourceId }
+                    val byline = listOfNotNull(source?.name, article.publishedLabel()).joinToString(" · ")
                     Column(
                         Modifier.fillMaxWidth().clickable(enabled = !state.importing) {
                             if (article.hasFullText || state.articles.any { it.sourceUrl == article.url }) {
@@ -118,18 +136,33 @@ internal fun ReadingDiscover(
                             } else {
                                 selectedArticleUrl = article.url
                             }
-                        }.padding(vertical = 15.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        }.padding(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
-                            listOfNotNull(source?.name, article.publishedLabel()).joinToString(" · "),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            article.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        Text(article.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (byline.isNotBlank()) {
+                            Text(
+                                byline,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         if (article.excerpt.isNotBlank()) {
-                            Text(article.excerpt, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                article.excerpt,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

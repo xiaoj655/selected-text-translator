@@ -1,5 +1,12 @@
 # Android 更新日志
 
+## 0.2.1
+
+- Switch between Translate, Reading, and Saved directly from the bottom navigation. The article view keeps the full screen for reading.
+- Start a translation or a guided explanation from the text box. Read aloud, copy, and save next to the result.
+- Scan Discover by headline and filter sources from a clearly marked menu.
+- Article lookups put the meaning or plain-English paraphrase first. Expand grammar details when needed, with structure highlights in the article itself.
+
 ## 0.2.0
 
 - Discover includes nine built-in reading sources shared with desktop. Add your own RSS or Atom feeds, filter by source, and revisit cached entries offline.

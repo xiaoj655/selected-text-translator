@@ -1,6 +1,7 @@
 package io.github.selectedtext.translator
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -8,20 +9,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -30,13 +33,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -83,7 +86,7 @@ internal fun ReaderScreen(
     paste: () -> String?,
     onSettings: () -> Unit,
     onReadingSettings: () -> Unit,
-    onExit: () -> Unit,
+    libraryNavigation: @Composable () -> Unit,
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
     val article = state.activeArticle
@@ -98,20 +101,20 @@ internal fun ReaderScreen(
     }
     val back = {
         stopSpeech()
-        when {
-            state.result != null -> reader.dismissResult()
-            article != null -> reader.closeArticle()
-            else -> onExit()
-        }
+        if (state.result != null) reader.dismissResult() else reader.closeArticle()
     }
-    BackHandler(enabled = article != null, onBack = back)
     if (article == null) {
-        libraryState.SaveableStateProvider("reading-library") {
-            ReadingLibrary(state, reader, onExit, onReadingSettings) {
-                reader.clearImportError()
-                sharedDraft = ""
-                adding = true
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                libraryState.SaveableStateProvider("reading-library") {
+                    ReadingLibrary(state, reader, onReadingSettings) {
+                        reader.clearImportError()
+                        sharedDraft = ""
+                        adding = true
+                    }
+                }
             }
+            libraryNavigation()
         }
     } else {
         key(article.id) {
@@ -138,21 +141,29 @@ internal fun ReaderScreen(
 private fun ReadingLibrary(
     state: ReaderUiState,
     reader: ReaderViewModel,
-    onExit: () -> Unit,
     onReadingSettings: () -> Unit,
     onAdd: () -> Unit,
 ) {
     var removing by remember { mutableStateOf<ReadingArticle?>(null) }
     var discover by rememberSaveable { mutableStateOf(true) }
+    val tabState = rememberSaveableStateHolder()
+    val emptyLibrary = !discover && state.articles.isEmpty() && !state.loading &&
+        !state.importing && state.libraryError == null
     LaunchedEffect(discover) {
         if (discover) reader.loadFeeds()
     }
     Column(Modifier.fillMaxSize()) {
-        ReadingHeader("Reading", onExit) {
-            TextButton(onClick = onAdd, enabled = !state.importing) { Text("Add article") }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Reading", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold)
+            if (!emptyLibrary) AddArticleButton(onAdd, enabled = !state.importing)
             IconAction(R.drawable.ic_settings, "Reading settings", onReadingSettings)
         }
-        Box(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Box(Modifier.padding(horizontal = 12.dp)) {
             ReadingChoices("Discover", "My articles", discover) { discover = it }
         }
         if (state.loading || state.importing) {
@@ -170,34 +181,38 @@ private fun ReadingLibrary(
                 TextButton(onClick = reader::load) { Text("Retry") }
             }
         }
-        if (discover) {
-            ReadingDiscover(state, reader)
-        } else if (state.articles.isEmpty() && !state.loading && !state.importing) {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Your reading list", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+        when {
+            discover -> tabState.SaveableStateProvider("discover") { ReadingDiscover(state, reader) }
+            emptyLibrary -> Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("No articles yet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Add a link, paste an article, or share a page to Selected from your browser.",
-                    style = MaterialTheme.typography.bodyLarge,
+                    "Import a link, paste article text, or share a page from your browser.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                AddArticleButton(onAdd)
             }
-        } else {
-            LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp)) {
-                items(state.articles, key = { it.id }) { article ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(
-                            Modifier.weight(1f).clickable(enabled = !state.importing) { reader.open(article) }
-                                .padding(vertical = 14.dp, horizontal = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(article.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            val source = article.sourceLabel()
-                            val status = if (article.position != ArticlePosition()) "$source · Resume reading" else source
-                            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> tabState.SaveableStateProvider("my-articles") {
+                LazyColumn(contentPadding = PaddingValues(horizontal = 24.dp)) {
+                    items(state.articles, key = { it.id }) { article ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(
+                                Modifier.weight(1f).clickable(enabled = !state.importing) { reader.open(article) }
+                                    .padding(vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(article.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                val source = article.sourceLabel()
+                                val status = if (article.position != ArticlePosition()) "$source · Resume reading" else source
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconAction(R.drawable.ic_remove, "Remove ${article.title}", { removing = article })
                         }
-                        IconAction(R.drawable.ic_remove, "Remove ${article.title}", { removing = article })
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }
@@ -219,16 +234,14 @@ private fun ReadingLibrary(
 }
 
 @Composable
-private fun ReadingHeader(title: String, back: () -> Unit, trailing: @Composable () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 6.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun AddArticleButton(onClick: () -> Unit, enabled: Boolean = true) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        IconAction(R.drawable.ic_back, "Back", back)
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        trailing()
+        Icon(painterResource(R.drawable.ic_add_article), null, Modifier.padding(end = 6.dp).size(16.dp))
+        Text("Add article")
     }
 }
 
@@ -310,15 +323,31 @@ private fun AddArticleSheet(
 
 @Composable
 internal fun ReadingChoices(first: String, second: String, firstSelected: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
-    SingleChoiceSegmentedButtonRow {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.selectableGroup()) {
         listOf(first, second).forEachIndexed { index, label ->
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index, 2),
-                onClick = { change(index == 0) },
-                selected = firstSelected == (index == 0),
-                enabled = enabled,
-                icon = {},
-            ) { Text(label, maxLines = 1) }
+            val selected = firstSelected == (index == 0)
+            val color = if (selected) colors.onSurface else colors.onSurfaceVariant
+            Box(
+                Modifier.heightIn(min = 48.dp).selectable(
+                    selected = selected,
+                    enabled = enabled,
+                    role = Role.Tab,
+                    onClick = { change(index == 0) },
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    Modifier.background(if (selected) colors.surfaceContainer else Color.Transparent, CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (enabled) color else color.copy(alpha = 0.38f),
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -380,7 +409,7 @@ private fun ArticleContent(
         val resultHeight = maxHeight * 0.48f
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconAction(R.drawable.ic_back, "Back", closeOrBack)
@@ -420,14 +449,14 @@ private fun ArticleContent(
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 state = list,
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 36.dp),
+                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 item(key = "title") {
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(article.sourceLabel(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(article.title, style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.SemiBold)
+                        Text(article.sourceLabel(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
@@ -577,19 +606,25 @@ private fun ReaderResultPanel(
                 )
                 IconAction(R.drawable.ic_close, "Close result", dismiss)
             }
-            if (result.meaningBusy || result.grammarBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (result.meaningBusy || result.grammarBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
             key(result.blockIndex, selection) {
                 Column(
                     Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-                        .padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (result.meaningBusy) Text("Looking up…", style = MaterialTheme.typography.bodyMedium)
                     result.meaning?.let { meaning ->
-                        if (meaning.phonetic.isNotBlank()) Text(meaning.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(meaning.text, style = MaterialTheme.typography.bodyLarge)
-                        if (meaning.contextualAnalysis.isNotBlank()) {
-                            Text(meaning.contextualAnalysis, style = MaterialTheme.typography.bodyMedium)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(meaning.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            if (meaning.phonetic.isNotBlank()) {
+                                Text(meaning.phonetic, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (meaning.contextualAnalysis.isNotBlank()) {
+                                Text(meaning.contextualAnalysis, style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
@@ -600,9 +635,11 @@ private fun ReaderResultPanel(
                     }
                     if (result.grammarBusy) Text("Analyzing the sentence…", style = MaterialTheme.typography.bodyMedium)
                     result.grammarError?.let { ReaderRetry(it, reader::retryGrammar, onSettings) }
-                    result.grammar?.let { GrammarExplanation(selection.sentence, it) }
+                    result.grammar?.let { analysis ->
+                        if (meaningSelection && result.meaning != null) HorizontalDivider()
+                        GrammarExplanation(selection.sentence, analysis)
+                    }
                     result.saveError?.let { ReaderError(it) }
-                    Spacer(Modifier.height(2.dp))
                 }
             }
         }
@@ -611,31 +648,23 @@ private fun ReaderResultPanel(
 
 @Composable
 private fun GrammarExplanation(sentence: String, analysis: ArticleSentenceAnalysis) {
-    val roles = analysis.structure.map { it.role }.distinct()
-    val color = MaterialTheme.colorScheme.onSurface
-    val marked = remember(sentence, analysis.structure, color) {
-        buildAnnotatedString {
-            append(sentence)
-            analysis.structure.forEach { span ->
-                addStyle(SpanStyle(background = grammarColor(span.role), color = color), span.start, span.end)
-            }
+    var detailsOpen by rememberSaveable { mutableStateOf(false) }
+    Text(analysis.paraphrase, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+    if (analysis.details.isNotEmpty()) {
+        TextButton(onClick = { detailsOpen = !detailsOpen }, contentPadding = PaddingValues(horizontal = 2.dp)) {
+            Text(if (detailsOpen) "Hide grammar details" else "Grammar details")
         }
-    }
-    Text(marked, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Serif, lineHeight = 25.sp)
-    if (roles.isNotEmpty()) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            roles.forEach { role ->
-                Surface(color = grammarColor(role), contentColor = color, shape = MaterialTheme.shapes.small) {
-                    Text(role.name.lowercase().replaceFirstChar(Char::uppercaseChar), Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall)
+        if (detailsOpen) {
+            analysis.details.forEach { detail ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (detail.text.trim() != sentence.trim()) {
+                        Text(detail.text, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text(detail.explanation, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-    }
-    Text(analysis.paraphrase, style = MaterialTheme.typography.bodyLarge)
-    analysis.details.forEach { detail ->
-        Text(detail.text, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-        Text(detail.explanation, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

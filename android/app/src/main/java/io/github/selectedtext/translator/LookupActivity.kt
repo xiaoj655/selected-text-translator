@@ -66,13 +66,13 @@ class WorkspaceActivity : LookupActivity(external = false) {
     }
 
     @Composable
-    override fun Reading(speaking: Boolean) {
+    override fun Reading(speaking: Boolean, libraryNavigation: @Composable () -> Unit) {
         val state by reader.uiState.collectAsStateWithLifecycle()
         ReaderScreen(
             state, reader, speaking, ::speakOrStop, ::stopSpeech, ::clipboardText,
             onSettings = { openSettings() },
             onReadingSettings = { openSettings(reading = true) },
-            onExit = ::backPage,
+            libraryNavigation = libraryNavigation,
         )
     }
 
@@ -165,7 +165,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
             SelectedTheme {
                 LookupScreen(
                     state, actions, external,
-                    reading = { Reading(state.speaking) },
+                    reading = { libraryNavigation -> Reading(state.speaking, libraryNavigation) },
                     readingSettings = if (hasReadingSettings) ({ modifier -> ReadingSettings(modifier) }) else null,
                     preferReadingSettings = preferReadingSettings,
                 ) { compact ->
@@ -179,7 +179,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     protected open fun UpdateControls(compact: Boolean) = Unit
 
     @Composable
-    protected open fun Reading(speaking: Boolean) = Unit
+    protected open fun Reading(speaking: Boolean, libraryNavigation: @Composable () -> Unit) = Unit
 
     protected open val hasReadingSettings = false
 
