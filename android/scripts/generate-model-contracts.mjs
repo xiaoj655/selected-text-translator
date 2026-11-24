@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { buildGenericRequest, buildQwenMtRequest, isQwenMtStreamingModel } from '../../src/translation-contracts.js'
 import { buildReadingRequest } from '../../src/reading-support.js'
@@ -20,6 +20,10 @@ articleMeaning.messages[0].content = [
 
 const contracts = {
   translation: buildGenericRequest({ model, text }),
+  translationByLanguage: {
+    Chinese: buildGenericRequest({ model, text, targetLanguage: 'Simplified Chinese' }),
+    English: buildGenericRequest({ model, text, targetLanguage: 'English' }),
+  },
   guide: buildReadingRequest({ model, text }),
   articleMeaning,
   articleExplanation: buildReadingRequest({ model, text, kind: 'article-explanation', targetLanguage: 'English' }),
@@ -29,3 +33,4 @@ const contracts = {
 
 await mkdir(outputDirectory, { recursive: true })
 await writeFile(resolve(outputDirectory, 'model-contracts.json'), `${JSON.stringify(contracts, null, 2)}\n`)
+await copyFile(new URL('../../src/reading-source-catalog.json', import.meta.url), resolve(outputDirectory, 'reading-source-catalog.json'))

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,10 +58,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,22 +122,24 @@ fun LookupScreen(
     actions: LookupActions,
     external: Boolean,
     reading: @Composable () -> Unit,
+    readingSettings: (@Composable (Modifier) -> Unit)? = null,
+    preferReadingSettings: Boolean = false,
     updateControls: @Composable (compact: Boolean) -> Unit,
 ) {
     val snackbar = remember { SnackbarHostState() }
+    val readingState = rememberSaveableStateHolder()
     LaunchedEffect(state.notice) {
         val notice = state.notice ?: return@LaunchedEffect
         snackbar.showSnackbar(notice)
         actions.clearNotice()
     }
     if (state.page == LookupPage.READING && !external) {
-        Box(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding(),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
-                reading()
-                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Box(Modifier.safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+                Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+                    readingState.SaveableStateProvider("reading", reading)
+                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+                }
             }
         }
         return
@@ -188,6 +193,8 @@ fun LookupScreen(
                 snackbar = snackbar,
                 modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
                 updateControls = updateControls,
+                readingSettings = readingSettings,
+                preferReadingSettings = preferReadingSettings,
             )
         }
     }
@@ -201,9 +208,11 @@ private fun LookupPanel(
     snackbar: SnackbarHostState,
     modifier: Modifier,
     updateControls: @Composable (compact: Boolean) -> Unit,
+    readingSettings: (@Composable (Modifier) -> Unit)? = null,
+    preferReadingSettings: Boolean = false,
 ) {
     val title = when (state.page) {
-        LookupPage.SETTINGS -> "Model settings"
+        LookupPage.SETTINGS -> "Settings"
         LookupPage.SAVED -> "Saved expressions"
         LookupPage.READING -> "Reading"
         LookupPage.LOOKUP -> if (external) "Translate selection" else "Selected"
@@ -244,8 +253,20 @@ private fun LookupPanel(
             val pageModifier = Modifier.weight(1f, fill = !external).fillMaxWidth()
             when (state.page) {
                 LookupPage.LOOKUP -> LookupContent(state, actions, external, pageModifier) { updateControls(true) }
-                LookupPage.SETTINGS -> ModelSettings(state.config, state.settingsError, actions, pageModifier) {
-                    updateControls(false)
+                LookupPage.SETTINGS -> Column(pageModifier) {
+                    var models by rememberSaveable(preferReadingSettings) { mutableStateOf(!preferReadingSettings) }
+                    if (readingSettings != null) {
+                        Box(Modifier.padding(horizontal = 24.dp)) {
+                            ReadingChoices("Models", "Reading", models) { models = it }
+                        }
+                    }
+                    if (models || readingSettings == null) {
+                        ModelSettings(state.config, state.settingsError, state.connectionTest, actions, Modifier.weight(1f)) {
+                            updateControls(false)
+                        }
+                    } else {
+                        readingSettings(Modifier.weight(1f))
+                    }
                 }
                 LookupPage.SAVED -> Expressions(state.saved, actions, pageModifier)
                 LookupPage.READING -> Unit
@@ -306,6 +327,19 @@ private fun LookupContent(
                 !guideOpen && state.partial.isNotBlank() && result == null ->
                     TranslationText(state.partial, "")
 
+                result != null && guideOpen && result.parts.isNotEmpty() -> {
+                    result.parts.forEachIndexed { index, part ->
+                        key(state.requestRevision, index) {
+                            var partHints by rememberSaveable { mutableIntStateOf(1) }
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                ExternalSource(part.source)
+                                GuideText(part.result, partHints, revealed, { partHints++ }, { revealed = true })
+                            }
+                        }
+                    }
+                }
+
                 result != null && guideOpen -> GuideText(
                     result,
                     visibleHints,
@@ -316,12 +350,9 @@ private fun LookupContent(
 
                 result != null -> TranslationText(result.text, result.phonetic)
             }
-            if (!external) LookupButtons(state, actions, canCopyResult)
         }
-        if (external) {
-            Box(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
-                LookupButtons(state, actions, canCopyResult, external = true)
-            }
+        Box(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
+            LookupButtons(state, actions, canCopyResult, external)
         }
     }
 }
@@ -374,13 +405,13 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
             })
             Spacer(Modifier.weight(1f))
             Button(
-                onClick = ::submit,
-                enabled = !state.busy && (!state.configured || state.input.isNotBlank()),
+                onClick = { if (state.busy) actions.stopLookup() else submit() },
+                enabled = state.busy || !state.configured || state.input.isNotBlank(),
                 contentPadding = PaddingValues(horizontal = 16.dp),
             ) {
-                Text(if (state.configured) "Translate" else "Set up a model")
+                Text(if (state.busy) "Stop" else if (state.configured) "Translate" else "Set up a model")
                 Spacer(Modifier.width(6.dp))
-                SelectedIcon(R.drawable.ic_arrow_up, size = 16)
+                SelectedIcon(if (state.busy) R.drawable.ic_stop else R.drawable.ic_arrow_up, size = 16)
             }
         }
     }
@@ -479,6 +510,7 @@ private fun LookupButtons(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             when {
+                state.busy && external -> TextButton(onClick = actions::stopLookup) { Text("Stop") }
                 state.error != null -> TextButton(onClick = { actions.lookup(state.mode) }, enabled = !state.busy) { Text("Retry") }
                 state.mode == LookupMode.GUIDE -> TextButton(
                     onClick = { actions.lookup(LookupMode.TRANSLATE) },
@@ -533,6 +565,7 @@ private fun TextAction(@DrawableRes icon: Int, label: String, onClick: () -> Uni
 private fun ModelSettings(
     config: ProviderConfig,
     error: String?,
+    connectionTest: ModelConnectionTest?,
     actions: LookupActions,
     modifier: Modifier,
     updateControls: @Composable () -> Unit,
@@ -542,6 +575,7 @@ private fun ModelSettings(
     var translationModel by rememberSaveable(config.translationModel) { mutableStateOf(config.translationModel) }
     var learningModel by rememberSaveable(config.learningModel) { mutableStateOf(config.learningModel) }
     val focus = LocalFocusManager.current
+    fun draft() = ProviderConfig(baseUrl.trim(), apiKey.trim(), translationModel.trim(), learningModel.trim())
     val fieldColors = OutlinedTextFieldDefaults.colors(
         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
         unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -553,7 +587,7 @@ private fun ModelSettings(
     ) {
         OutlinedTextField(
             baseUrl,
-            { baseUrl = it },
+            { baseUrl = it; actions.clearConnectionTest() },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("API URL") },
             singleLine = true,
@@ -563,7 +597,7 @@ private fun ModelSettings(
         )
         OutlinedTextField(
             apiKey,
-            { apiKey = it },
+            { apiKey = it; actions.clearConnectionTest() },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("API Key") },
             singleLine = true,
@@ -574,7 +608,7 @@ private fun ModelSettings(
         )
         OutlinedTextField(
             translationModel,
-            { translationModel = it },
+            { translationModel = it; actions.clearConnectionTest() },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Translation model") },
             singleLine = true,
@@ -584,7 +618,7 @@ private fun ModelSettings(
         )
         OutlinedTextField(
             learningModel,
-            { learningModel = it },
+            { learningModel = it; actions.clearConnectionTest() },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Learning model (optional)") },
             supportingText = { Text("Reading and guided explanations use a general-purpose model.") },
@@ -596,16 +630,21 @@ private fun ModelSettings(
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error)
         }
-        Button(
-            onClick = {
-                focus.clearFocus()
-                actions.saveSettings(
-                    ProviderConfig(baseUrl.trim(), apiKey.trim(), translationModel.trim(), learningModel.trim()),
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Save settings")
+        if (connectionTest?.busy == true) LinearProgressIndicator(Modifier.fillMaxWidth())
+        connectionTest?.message?.let {
+            Text(it, color = if (connectionTest.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Button(onClick = { focus.clearFocus(); actions.saveSettings(draft()) }) { Text("Save") }
+            OutlinedButton(
+                onClick = { focus.clearFocus(); actions.testConnection(draft()) },
+                enabled = connectionTest?.busy != true,
+            ) { Text(if (connectionTest?.busy == true) "Testing…" else "Test connection") }
+            if (learningModel != ProviderConfig().learningModel) {
+                TextButton(onClick = { learningModel = ProviderConfig().learningModel; actions.clearConnectionTest() }) {
+                    Text("Use default learning model")
+                }
+            }
         }
         updateControls()
     }

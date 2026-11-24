@@ -1,0 +1,76 @@
+{
+  "builtIn": [
+    {
+      "id": "the-pudding",
+      "name": "The Pudding",
+      "url": "https://pudding.cool/rss.xml",
+      "hosts": ["pudding.cool"],
+      "group": "news"
+    },
+    {
+      "id": "works-in-progress",
+      "name": "Works in Progress",
+      "url": "https://worksinprogress.co/rss.xml",
+      "hosts": ["worksinprogress.co"],
+      "group": "news"
+    },
+    {
+      "id": "julia-evans",
+      "name": "Julia Evans",
+      "url": "https://jvns.ca/atom.xml",
+      "hosts": ["jvns.ca"],
+      "group": "engineering"
+    },
+    {
+      "id": "martin-fowler",
+      "name": "Martin Fowler",
+      "url": "https://martinfowler.com/feed.atom",
+      "hosts": ["martinfowler.com"],
+      "group": "engineering"
+    },
+    {
+      "id": "openai-engineering",
+      "name": "OpenAI Engineering",
+      "url": "https://openai.com/news/engineering/rss.xml",
+      "hosts": ["openai.com"],
+      "group": "engineering"
+    },
+    {
+      "id": "simon-willison",
+      "name": "Simon Willison",
+      "url": "https://simonwillison.net/atom/entries/",
+      "hosts": ["simonwillison.net"],
+      "group": "engineering",
+      "summaryContainsBody": true
+    },
+    {
+      "id": "aeon",
+      "name": "Aeon",
+      "url": "https://aeon.co/feed.rss",
+      "hosts": ["aeon.co"],
+      "group": "ideas"
+    },
+    {
+      "id": "psyche",
+      "name": "Psyche",
+      "url": "https://psyche.co/feed.rss",
+      "hosts": ["psyche.co"],
+      "group": "ideas"
+    },
+    {
+      "id": "the-marginalian",
+      "name": "The Marginalian",
+      "url": "https://www.themarginalian.org/feed/",
+      "hosts": ["www.themarginalian.org"],
+      "group": "ideas"
+    }
+  ],
+  "optional": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "url": "https://claude.com/resources/articles/rss.xml",
+      "hosts": ["claude.com"]
+    }
+  ]
+}

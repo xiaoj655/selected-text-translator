@@ -14,8 +14,8 @@ android {
         applicationId = 'io.github.selectedtext.translator'
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = '0.1.4'
+        versionCode = 6
+        versionName = '0.2.0'
     }
 
     buildTypes {
@@ -64,6 +64,7 @@ def generateModelContracts = tasks.register('generateModelContracts', GenerateMo
     script.set(rootProject.layout.projectDirectory.file('scripts/generate-model-contracts.mjs'))
     sharedSources.from(rootProject.layout.projectDirectory.dir('../src').asFileTree.matching {
         include '**/*.js'
+        include 'reading-source-catalog.json'
     })
     outputDirectory.set(layout.buildDirectory.dir('generated/model-contracts'))
 }

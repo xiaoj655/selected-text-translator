@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import catalog from '../../vendor/src/reading-source-catalog.json' with { type: 'json' }
 
 const FEED_NAME = 'Field Notes'
 const FEED_URL = 'https://feeds.example.org/fieldnotes'
@@ -8,6 +9,8 @@ const ARTICLE_SUMMARY = 'A team of volunteers counted migrating birds by listeni
 const ARTICLE_BODY = 'Two observers compared notes at the end of each shift. They marked uncertain calls separately so the final count would reflect what they could actually identify.'
 const IMPORTED_BODY = 'The volunteers repeated the count the following night to check whether wind and rain had affected their observations. Both teams recorded what they heard before sharing their notes.'
 const SECOND_TITLE = 'Preparing a notebook for the spring migration'
+const CLAUDE = catalog.optional.find(({ id }) => id === 'claude')
+const CLAUDE_TITLE = 'Getting started with Claude'
 
 const RSS = `<?xml version="1.0" encoding="UTF-8"?>
   <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
@@ -25,7 +28,7 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?>
   </rss>`
 
 async function installCustomFeed(app) {
-  await app.evaluate((_electron, { feedUrl, articleUrl, rss, articleHtml }) => {
+  await app.evaluate((_electron, { feedUrl, articleUrl, rss, articleHtml, claudeUrl, claudeRss }) => {
     const https = process.getBuiltinModule('node:https')
     const { Readable } = process.getBuiltinModule('node:stream')
     const originalGet = https.get
@@ -40,6 +43,8 @@ async function installCustomFeed(app) {
       } else if (target.href === articleUrl) {
         headers = { 'content-type': 'text/html; charset=utf-8' }
         body = articleHtml
+      } else if (target.href === claudeUrl) {
+        body = claudeRss
       } else if (target.href !== feedUrl) {
         return originalGet(target, options, callback)
       } else if (globalThis.__sttE2ECustomFeedUnavailable) {
@@ -52,6 +57,9 @@ async function installCustomFeed(app) {
     }
   }, {
     feedUrl: FEED_URL, articleUrl: ARTICLE_URL, rss: RSS,
+    claudeUrl: CLAUDE.url,
+    claudeRss: `<rss><channel><title>Claude</title><item><title>${CLAUDE_TITLE}</title>
+      <link>https://${CLAUDE.hosts[0]}/resources/articles/getting-started</link></item></channel></rss>`,
     articleHtml: `<!doctype html><html><head><title>${ARTICLE_TITLE}</title></head><body>
       <article><h1>${ARTICLE_TITLE}</h1><p>${ARTICLE_SUMMARY}</p><p>${IMPORTED_BODY}</p></article></body></html>`,
   })
@@ -123,5 +131,17 @@ export async function verifyCustomReadingFeeds({ app, page, check, shot, restart
 
     await current.locator('#reading-history').click()
     await current.locator('.reading-history-open').getByText(ARTICLE_TITLE, { exact: true }).waitFor()
+
+    await current.locator('#reading-category-custom').click()
+    assert.equal(await feedArticle(current, CLAUDE_TITLE).count(), 0)
+    const currentAdd = current.locator('#reading-feed-add')
+    const claudePreset = current.locator('#reading-feed-preset-claude')
+    await currentAdd.click()
+    await shot?.(current, 'main-tutor-claude-preset')
+    await claudePreset.click()
+    await feedArticle(current, CLAUDE_TITLE).waitFor()
+    await currentAdd.click()
+    assert.equal(await claudePreset.count(), 0)
+    await current.locator('#reading-back').click()
   })
 }

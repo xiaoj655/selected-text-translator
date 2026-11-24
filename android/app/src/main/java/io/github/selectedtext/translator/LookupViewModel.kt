@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -23,6 +24,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
     private var resultConfig: ProviderConfig? = null
     private var request: Job? = null
     private var settingsWrite: Job? = null
+    private var connectionCheck: Job? = null
     private var pendingMode: LookupMode? = null
     private var settingsParent: LookupPage = restored[SETTINGS_PARENT_KEY] ?: LookupPage.LOOKUP
 
@@ -76,7 +78,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
     }
 
     private fun showInputLimit() {
-        _state.update { it.copy(error = "Keep the text within 12,000 characters.") }
+        _state.update { it.copy(error = "Keep the text within 50,000 characters.") }
     }
 
     fun lookup(mode: LookupMode) {
@@ -111,6 +113,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
                 val result = results[mode] ?: client.lookup(config, text, mode) { partial ->
                     updateRequest(revision) { it.copy(partial = partial) }
                 }
+                ensureActive()
                 results[mode] = result
                 updateRequest(revision) {
                     it.copy(result = result, partial = "", busy = false, isSaved = containsResult(it.saved, it.input, result))
@@ -127,6 +130,24 @@ class LookupViewModel(application: Application, private val restored: SavedState
 
     private fun updateRequest(revision: Int, transform: (LookupUiState) -> LookupUiState) {
         _state.update { if (it.requestRevision == revision) transform(it) else it }
+    }
+
+    fun stopLookup() {
+        if (!_state.value.busy) return
+        request?.cancel()
+        pendingMode = null
+        val previous = results.entries.lastOrNull()
+        _state.update {
+            it.copy(
+                mode = previous?.key ?: it.mode,
+                result = previous?.value,
+                partial = "",
+                busy = false,
+                error = null,
+                isSaved = containsResult(it.saved, it.input, previous?.value),
+                requestRevision = it.requestRevision + 1,
+            )
+        }
     }
 
     private fun clearLookup() {
@@ -148,6 +169,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
 
     fun open(page: LookupPage) {
         val current = _state.value
+        if (page != LookupPage.SETTINGS) clearConnectionTest()
         if (page == LookupPage.SETTINGS && current.page != LookupPage.SETTINGS) {
             settingsParent = current.page
             restored[SETTINGS_PARENT_KEY] = current.page
@@ -163,16 +185,8 @@ class LookupViewModel(application: Application, private val restored: SavedState
 
     fun saveSettings(config: ProviderConfig) {
         if (settingsWrite?.isActive == true) return
-        val clean = ProviderConfig(
-            config.baseUrl.trim(), config.apiKey.trim(), config.translationModel.trim(), config.learningModel.trim(),
-        )
-        val problem = when {
-            runCatching { TranslationClient.normalizeEndpoint(clean.baseUrl) }.isFailure -> "Enter a valid HTTPS API URL."
-            clean.translationModel.isBlank() -> "Enter a translation model name."
-            clean.learningModel.contains("qwen-mt", ignoreCase = true) -> "Guided explanations need a general-purpose model."
-            clean.apiKey.any { it !in '!'..'~' } -> "Check the API key format."
-            else -> null
-        }
+        val clean = cleanConfig(config)
+        val problem = settingsProblem(clean)
         if (problem != null) {
             _state.update { it.copy(settingsError = problem) }
             return
@@ -193,6 +207,52 @@ class LookupViewModel(application: Application, private val restored: SavedState
                 _state.update { it.copy(settingsError = "Unable to save settings. Try again.") }
             }
         }
+    }
+
+    fun testConnection(config: ProviderConfig) {
+        if (connectionCheck?.isActive == true) return
+        val clean = cleanConfig(config)
+        val problem = settingsProblem(clean) ?: "Enter an API Key to test the connection.".takeIf { clean.apiKey.isBlank() }
+        if (problem != null) {
+            _state.update { it.copy(connectionTest = ModelConnectionTest(false, problem, failed = true)) }
+            return
+        }
+
+        _state.update { it.copy(settingsError = null, connectionTest = ModelConnectionTest(true)) }
+        connectionCheck = viewModelScope.launch {
+            val test = try {
+                ModelConnectionTest(false, client.testConnection(clean))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ProviderException) {
+                ModelConnectionTest(false, error.message, failed = true)
+            } catch (_: Exception) {
+                ModelConnectionTest(false, "Couldn't test the connection. Try again.", failed = true)
+            }
+            ensureActive()
+            _state.update { it.copy(connectionTest = test) }
+        }
+    }
+
+    fun clearConnectionTest() {
+        connectionCheck?.cancel()
+        connectionCheck = null
+        _state.update { it.copy(connectionTest = null) }
+    }
+
+    private fun cleanConfig(config: ProviderConfig) = config.copy(
+        baseUrl = config.baseUrl.trim(),
+        apiKey = config.apiKey.trim(),
+        translationModel = config.translationModel.trim(),
+        learningModel = config.learningModel.trim(),
+    )
+
+    private fun settingsProblem(config: ProviderConfig): String? = when {
+        runCatching { TranslationClient.normalizeEndpoint(config.baseUrl) }.isFailure -> "Enter a valid HTTPS API URL."
+        config.translationModel.isBlank() -> "Enter a translation model name."
+        config.learningModel.contains("qwen-mt", ignoreCase = true) -> "Guided explanations need a general-purpose model."
+        config.apiKey.any { it !in '!'..'~' } -> "Check the API key format."
+        else -> null
     }
 
     fun saveExpression() {

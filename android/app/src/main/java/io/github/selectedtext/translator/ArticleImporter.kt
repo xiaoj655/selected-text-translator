@@ -24,16 +24,17 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.select.NodeTraversor
 import org.jsoup.select.NodeVisitor
 
+internal val publicArticleDns = object : Dns {
+    override fun lookup(hostname: String): List<InetAddress> =
+        Dns.SYSTEM.lookup(hostname).filter(::isPublicArticleAddress).ifEmpty {
+            throw UnknownHostException("This address resolves to a private network.")
+        }
+}
+
 internal class ArticleImporter(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
-        .dns(object : Dns {
-            override fun lookup(hostname: String): List<InetAddress> =
-                // OkHttp uses these same checked addresses for its sockets.
-                Dns.SYSTEM.lookup(hostname).filter(::isPublicArticleAddress).ifEmpty {
-                    throw UnknownHostException("This page resolves to a private network.")
-                }
-        })
+        .dns(publicArticleDns)
         .followRedirects(false)
         .followSslRedirects(false)
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -105,10 +106,13 @@ internal class ArticleImporter(
     }
 }
 
-internal class ArticleImportException(message: String, cause: Throwable? = null) : IOException(message, cause)
+internal open class ArticleImportException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 internal fun publicArticleUrl(value: String): HttpUrl {
-    val url = value.trim().takeIf { it.length <= 4096 && it.startsWith("https://", ignoreCase = true) }
+    val trimmed = value.trim()
+    val link = MARKDOWN_ARTICLE_URL.matchEntire(trimmed)?.groupValues?.get(1)
+        ?: trimmed.removeSurrounding("<", ">")
+    val url = link.takeIf { trimmed.length <= 4096 && it.startsWith("https://", ignoreCase = true) }
         ?.toHttpUrlOrNull()
     val host = url?.host?.trimEnd('.').orEmpty()
     if (url == null || url.port != 443 || url.username.isNotEmpty() || url.password.isNotEmpty() ||
@@ -265,6 +269,7 @@ private fun noArticleText() = ArticleImportException("Couldn't find readable art
 private fun articleTooLong() = ArticleImportException("This article is too long. Try pasting the portion you want to read.")
 
 private const val MAX_PAGE_BYTES = 4 * 1024 * 1024L
+private val MARKDOWN_ARTICLE_URL = Regex("""\[[^\]\r\n]*\]\((https://[^\s]+)\)""", RegexOption.IGNORE_CASE)
 private const val MAX_SHARED_LINK_TEXT = 8_192
 private const val MAX_ARTICLE_TEXT = 240_000
 private const val MAX_BLOCK_LENGTH = 3_000

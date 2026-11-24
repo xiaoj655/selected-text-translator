@@ -8,11 +8,13 @@ Android 8.0（API 26）及以上可用。首次打开，在设置中填写服务
 
 ## Reading
 
-Share a public HTTPS article from your browser to **Selected**, or open **Reading → Add article** to paste a link or article text. Selected saves the title, headings, paragraphs, and reading position on your phone so you can reopen the article offline.
+Open **Reading → Discover** to browse the built-in sources. Use the source menu to add a public HTTPS RSS or Atom feed. Saved articles and reading positions are available offline under **My articles**.
 
-In **Word** mode, tap a word to see its English meaning in that sentence. Use **Analyze sentence** or switch to **Sentence** mode and tap anywhere in a sentence for its plain-English paraphrase and grammar. The result stays below the article. Use the speaker to hear the selection or the bookmark to keep it in **Saved expressions**.
+Share a public HTTPS article from your browser to **Selected**, or open **Reading → Add article** to paste a link, Markdown link, or article text. You can save an Alibaba Cloud IQS API key under **Settings → Reading** for enhanced web parsing. Selected encrypts the key on the phone. With a key set, web import sends the article URL to Alibaba Cloud. Charges may apply. If parsing fails, retry or use **Try direct import**.
 
-Word and sentence explanations require a general-purpose learning model in **Model settings**. The app sends the selected text and relevant sentence to the configured model provider when you look it up.
+In **Word** mode, tap a word to see its English meaning in that sentence. Long-press a word and tap the other end of a phrase, then choose **Look up**. Use **Analyze sentence** or switch to **Sentence** mode and tap anywhere in a sentence for its plain-English paraphrase and grammar. Valid grammar markup appears in the article and the result stays below it. Use **Aa** to change reading size, the speaker to hear the selection, or the bookmark to keep it in **Saved expressions**.
+
+Word and sentence explanations use the learning model in **Settings → Models**, which defaults to `qwen3.8-flash`. Use **Test connection** to check the configured models. The app sends the selected text and relevant sentence to the configured model provider when you look it up. The translation workspace accepts up to 50,000 characters and processes long inputs in order.
 
 ## 安装与更新
 

@@ -116,13 +116,13 @@ test('RSS discovery reads HTML documents with publisher footers and skips empty 
 })
 
 test('Simon Willison provides reading material in the Atom summary field', async () => {
-  const source = READING_SOURCES.ideas.find(({ name }) => name === 'Simon Willison')
+  const source = READING_SOURCES.engineering.find(({ name }) => name === 'Simon Willison')
   const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><entry>
     <title>Notes on writing software</title>
     <link rel="alternate" href="https://simonwillison.net/2026/Nov/23/notes/"/>
     <summary type="html">&lt;p&gt;A first paragraph.&lt;/p&gt;&lt;p&gt;The article continues.&lt;/p&gt;</summary>
   </entry></feed>`
-  const result = await discoverReadingArticles('ideas', {
+  const result = await discoverReadingArticles('engineering', {
     fetchImpl: async (url) => url === source.url ? new Response(atom) : new Response(null, { status: 503 }),
   })
   assert.equal(result.articles[0].feedHasBody, true)

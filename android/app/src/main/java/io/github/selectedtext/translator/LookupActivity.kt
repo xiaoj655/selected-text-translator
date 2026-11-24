@@ -22,6 +22,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -67,9 +70,18 @@ class WorkspaceActivity : LookupActivity(external = false) {
         val state by reader.uiState.collectAsStateWithLifecycle()
         ReaderScreen(
             state, reader, speaking, ::speakOrStop, ::stopSpeech, ::clipboardText,
-            onSettings = { openPage(LookupPage.SETTINGS) },
+            onSettings = { openSettings() },
+            onReadingSettings = { openSettings(reading = true) },
             onExit = ::backPage,
         )
+    }
+
+    override val hasReadingSettings = true
+
+    @Composable
+    override fun ReadingSettings(modifier: Modifier) {
+        val state by reader.uiState.collectAsStateWithLifecycle()
+        ReadingImportSettings(state, reader, modifier)
     }
 
     @Composable
@@ -123,6 +135,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     private var speech: TextToSpeech? = null
     private var speechReady = false
     private var speechRevision = 0
+    private var preferReadingSettings by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -150,7 +163,12 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         setContent {
             val state by model.state.collectAsStateWithLifecycle()
             SelectedTheme {
-                LookupScreen(state, actions, external, reading = { Reading(state.speaking) }) { compact ->
+                LookupScreen(
+                    state, actions, external,
+                    reading = { Reading(state.speaking) },
+                    readingSettings = if (hasReadingSettings) ({ modifier -> ReadingSettings(modifier) }) else null,
+                    preferReadingSettings = preferReadingSettings,
+                ) { compact ->
                     UpdateControls(compact)
                 }
             }
@@ -162,6 +180,11 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
     @Composable
     protected open fun Reading(speaking: Boolean) = Unit
+
+    protected open val hasReadingSettings = false
+
+    @Composable
+    protected open fun ReadingSettings(modifier: Modifier) = Unit
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -203,6 +226,11 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         model.open(page)
     }
 
+    protected fun openSettings(reading: Boolean = false) {
+        preferReadingSettings = reading
+        openPage(LookupPage.SETTINGS)
+    }
+
     protected fun backPage() {
         stopSpeech()
         model.back()
@@ -226,6 +254,8 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
         override fun lookup(mode: LookupMode) = model.lookup(mode)
 
+        override fun stopLookup() = model.stopLookup()
+
         override fun copy(text: String) {
             if (clipboard == null) {
                 model.notice("The clipboard is unavailable.")
@@ -239,11 +269,17 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
         override fun saveExpression() = model.saveExpression()
 
-        override fun open(page: LookupPage) = openPage(page)
+        override fun open(page: LookupPage) {
+            if (page == LookupPage.SETTINGS) openSettings() else openPage(page)
+        }
 
         override fun back() = backPage()
 
         override fun saveSettings(config: ProviderConfig) = model.saveSettings(config)
+
+        override fun testConnection(config: ProviderConfig) = model.testConnection(config)
+
+        override fun clearConnectionTest() = model.clearConnectionTest()
 
         override fun removeExpression(id: String) = model.removeExpression(id)
 

@@ -30,9 +30,11 @@ internal class TranslatorStore(context: Context) {
     private val preferences = context.getSharedPreferences("selected", Context.MODE_PRIVATE)
     private val mutations = Mutex()
     private val _config = MutableStateFlow(ProviderConfig())
+    private val _iqsApiKey = MutableStateFlow("")
     private val _saved = MutableStateFlow(emptyList<SavedExpression>())
     private var loaded = false
     val config = _config.asStateFlow()
+    val iqsApiKey = _iqsApiKey.asStateFlow()
     val saved = _saved.asStateFlow()
 
     suspend fun load() = withContext(Dispatchers.IO) {
@@ -51,7 +53,20 @@ internal class TranslatorStore(context: Context) {
             learningModel = preferences.getString("learningModel", null) ?: defaults.learningModel,
         )
         _saved.value = readExpressions()
+        _iqsApiKey.value = preferences.getString("encryptedIqsApiKey", null)
+            ?.let { encrypted -> runCatching { KeyVault.decrypt(encrypted) }.getOrDefault("") }.orEmpty()
         loaded = true
+    }
+
+    suspend fun saveIqsApiKey(key: String) = withContext(Dispatchers.IO) {
+        mutations.withLock {
+            loadLocked()
+            val editor = preferences.edit()
+            if (key.isBlank()) editor.remove("encryptedIqsApiKey")
+            else editor.putString("encryptedIqsApiKey", KeyVault.encrypt(key))
+            if (!editor.commit()) throw IOException("Unable to save the IQS key.")
+            _iqsApiKey.value = key
+        }
     }
 
     suspend fun saveConfig(config: ProviderConfig) = withContext(Dispatchers.IO) {

@@ -8,6 +8,20 @@ import org.junit.Test
 
 class ArticleLookupTest {
     @Test
+    fun expandsPhraseWithinTheOriginalSentenceAndKeepsTheExactOccurrence() {
+        val article = "They record a record every month. We record a record too."
+        val anchor = resolveArticleSelection(article, article.indexOf(" every"), ArticleSelectionKind.WORD)!!
+        val phrase = resolveArticlePhrase(article, anchor, article.indexOf("record"))!!
+        assertEquals(ArticleSelectionKind.PHRASE, phrase.kind)
+        assertEquals("record a record", phrase.text)
+        val input = articleMeaningInput(phrase)
+        val occurrence = input.getJSONObject("selectedOccurrence")
+        assertEquals("They ", occurrence.getString("before"))
+        assertEquals(" every month.", occurrence.getString("after"))
+        assertNull(resolveArticlePhrase(article, anchor, article.lastIndexOf("record")))
+    }
+
+    @Test
     fun repeatedWordKeepsItsExactSentenceOccurrence() {
         val article = "Read this first. We record a record every month. That's all."
         val wordStart = article.lastIndexOf("record")

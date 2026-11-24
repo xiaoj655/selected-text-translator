@@ -51,6 +51,109 @@ class TranslationClientTest {
     }
 
     @Test
+    fun translatesFiftyThousandCharactersAtParagraphBoundariesInOrder(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val paragraphs = List(9) { index -> ("Paragraph ${index + 1} " + "a".repeat(4_998)).take(4_998) } +
+                ("结束🙂" + "b".repeat(4_996))
+            val source = paragraphs.joinToString("\n\n")
+            assertEquals(MAX_INPUT_LENGTH, source.length)
+            for (index in paragraphs.indices) server.enqueue(jsonResponse("Part ${index + 1}"))
+            val previews = mutableListOf<String>()
+
+            val result = client().lookup(config(server), source, LookupMode.TRANSLATE) { previews.add(it) }
+
+            assertEquals(paragraphs.indices.joinToString("\n\n") { "Part ${it + 1}" }, result.text)
+            assertEquals(result.text, previews.last())
+            for (paragraph in paragraphs) {
+                val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+                assertEquals(paragraph, payload.getJSONArray("messages").getJSONObject(0).getString("content"))
+                assertEquals("English", payload.getJSONObject("translation_options").getString("target_lang"))
+            }
+            val tooLong = runCatching { client().lookup(config(server), source + "!", LookupMode.TRANSLATE) {} }
+            assertTrue(tooLong.exceptionOrNull()?.message.orEmpty().contains("50,000"))
+            assertEquals(paragraphs.size, server.requestCount)
+        }
+    }
+
+    @Test
+    fun keepsSupplementaryCharactersWholeWhenThereIsNoBreakNearTheLimit(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("First"))
+            server.enqueue(jsonResponse("Second"))
+            val segments = listOf("a".repeat(5_999), "\uD83D\uDE42" + "b".repeat(100))
+
+            val result = client().lookup(config(server), segments.joinToString(""), LookupMode.TRANSLATE) {}
+
+            assertEquals("FirstSecond", result.text)
+            for (segment in segments) {
+                val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+                assertEquals(segment, payload.getJSONArray("messages").getJSONObject(0).getString("content"))
+            }
+        }
+    }
+
+    @Test
+    fun preservesEveryGuidePartAndItsHints(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val paragraphs = listOf("One sentence. ".repeat(500).trim(), "Another sentence. ".repeat(350).trim())
+            for (number in 1..2) {
+                server.enqueue(jsonResponse("""{
+                    "guideType":"sentence", "hints":["Hint $number"],
+                    "answer":{"meaning":"Meaning $number", "explanation":"Explanation $number"}
+                }"""))
+            }
+
+            val result = client().lookup(config(server), paragraphs.joinToString("\n\n"), LookupMode.GUIDE) {}
+
+            assertEquals(paragraphs, result.parts.map { it.source })
+            assertEquals(listOf(listOf("Hint 1"), listOf("Hint 2")), result.parts.map { it.result.hints })
+            assertEquals("Meaning 1\n\nMeaning 2", result.text)
+            assertEquals(2, server.requestCount)
+        }
+    }
+
+    @Test
+    fun keepsTheSameTargetLanguageAcrossGeneralModelRequests(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            val first = "First sentence. ".repeat(750).trim()
+            val second = "第二段。".repeat(100)
+            server.enqueue(jsonResponse("""{"translation":"First"}"""))
+            server.enqueue(jsonResponse("""{"translation":"Second"}"""))
+            val config = config(server).copy(translationModel = "general-model")
+
+            val result = client().lookup(config, "$first\n\n$second", LookupMode.TRANSLATE) {}
+
+            assertEquals("First\n\nSecond", result.text)
+            for (segment in listOf(first, second)) {
+                val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+                val messages = payload.getJSONArray("messages")
+                assertEquals("Translate to English.", messages.getJSONObject(0).getString("content"))
+                assertEquals(segment, messages.getJSONObject(1).getString("content"))
+            }
+        }
+    }
+
+    @Test
+    fun checksConfiguredModelsUsingTheCompletionEndpoint(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("Hello."))
+            server.enqueue(MockResponse().setResponseCode(404))
+            val config = config(server).copy(learningModel = ProviderConfig().learningModel)
+
+            val failure = runCatching { client().testConnection(config) }.exceptionOrNull()
+
+            assertEquals("qwen3.8-flash", config.learningModel)
+            assertTrue(failure?.message.orEmpty().startsWith("Learning model:"))
+            assertTrue(failure?.message.orEmpty().contains("model name"))
+            for (model in listOf(config.translationModel, config.learningModel)) {
+                val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+                assertEquals("/compatible-mode/v1/chat/completions", request.path)
+                assertEquals(model, JSONObject(request.body.readUtf8()).getString("model"))
+            }
+        }
+    }
+
+    @Test
     fun usesGeneralModelForTranslationAndGuidedReading(): Unit = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(jsonResponse("""{"translation":"犹豫的","phonetic":"/rɪˈlʌktənt/"}"""))
@@ -165,7 +268,7 @@ class TranslationClientTest {
             val previews = mutableListOf<String>()
             val job = launch {
                 val requestJob = coroutineContext.job
-                client().lookup(config(server), "Think about it", LookupMode.TRANSLATE) {
+                client().lookup(config(server), "Think about it. ".repeat(800), LookupMode.TRANSLATE) {
                     previews.add(it)
                     requestJob.cancel()
                 }
@@ -175,6 +278,7 @@ class TranslationClientTest {
 
             assertTrue(job.isCancelled)
             assertEquals(listOf("想"), previews)
+            assertEquals(1, server.requestCount)
         }
     }
 
@@ -204,6 +308,10 @@ class TranslationClientTest {
             "stream": false,
             "response_format": { "type": "json_object" },
             "messages": [{"role":"system","content":"Translate."},{"role":"user","content":""}]
+          },
+          "translationByLanguage": {
+            "Chinese": {"messages": [{"role":"system","content":"Translate to Chinese."},{"role":"user","content":""}]},
+            "English": {"messages": [{"role":"system","content":"Translate to English."},{"role":"user","content":""}]}
           },
           "guide": {
             "stream": false,

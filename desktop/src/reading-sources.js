@@ -1,24 +1,9 @@
 import { createHash } from 'node:crypto'
+import catalog from '../vendor/src/reading-source-catalog.json' with { type: 'json' }
 import { normalizeReadingContent } from './reading-content.js'
 import { openReadingResource, publicReadingUrl } from './reading-network.js'
 
-export const READING_SOURCES = {
-  news: [
-    { name: 'Ars Technica', url: 'https://arstechnica.com/feed/', hosts: ['arstechnica.com'] },
-    { name: 'The Verge', url: 'https://www.theverge.com/rss/tech/index.xml', hosts: ['www.theverge.com'] },
-  ],
-  engineering: [
-    { name: 'The GitHub Blog', url: 'https://github.blog/engineering/feed/', hosts: ['github.blog'] },
-    { name: 'Julia Evans', url: 'https://jvns.ca/atom.xml', hosts: ['jvns.ca'] },
-    { name: 'Cloudflare Engineering', url: 'https://blog.cloudflare.com/tag/engineering/rss', hosts: ['blog.cloudflare.com'] },
-  ],
-  ideas: [
-    { name: 'Martin Fowler', url: 'https://martinfowler.com/feed.atom', hosts: ['martinfowler.com'] },
-    { name: 'The Pragmatic Engineer', url: 'https://newsletter.pragmaticengineer.com/feed', hosts: ['newsletter.pragmaticengineer.com'] },
-    // This Atom feed publishes the article text in its summary field.
-    { name: 'Simon Willison', url: 'https://simonwillison.net/atom/entries/', hosts: ['simonwillison.net'], summaryContainsBody: true },
-  ],
-}
+export const READING_SOURCES = Object.groupBy(catalog.builtIn, ({ group }) => group)
 
 const MAX_FEED_BYTES = 2 * 1024 * 1024
 const REQUEST_TIMEOUT_MS = 8000

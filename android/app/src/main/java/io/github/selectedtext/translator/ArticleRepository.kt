@@ -14,11 +14,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.jsoup.Jsoup
 
 internal class ArticleRepository(context: Context) {
     private val directory = File(context.filesDir, "articles")
     private val positions = context.getSharedPreferences("article-positions", Context.MODE_PRIVATE)
     private val importer = ArticleImporter()
+    private val iqsImporter = IqsArticleImporter()
     private val mutations = Mutex()
     private val entries = MutableStateFlow<List<ReadingArticle>>(emptyList())
     val articles = entries.asStateFlow()
@@ -28,11 +30,24 @@ internal class ArticleRepository(context: Context) {
         mutations.withLock { loadLocked() }
     }
 
-    suspend fun importUrl(url: String): ReadingArticle {
-        val original = publicArticleUrl(url).toString()
+    suspend fun importUrl(url: String, iqsApiKey: String = ""): ReadingArticle {
+        val source = publicArticleUrl(url)
+        val original = source.toString()
         load()
         entries.value.firstOrNull { it.sourceUrl == original }?.let { return it }
-        return insert(importer.fetch(original))
+        val article = if (iqsApiKey.isBlank()) importer.fetch(original) else iqsImporter.fetch(source, iqsApiKey)
+        return insert(article.copy(sourceUrl = original))
+    }
+
+    suspend fun importFeedArticle(url: String, title: String, html: String): ReadingArticle {
+        val source = publicArticleUrl(url)
+        val original = source.toString()
+        load()
+        entries.value.firstOrNull { it.sourceUrl == original }?.let { return it }
+        val article = withContext(Dispatchers.Default) {
+            extractArticle(Jsoup.parseBodyFragment(html, original), source.host)
+        }
+        return insert(article.copy(title = title.ifBlank { article.title }, sourceUrl = original))
     }
 
     suspend fun importText(text: String, title: String = "") = insert(pastedArticle(text, title))

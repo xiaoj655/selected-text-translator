@@ -5,7 +5,7 @@ import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal enum class ArticleSelectionKind { WORD, SENTENCE }
+internal enum class ArticleSelectionKind { WORD, PHRASE, SENTENCE }
 
 internal data class ArticleSelection(
     val text: String,
@@ -72,6 +72,19 @@ internal fun resolveArticleSelection(text: String, offset: Int, kind: ArticleSel
     return ArticleSelection(word.value, start + word.range.first, start + word.range.last + 1, sentence, start, end, kind)
 }
 
+internal fun resolveArticlePhrase(text: String, anchor: ArticleSelection, offset: Int): ArticleSelection? {
+    val word = resolveArticleSelection(text, offset, ArticleSelectionKind.WORD) ?: return null
+    if (word.sentenceStart != anchor.sentenceStart || word.sentenceEnd != anchor.sentenceEnd) return null
+    val start = minOf(anchor.start, word.start)
+    val end = maxOf(anchor.end, word.end)
+    return anchor.copy(
+        text = text.substring(start, end),
+        start = start,
+        end = end,
+        kind = if (start == word.start && end == word.end) ArticleSelectionKind.WORD else ArticleSelectionKind.PHRASE,
+    )
+}
+
 private fun isAbbreviation(text: String, start: Int, end: Int): Boolean =
     ABBREVIATION.containsMatchIn(text.substring(start, end).trimEnd())
 
@@ -86,7 +99,7 @@ internal fun articleMeaningInput(selection: ArticleSelection): JSONObject {
         .put("selectionType", selection.kind.name.lowercase(Locale.ROOT))
         .put("targetLanguage", "English")
         .apply {
-            if (selection.kind == ArticleSelectionKind.WORD &&
+            if (selection.kind != ArticleSelectionKind.SENTENCE &&
                 relativeStart >= contextStart && relativeEnd <= contextEnd && relativeEnd > relativeStart
             ) {
                 put("surroundingContext", selection.sentence.substring(contextStart, contextEnd))

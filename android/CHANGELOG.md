@@ -1,5 +1,12 @@
 # Android 更新日志
 
+## 0.2.0
+
+- Discover includes nine built-in reading sources shared with desktop. Add your own RSS or Atom feeds, filter by source, and revisit cached entries offline.
+- Import web articles from links, browser shares, or feeds. An optional Alibaba Cloud IQS key enables enhanced parsing with direct import and pasted text available as fallbacks.
+- Reading uses correct light and dark colors. Adjust text size, long-press to look up a phrase, and see sentence structure highlighted in the article.
+- Model settings include a connection test and default to `qwen3.8-flash` for reading and guided explanations. The translation workspace accepts up to 50,000 characters.
+
 ## 0.1.4
 
 - Open Reading to import an article from a shared browser link, paste a link, or add article text. Articles and reading position are saved on the device.

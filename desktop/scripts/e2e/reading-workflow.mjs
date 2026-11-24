@@ -38,11 +38,12 @@ function rss(articles) {
     </rss>`
 }
 
-function atom({ title, text, url, publishedAt }) {
+function atom({ title, text, body, url, publishedAt }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom"><title>Reading workflow fixture</title><entry>
       <title>${title}</title><id>${url}</id><link href="${url}" rel="alternate"/>
       <published>${publishedAt}</published><summary type="html">&lt;p&gt;${text}&lt;/p&gt;</summary>
+      ${body ? `<content type="html"><![CDATA[<p>${body}</p>]]></content>` : ''}
     </entry></feed>`
 }
 
@@ -68,9 +69,9 @@ export async function installReadingFeeds(app) {
             url: `${article.url}-${offset}`, publishedAt: new Date(Date.parse(article.publishedAt) - offset * 3600000).toISOString() })
         }
       }
-      const useAtom = /atom|theverge/u.test(source.url)
+      const useAtom = entries.length === 1 && /atom/u.test(source.url)
       responses[source.url] = {
-        body: useAtom ? atom(article) : rss(entries),
+        body: useAtom ? atom(entries[0]) : rss(entries),
         type: useAtom ? 'application/atom+xml' : 'application/rss+xml',
         requests: 0,
         failureAttempts: category === 'ideas' && index === 1 ? [1, 3] : [],

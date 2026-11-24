@@ -1,6 +1,8 @@
 package io.github.selectedtext.translator
 
 import android.app.Application
+import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -12,6 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+internal val readerFontSizes = listOf(16, 18, 20, 22, 24, 26)
+internal const val defaultReaderFontSize = 20
+
 internal data class ReaderUiState(
     val loading: Boolean = true,
     val articles: List<ReadingArticle> = emptyList(),
@@ -20,6 +25,19 @@ internal data class ReaderUiState(
     val importing: Boolean = false,
     val importError: String? = null,
     val pendingUrl: String? = null,
+    val directImportAvailable: Boolean = false,
+    val savingIqsKey: Boolean = false,
+    val iqsSettingsMessage: String? = null,
+    val iqsSettingsError: Boolean = false,
+    val pastedDraft: String = "",
+    val fontSize: Int = defaultReaderFontSize,
+    val feeds: List<FeedSource> = emptyList(),
+    val optionalFeeds: List<FeedSource> = emptyList(),
+    val feedArticles: List<FeedArticle> = emptyList(),
+    val feedErrors: Map<String, String> = emptyMap(),
+    val feedMessage: String? = null,
+    val refreshingFeeds: Boolean = false,
+    val addingFeed: Boolean = false,
     val result: ReaderResult? = null,
 )
 
@@ -46,9 +64,15 @@ internal class ReaderViewModel(
 ) : AndroidViewModel(application) {
     private val app = application as TranslatorApplication
     private val library = app.articles
+    private val feedRepository = FeedRepository(app)
     private val store = app.store
+    val iqsApiKey = store.iqsApiKey
     private val client = TranslationClient(application)
-    private val state = MutableStateFlow(ReaderUiState())
+    private val preferences = app.getSharedPreferences("reading-preferences", Context.MODE_PRIVATE)
+    private val state = MutableStateFlow(ReaderUiState(
+        fontSize = preferences.getInt(FONT_SIZE_KEY, defaultReaderFontSize)
+            .takeIf(readerFontSizes::contains) ?: defaultReaderFontSize,
+    ))
     val uiState = state.asStateFlow()
 
     private val positionWrites = Channel<Pair<String, ArticlePosition>>(Channel.UNLIMITED)
@@ -59,16 +83,41 @@ internal class ReaderViewModel(
     private var selectionRevision = 0
     private var meaningJob: Job? = null
     private var grammarJob: Job? = null
+    private var feedJob: Job? = null
+    private var loadedFeeds = false
     private var cachedMeaning: CachedMeaning? = null
     private var cachedGrammar: CachedGrammar? = null
 
     init {
+        viewModelScope.launch {
+            feedRepository.state.collect { feeds ->
+                state.update { current ->
+                    current.copy(
+                        feeds = feeds.sources,
+                        optionalFeeds = feeds.optional.filter { suggested -> feeds.sources.none { it.url == suggested.url } },
+                        feedArticles = feeds.articles.values.flatten().sortedByDescending { it.publishedAt ?: Long.MIN_VALUE },
+                        feedErrors = feeds.errors,
+                    )
+                }
+            }
+        }
         viewModelScope.launch {
             library.articles.collect { articles -> state.update { it.copy(articles = articles) } }
         }
         viewModelScope.launch {
             store.saved.collect { saved ->
                 state.update { current -> current.copy(result = current.result?.withSavedStatus(saved)) }
+            }
+        }
+        viewModelScope.launch {
+            var previous = store.config.value
+            store.config.collect { config ->
+                if (previous != config) {
+                    cachedMeaning = null
+                    cachedGrammar = null
+                    if (previous.isConfigured) dismissResult()
+                    previous = config
+                }
             }
         }
         viewModelScope.launch {
@@ -105,38 +154,138 @@ internal class ReaderViewModel(
         }
     }
 
-    fun importUrl(url: String, fromShare: Boolean = false) {
-        importArticle(url.takeIf { fromShare }) { library.importUrl(url) }
+    fun importUrl(url: String, fromShare: Boolean = false, direct: Boolean = false) {
+        importArticle(url.takeIf { fromShare }) {
+            store.load()
+            val key = iqsApiKey.value.takeUnless { direct }.orEmpty()
+            library.importUrl(url, iqsApiKey = key)
+        }
     }
 
     fun importText(text: String, title: String = "") {
         importArticle(null) { library.importText(text, title) }
     }
 
+    fun openFeedArticle(article: FeedArticle) {
+        val body = article.html
+        if (body != null) {
+            importArticle(article.url) { library.importFeedArticle(article.url, article.title, body) }
+        } else {
+            importUrl(article.url, fromShare = true)
+        }
+    }
+
+    fun loadFeeds() {
+        if (loadedFeeds) return
+        runFeedOperation {
+            feedRepository.load()
+            loadedFeeds = true
+            feedRepository.refresh()
+        }
+    }
+
+    fun refreshFeeds(sourceId: String?) = runFeedOperation {
+        feedRepository.refresh(sourceId?.let(::setOf))
+    }
+
+    fun retryFeeds(sourceIds: Set<String>) = runFeedOperation {
+        feedRepository.refresh(sourceIds)
+    }
+
+    fun addFeed(url: String, onAdded: (String) -> Unit) = runFeedOperation(adding = true) {
+        onAdded(feedRepository.add(url).id)
+    }
+
+    fun removeFeed(id: String) = runFeedOperation {
+        feedRepository.remove(id)
+    }
+
+    fun clearFeedMessage() {
+        state.update { it.copy(feedMessage = null) }
+    }
+
+    private fun runFeedOperation(adding: Boolean = false, operation: suspend () -> Unit) {
+        if (feedJob?.isActive == true) return
+        state.update { it.copy(addingFeed = adding, refreshingFeeds = !adding, feedMessage = null) }
+        feedJob = viewModelScope.launch {
+            try {
+                operation()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: FeedException) {
+                state.update { it.copy(feedMessage = error.message ?: "Couldn't load the feed.") }
+            } catch (_: Exception) {
+                state.update { it.copy(feedMessage = "Couldn't load the feed. Try again.") }
+            } finally {
+                state.update { it.copy(addingFeed = false, refreshingFeeds = false) }
+            }
+        }
+    }
+
+    fun editPastedDraft(text: String) {
+        state.update { it.copy(pastedDraft = text) }
+    }
+
+    fun changeFontSize(size: Int) {
+        if (size !in readerFontSizes) return
+        preferences.edit { putInt(FONT_SIZE_KEY, size) }
+        state.update { it.copy(fontSize = size) }
+    }
+
+    fun saveIqsKey(value: String) {
+        if (state.value.savingIqsKey) return
+        val key = value.trim()
+        if (key.length > 4096 || key.any { it !in '!'..'~' }) {
+            state.update { it.copy(iqsSettingsMessage = "Enter a valid IQS API key.", iqsSettingsError = true) }
+            return
+        }
+        state.update { it.copy(savingIqsKey = true, iqsSettingsMessage = null, iqsSettingsError = false) }
+        viewModelScope.launch {
+            try {
+                store.saveIqsApiKey(key)
+                state.update { it.copy(savingIqsKey = false, iqsSettingsMessage = if (key.isEmpty()) "IQS key cleared" else "IQS key saved") }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                state.update { it.copy(savingIqsKey = false, iqsSettingsMessage = "Couldn't save the IQS key.", iqsSettingsError = true) }
+            }
+        }
+    }
+
+    fun clearIqsSettingsMessage() {
+        state.update { it.copy(iqsSettingsMessage = null, iqsSettingsError = false) }
+    }
+
     private fun importArticle(sharedUrl: String?, request: suspend () -> ReadingArticle) {
         importJob?.cancel()
         val revision = ++importRevision
-        state.update { it.copy(importing = true, importError = null, pendingUrl = sharedUrl) }
+        state.update { it.copy(importing = true, importError = null, pendingUrl = sharedUrl, directImportAvailable = false) }
         importJob = viewModelScope.launch {
             try {
                 val article = request()
                 if (revision == importRevision) {
                     open(article)
-                    state.update { it.copy(importing = false, pendingUrl = null) }
+                    state.update { it.copy(importing = false, pendingUrl = null, pastedDraft = "") }
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (revision == importRevision) {
                     val message = (error as? ArticleImportException)?.message ?: "Couldn't add the article. Try again."
-                    state.update { it.copy(importing = false, importError = message) }
+                    state.update { it.copy(importing = false, importError = message, directImportAvailable = error is IqsImportException) }
                 }
             }
         }
     }
 
     fun clearImportError() {
-        state.update { it.copy(importError = null, pendingUrl = null) }
+        state.update { it.copy(importError = null, pendingUrl = null, directImportAvailable = false) }
+    }
+
+    fun cancelImport() {
+        importRevision++
+        importJob?.cancel()
+        state.update { it.copy(importing = false, importError = null, pendingUrl = null, directImportAvailable = false) }
     }
 
     fun open(article: ReadingArticle) {
@@ -180,7 +329,7 @@ internal class ReaderViewModel(
         if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection } == true) return
         dismissResult()
         state.update { it.copy(result = ReaderResult(blockIndex, selection)) }
-        if (selection.kind == ArticleSelectionKind.WORD) retryMeaning() else analyzeSentence()
+        if (selection.kind == ArticleSelectionKind.SENTENCE) analyzeSentence() else retryMeaning()
     }
 
     fun dismissResult() {
@@ -192,7 +341,7 @@ internal class ReaderViewModel(
 
     fun retryMeaning() {
         val result = state.value.result ?: return
-        if (result.selection.kind != ArticleSelectionKind.WORD || result.meaningBusy) return
+        if (result.selection.kind == ArticleSelectionKind.SENTENCE || result.meaningBusy) return
         val revision = selectionRevision
         val cached = cachedMeaning?.takeIf { it.config == store.config.value && it.selection == result.selection }
         if (cached != null) {
@@ -283,5 +432,6 @@ internal class ReaderViewModel(
 
     private companion object {
         const val ARTICLE_KEY = "readingArticleId"
+        const val FONT_SIZE_KEY = "font-size"
     }
 }

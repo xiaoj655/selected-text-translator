@@ -1,6 +1,8 @@
 package io.github.selectedtext.translator
 
 import android.content.Context
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -38,17 +40,84 @@ class TranslationClient internal constructor(
         onPartial: (String) -> Unit,
     ): LookupResult {
         val selectedText = text.trim()
-        validateInput(selectedText)
+        if (text.length > MAX_INPUT_LENGTH || selectedText.isEmpty()) {
+            throw ProviderException("Enter 1 to 50,000 characters.")
+        }
         val model = selectModel(config, mode)
         val isMt = isQwenMt(model)
-        val request = contracts.buildRequest(model, selectedText, mode)
+        val requestBudget = when {
+            isMt -> QWEN_MT_REQUEST_BYTES
+            mode == LookupMode.GUIDE -> GUIDE_REQUEST_BYTES
+            else -> GENERAL_TRANSLATION_REQUEST_BYTES
+        }
+        val chunks = splitLookupText(selectedText, requestBudget)
+        val targetLanguage = translationTargetLanguage(selectedText)
+            .takeIf { mode == LookupMode.TRANSLATE && (isMt || chunks.size > 1) }
+        if (chunks.size == 1) {
+            return lookupChunk(config, model, selectedText, mode, targetLanguage, onPartial)
+        }
+
+        val translation = StringBuilder()
+        val guides = mutableListOf<LookupGuidePart>()
+        for ((index, chunk) in chunks.withIndex()) {
+            currentCoroutineContext().ensureActive()
+            val prefix = translation.toString()
+            val result = try {
+                lookupChunk(config, model, chunk.text, mode, targetLanguage) { partial -> onPartial(prefix + partial) }
+            } catch (error: ProviderException) {
+                throw ProviderException("Part ${index + 1} of ${chunks.size}: ${error.message}")
+            }
+            if (mode == LookupMode.GUIDE) guides += LookupGuidePart(chunk.text, result)
+            translation.append(result.text).append(chunk.separator)
+            if (mode == LookupMode.TRANSLATE) onPartial(translation.toString())
+        }
+        return LookupResult(text = translation.toString(), parts = guides)
+    }
+
+    private suspend fun lookupChunk(
+        config: ProviderConfig,
+        model: String,
+        text: String,
+        mode: LookupMode,
+        targetLanguage: String?,
+        onPartial: (String) -> Unit,
+    ): LookupResult {
+        val isMt = isQwenMt(model)
+        val request = contracts.buildRequest(model, text, mode, targetLanguage)
         return complete(config, request, onPartial = if (isMt) onPartial else { _ -> }) { content ->
-            parseResult(content, selectedText, mode, isMt)
+            parseResult(content, text, mode, isMt)
+        }
+    }
+
+    internal suspend fun testConnection(config: ProviderConfig): String {
+        val translationModel = selectModel(config, LookupMode.TRANSLATE)
+        val learningModel = config.learningModel.trim().ifEmpty { translationModel }
+        testModel(config, translationModel, "Translation model")
+        if (isQwenMt(learningModel)) return "Translation model connected. Set a learning model for reading."
+        if (learningModel != translationModel) testModel(config, learningModel, "Learning model")
+        return "Translation and learning models connected."
+    }
+
+    private suspend fun testModel(config: ProviderConfig, model: String, label: String) {
+        val request = if (isQwenMt(model)) {
+            contracts.buildRequest(model, "Hello.", LookupMode.TRANSLATE)
+        } else {
+            JSONObject().put("model", model).put("stream", false).put(
+                "messages",
+                JSONArray().put(JSONObject().put("role", "user").put("content", "Reply with OK.")),
+            ).apply { if (model.startsWith("qwen", ignoreCase = true)) put("enable_thinking", false) }
+        }
+        try {
+            complete(config, request) { content ->
+                if (content.isBlank()) throw ProviderException("The model returned no text. Try again.")
+            }
+        } catch (error: ProviderException) {
+            throw ProviderException("$label: ${error.message}")
         }
     }
 
     internal suspend fun lookupArticle(config: ProviderConfig, selection: ArticleSelection): ArticleMeaning {
-        validateInput(selection.text)
+        validateArticleInput(selection.text)
         val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings to look up articles.")
         return complete(config, contracts.buildArticleMeaningRequest(model, selection)) { content ->
             parseArticleMeaning(JSONObject(content), selection.kind == ArticleSelectionKind.WORD)
@@ -59,7 +128,7 @@ class TranslationClient internal constructor(
         config: ProviderConfig,
         selection: ArticleSelection,
     ): ArticleSentenceAnalysis {
-        validateInput(selection.sentence)
+        validateArticleInput(selection.sentence)
         val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings for sentence analysis.")
         return complete(config, contracts.buildArticleAnalysisRequest(model, selection.sentence)) { content ->
             parseArticleSentenceAnalysis(JSONObject(content), selection.sentence)
@@ -142,15 +211,17 @@ internal fun createProviderHttpClient(): OkHttpClient = OkHttpClient.Builder()
 internal class ModelContracts(json: String) {
     private val contracts = JSONObject(json)
     private val translation = contracts.getJSONObject("translation").toString()
+    private val translationByLanguage = contracts.getJSONObject("translationByLanguage")
     private val guide = contracts.getJSONObject("guide").toString()
     private val qwenMt = contracts.getJSONObject("qwenMt").toString()
     private val streamingQwenMtModels = contracts.getJSONArray("streamingQwenMtModels").strings().toSet()
 
-    fun buildRequest(model: String, text: String, mode: LookupMode): JSONObject {
+    fun buildRequest(model: String, text: String, mode: LookupMode, targetLanguage: String? = null): JSONObject {
         val isMt = isQwenMt(model)
         val template = when {
             mode == LookupMode.GUIDE -> guide
             isMt -> qwenMt
+            targetLanguage != null -> translationByLanguage.getJSONObject(targetLanguage).toString()
             else -> translation
         }
         val request = JSONObject(template).put("model", model)
@@ -166,8 +237,7 @@ internal class ModelContracts(json: String) {
         }
         if (isMt) {
             request.put("stream", model.lowercase() in streamingQwenMtModels)
-            val targetLanguage = if (CHINESE_CHAR.containsMatchIn(text)) "English" else "Chinese"
-            request.getJSONObject("translation_options").put("target_lang", targetLanguage)
+            request.getJSONObject("translation_options").put("target_lang", targetLanguage ?: translationTargetLanguage(text))
         } else if (model.startsWith("qwen", ignoreCase = true)) {
             request.put("enable_thinking", false)
         }
@@ -197,6 +267,10 @@ internal class ModelContracts(json: String) {
 }
 
 private const val MAX_RESPONSE_BYTES = 512_000L
+// Qwen-MT has a smaller context than general chat models. Bound the UTF-8 input conservatively.
+private const val QWEN_MT_REQUEST_BYTES = 6_000
+private const val GUIDE_REQUEST_BYTES = 8_000
+private const val GENERAL_TRANSLATION_REQUEST_BYTES = 12_000
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 private val CHINESE_CHAR = Regex("[\\u3400-\\u9fff]")
 private val SINGLE_WORD = Regex("^[\\p{L}]+(?:['’\\-][\\p{L}]+)*$")
@@ -206,10 +280,61 @@ private val WORD_SEPARATOR = Regex("[\\s\\p{Z}\uFEFF]+")
 
 private fun isQwenMt(model: String): Boolean = model.contains("qwen-mt", ignoreCase = true)
 
-private fun validateInput(text: String) {
-    if (text.isEmpty() || text.length > MAX_INPUT_LENGTH) {
-        throw ProviderException("Enter 1 to 12,000 characters.")
+private fun translationTargetLanguage(text: String): String = if (CHINESE_CHAR.containsMatchIn(text)) "English" else "Chinese"
+
+private fun validateArticleInput(text: String) {
+    if (text.isEmpty() || text.length > MAX_ARTICLE_LOOKUP_LENGTH) {
+        throw ProviderException("Select up to 12,000 characters to look up.")
     }
+}
+
+private data class LookupChunk(val text: String, val separator: String)
+
+private val LINE_BREAKS = charArrayOf('\n', '\r')
+private val SENTENCE_BREAKS = charArrayOf('.', '!', '?', '。', '！', '？')
+
+private fun splitLookupText(text: String, byteLimit: Int): List<LookupChunk> {
+    val chunks = mutableListOf<LookupChunk>()
+    var start = 0
+    while (start < text.length) {
+        val limit = utf8PrefixEnd(text, start, byteLimit)
+        if (limit == text.length) {
+            chunks.add(LookupChunk(text.substring(start), ""))
+            break
+        }
+        val midpoint = start + (limit - start) / 2
+        val lineEnd = text.lastIndexOfAny(LINE_BREAKS, limit - 1) + 1
+        val sentenceEnd = text.lastIndexOfAny(SENTENCE_BREAKS, limit - 1) + 1
+        val end = when {
+            lineEnd > midpoint -> lineEnd
+            sentenceEnd > midpoint -> sentenceEnd
+            else -> (limit - 1 downTo midpoint).firstOrNull { text[it].isWhitespace() } ?: limit
+        }
+        var contentEnd = end
+        while (contentEnd > start && text[contentEnd - 1].isWhitespace()) contentEnd--
+        var nextStart = end
+        while (nextStart < text.length && text[nextStart].isWhitespace()) nextStart++
+        chunks.add(LookupChunk(text.substring(start, contentEnd), text.substring(contentEnd, nextStart)))
+        start = nextStart
+    }
+    return chunks
+}
+
+private fun utf8PrefixEnd(text: String, start: Int, byteLimit: Int): Int {
+    var end = start
+    var bytes = 0
+    while (end < text.length) {
+        val codePoint = text.codePointAt(end)
+        bytes += when {
+            codePoint < 0x80 -> 1
+            codePoint < 0x800 -> 2
+            codePoint < 0x10000 -> 3
+            else -> 4
+        }
+        if (bytes > byteLimit) break
+        end += Character.charCount(codePoint)
+    }
+    return end
 }
 
 private fun selectModel(config: ProviderConfig, mode: LookupMode): String {
@@ -244,6 +369,7 @@ private fun readResponse(response: Response, onPartial: (String) -> Unit): Strin
     val source = body.source()
     if (source.request(MAX_RESPONSE_BYTES + 1)) throw ProviderException("The response was too long. Try selecting less text.")
     val choice = JSONObject(source.readString(body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)).firstChoice()
+    checkFinishReason(choice)
     val content = choice?.optJSONObject("message")?.opt("content")
     return when (content) {
         is String -> content
@@ -270,6 +396,7 @@ private fun readStream(body: ResponseBody, onPartial: (String) -> Unit): String 
         val event = JSONObject(data)
         if (event.has("error")) throw ProviderException("The model service returned an error. Try again.")
         val choice = event.firstChoice()
+        checkFinishReason(choice)
         val delta = choice?.optJSONObject("delta")?.opt("content") as? String
         val fullMessage = choice?.optJSONObject("message")?.opt("content") as? String
         when {
@@ -281,6 +408,12 @@ private fun readStream(body: ResponseBody, onPartial: (String) -> Unit): String 
         onPartial(content.toString())
     }
     return content.toString().trim()
+}
+
+private fun checkFinishReason(choice: JSONObject?) {
+    if (choice?.optString("finish_reason") == "length") {
+        throw ProviderException("The model stopped before completing the response. Try selecting less text.")
+    }
 }
 
 private fun parseResult(content: String, sourceText: String, mode: LookupMode, isMt: Boolean): LookupResult {

@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron')
+const { optional: suggestedFeeds } = require('../vendor/src/reading-source-catalog.json')
 
 const messageListeners = new Set()
 const storageListeners = new Set()
@@ -171,6 +172,7 @@ window.sttDesktop = {
   },
   openBailianConsole: () => ipcRenderer.invoke('stt:open-bailian-console'),
   reading: {
+    suggestedFeeds,
     discover: (category) => ipcRenderer.invoke('stt:reading-discover', category),
     addFeed: (url) => ipcRenderer.invoke('stt:reading-feed-add', url),
     removeFeed: (id) => ipcRenderer.invoke('stt:reading-feed-remove', id),

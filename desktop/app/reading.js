@@ -93,9 +93,9 @@ function readingAnchor(scroller) {
 }
 
 const CATEGORIES = {
-  news: 'Recent news',
+  news: 'Data & progress',
   engineering: 'Engineering blogs',
-  ideas: 'Tech ideas',
+  ideas: 'Essays & ideas',
   custom: 'My feeds',
 }
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
@@ -474,11 +474,17 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     const status = el('span', 'reading-meta')
     status.id = 'reading-feed-status'
     status.setAttribute('role', 'status')
-    form.append(backButton(addFeed), label, input, submit, status)
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault()
+    const suggested = el('div', 'reading-tools')
+    const currentSources = feeds.get('custom')?.sources ?? []
+    const suggestions = (api.suggestedFeeds ?? [])
+      .filter(({ url }) => !currentSources.some((source) => source.url === url))
+      .map(({ id, name, url }) => button(`Subscribe to ${name}`, `reading-feed-preset-${id}`, () => void subscribe(url)))
+    suggested.append(...suggestions)
+    form.append(backButton(addFeed), label, input, submit)
+    if (suggestions.length) form.append(suggested)
+    form.append(status)
+    async function subscribe(url) {
       if (changingFeeds) return
-      const url = input.value.trim()
       if (!url) {
         status.textContent = 'Enter a public HTTPS feed URL.'
         input.focus()
@@ -486,6 +492,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       }
       input.readOnly = true
       submit.disabled = true
+      for (const suggestion of suggestions) suggestion.disabled = true
       status.textContent = 'Checking feed…'
       try {
         await changeCustomFeeds(() => api.addFeed(url))
@@ -499,7 +506,12 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       } finally {
         input.readOnly = false
         submit.disabled = false
+        for (const suggestion of suggestions) suggestion.disabled = false
       }
+    }
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      void subscribe(input.value.trim())
     })
     showPanel(form)
     input.focus()
