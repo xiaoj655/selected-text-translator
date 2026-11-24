@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.1.1
+
+- 在 GitHub Actions 中显式安装 Android SDK 工具和 API 36 组件，恢复预览 APK 自动发布。
+
 ## 0.1.0
 
 - 从 Android 划词菜单、系统分享或应用内粘贴打开翻译。
