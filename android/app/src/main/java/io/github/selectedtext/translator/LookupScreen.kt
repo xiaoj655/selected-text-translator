@@ -1,5 +1,6 @@
 package io.github.selectedtext.translator
 
+import android.content.res.Configuration
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -56,6 +58,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -75,6 +78,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -126,33 +130,17 @@ fun LookupScreen(
     state: LookupUiState,
     actions: LookupActions,
     external: Boolean,
-    reading: @Composable (navigation: @Composable () -> Unit) -> Unit,
+    reading: @Composable (navigation: @Composable () -> Unit, rail: @Composable () -> Unit) -> Unit,
     readingSettings: (@Composable (Modifier) -> Unit)? = null,
     preferReadingSettings: Boolean = false,
     updateControls: @Composable (compact: Boolean) -> Unit,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val workspaceState = rememberSaveableStateHolder()
-    val navigation: @Composable () -> Unit = {
-        if (WindowInsets.ime.getBottom(LocalDensity.current) == 0) {
-            WorkspaceNavigation(state.page, actions::open)
-        }
-    }
     LaunchedEffect(state.notice) {
         val notice = state.notice ?: return@LaunchedEffect
         snackbar.showSnackbar(notice)
         actions.clearNotice()
-    }
-    if (state.page == LookupPage.READING && !external) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            Box(Modifier.safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
-                Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
-                    workspaceState.SaveableStateProvider(LookupPage.READING.name) { reading(navigation) }
-                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
-                }
-            }
-        }
-        return
     }
     if (external) {
         Box(Modifier.fillMaxSize()) {
@@ -176,7 +164,7 @@ fun LookupScreen(
                     .imePadding(),
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                val heightLimit = if (state.page == LookupPage.LOOKUP) maxHeight * 0.86f else maxHeight
+                val heightLimit = if (state.page == LookupPage.LOOKUP && maxHeight >= 420.dp) maxHeight * 0.86f else maxHeight
                 LookupPanel(
                     state,
                     actions,
@@ -189,7 +177,7 @@ fun LookupScreen(
             }
         }
     } else {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface)
@@ -197,18 +185,39 @@ fun LookupScreen(
                 .imePadding(),
             contentAlignment = Alignment.TopCenter,
         ) {
-            LookupPanel(
-                state,
-                actions,
-                external = false,
-                snackbar = snackbar,
-                modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
-                updateControls = updateControls,
-                readingSettings = readingSettings,
-                preferReadingSettings = preferReadingSettings,
-                workspaceState = workspaceState,
-                navigation = navigation,
-            )
+            val wide = maxWidth >= 840.dp && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val navigation: @Composable () -> Unit = {
+                if (!wide && WindowInsets.ime.getBottom(LocalDensity.current) == 0) {
+                    WorkspaceNavigation(state.page, actions::open)
+                }
+            }
+            val rail: @Composable () -> Unit = {
+                if (wide) WorkspaceRail(state.page, actions::open)
+            }
+            if (state.page == LookupPage.READING) {
+                workspaceState.SaveableStateProvider(LookupPage.READING.name) { reading(navigation, rail) }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp))
+            } else {
+                val dualPane = wide && state.page == LookupPage.LOOKUP
+                Row(Modifier.fillMaxSize()) {
+                    if (state.page != LookupPage.SETTINGS) rail()
+                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        LookupPanel(
+                            state,
+                            actions,
+                            external = false,
+                            snackbar = snackbar,
+                            modifier = Modifier.widthIn(max = if (dualPane) 1240.dp else 640.dp).fillMaxSize(),
+                            updateControls = updateControls,
+                            readingSettings = readingSettings,
+                            preferReadingSettings = preferReadingSettings,
+                            workspaceState = workspaceState,
+                            navigation = navigation,
+                            dualPane = dualPane,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -225,6 +234,7 @@ private fun LookupPanel(
     readingSettings: (@Composable (Modifier) -> Unit)? = null,
     preferReadingSettings: Boolean = false,
     navigation: @Composable () -> Unit = {},
+    dualPane: Boolean = false,
 ) {
     val rootPage = !external && state.page != LookupPage.SETTINGS
     val title = when (state.page) {
@@ -267,7 +277,7 @@ private fun LookupPanel(
             val pageModifier = Modifier.weight(1f, fill = !external).fillMaxWidth()
             when (state.page) {
                 LookupPage.LOOKUP -> workspaceState.SaveableStateProvider(LookupPage.LOOKUP.name) {
-                    LookupContent(state, actions, external, pageModifier) { updateControls(true) }
+                    LookupContent(state, actions, external, dualPane, pageModifier) { updateControls(true) }
                 }
                 LookupPage.SETTINGS -> Column(pageModifier) {
                     var models by rememberSaveable(preferReadingSettings) { mutableStateOf(!preferReadingSettings) }
@@ -295,17 +305,35 @@ private fun LookupPanel(
     }
 }
 
+private val workspaceDestinations = listOf(
+    Triple(LookupPage.LOOKUP, "Translate", R.drawable.ic_selected_mark),
+    Triple(LookupPage.READING, "Reading", R.drawable.ic_reading),
+    Triple(LookupPage.SAVED, "Saved", R.drawable.ic_bookmark),
+)
+
 @Composable
 private fun WorkspaceNavigation(currentPage: LookupPage, open: (LookupPage) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Column {
         HorizontalDivider(color = colors.outlineVariant)
         Row(Modifier.fillMaxWidth().selectableGroup().padding(horizontal = 8.dp)) {
-            WorkspaceDestination(LookupPage.LOOKUP, "Translate", R.drawable.ic_selected_mark, currentPage, open, Modifier.weight(1f))
-            WorkspaceDestination(LookupPage.READING, "Reading", R.drawable.ic_reading, currentPage, open, Modifier.weight(1f))
-            WorkspaceDestination(LookupPage.SAVED, "Saved", R.drawable.ic_bookmark, currentPage, open, Modifier.weight(1f))
+            workspaceDestinations.forEach { (page, label, icon) ->
+                WorkspaceDestination(page, label, icon, currentPage, open, Modifier.weight(1f))
+            }
         }
     }
+}
+
+@Composable
+private fun WorkspaceRail(currentPage: LookupPage, open: (LookupPage) -> Unit) {
+    Column(
+        Modifier.width(80.dp).selectableGroup().verticalScroll(rememberScrollState()).padding(top = 8.dp),
+    ) {
+        workspaceDestinations.forEach { (page, label, icon) ->
+            WorkspaceDestination(page, label, icon, currentPage, open, Modifier.fillMaxWidth())
+        }
+    }
+    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
@@ -343,14 +371,86 @@ private fun LookupContent(
     state: LookupUiState,
     actions: LookupActions,
     external: Boolean,
+    dualPane: Boolean,
     modifier: Modifier,
     updateControls: @Composable () -> Unit,
 ) {
     val result = state.result
     var visibleHints by rememberSaveable(state.input, state.requestRevision) { mutableIntStateOf(1) }
     var revealed by rememberSaveable(state.input, state.requestRevision) { mutableStateOf(false) }
+    var partHints by rememberSaveable(state.requestRevision, result?.parts?.size) {
+        mutableStateOf(IntArray(result?.parts?.size ?: 0) { 1 })
+    }
     val guideOpen = state.mode == LookupMode.GUIDE
     val canCopyResult = result != null && (!guideOpen || revealed)
+
+    val resultContent: @Composable ColumnScope.() -> Unit = {
+        if (state.busy) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                trackColor = MaterialTheme.colorScheme.surfaceContainer,
+            )
+            if (state.partial.isBlank() || guideOpen) {
+                Text(
+                    if (guideOpen) "Preparing hints…" else "Translating…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        state.error?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+        when {
+            !guideOpen && state.partial.isNotBlank() && result == null ->
+                TranslationText(state.partial, "")
+
+            result != null && guideOpen && result.parts.isNotEmpty() -> {
+                result.parts.forEachIndexed { index, part ->
+                    key(state.requestRevision, index) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            ExternalSource(part.source)
+                            GuideText(
+                                part.result, partHints[index], revealed,
+                                nextHint = { partHints = partHints.copyOf().apply { this[index]++ } },
+                                reveal = { revealed = true },
+                            )
+                        }
+                    }
+                }
+            }
+
+            result != null && guideOpen -> GuideText(
+                result,
+                visibleHints,
+                revealed,
+                nextHint = { visibleHints += 1 },
+                reveal = { revealed = true },
+            )
+
+            result != null -> TranslationText(result.text, result.phonetic)
+        }
+    }
+
+    if (dualPane) {
+        Row(modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp)) {
+            Column(Modifier.weight(1f).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                updateControls()
+                Composer(state, actions, Modifier.weight(1f, fill = false), expanded = true)
+            }
+            VerticalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Column(Modifier.weight(1f).fillMaxSize()) {
+                if (state.input.isNotBlank()) WorkspaceResultBar(state, actions, canCopyResult)
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    content = resultContent,
+                )
+            }
+        }
+        return
+    }
 
     Column(modifier) {
         Column(
@@ -368,50 +468,7 @@ private fun LookupContent(
                 Composer(state, actions)
                 if (state.input.isNotBlank()) WorkspaceResultBar(state, actions, canCopyResult)
             }
-
-            if (state.busy) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                    trackColor = MaterialTheme.colorScheme.surfaceContainer,
-                )
-                if (state.partial.isBlank() || guideOpen) {
-                    Text(
-                        if (guideOpen) "Preparing hints…" else "Translating…",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            state.error?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-            }
-            when {
-                !guideOpen && state.partial.isNotBlank() && result == null ->
-                    TranslationText(state.partial, "")
-
-                result != null && guideOpen && result.parts.isNotEmpty() -> {
-                    result.parts.forEachIndexed { index, part ->
-                        key(state.requestRevision, index) {
-                            var partHints by rememberSaveable { mutableIntStateOf(1) }
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                ExternalSource(part.source)
-                                GuideText(part.result, partHints, revealed, { partHints++ }, { revealed = true })
-                            }
-                        }
-                    }
-                }
-
-                result != null && guideOpen -> GuideText(
-                    result,
-                    visibleHints,
-                    revealed,
-                    nextHint = { visibleHints += 1 },
-                    reveal = { revealed = true },
-                )
-
-                result != null -> TranslationText(result.text, result.phonetic)
-            }
+            resultContent()
         }
         if (external) {
             Box(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
@@ -422,7 +479,7 @@ private fun LookupContent(
 }
 
 @Composable
-private fun Composer(state: LookupUiState, actions: LookupActions) {
+private fun Composer(state: LookupUiState, actions: LookupActions, modifier: Modifier = Modifier, expanded: Boolean = false) {
     val focus = LocalFocusManager.current
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(20.dp)
@@ -432,57 +489,63 @@ private fun Composer(state: LookupUiState, actions: LookupActions) {
         focus.clearFocus()
         if (state.configured) actions.lookup(mode) else actions.open(LookupPage.SETTINGS)
     }
-    Column(
-        Modifier
+    BoxWithConstraints(
+        modifier
             .fillMaxWidth()
             .background(colors.surfaceContainer, shape)
             .border(1.dp, if (focused) colors.outline else colors.outlineVariant, shape),
     ) {
-        BasicTextField(
-            value = state.input,
-            onValueChange = actions::input,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
-                .onFocusChanged { focused = it.isFocused }
-                .semantics { contentDescription = "Source text" },
-            textStyle = inputStyle,
-            cursorBrush = SolidColor(colors.primary),
-            minLines = 3,
-            maxLines = 5,
-            decorationBox = { field ->
-                Box {
-                    if (state.input.isEmpty()) {
-                        Text("Type or paste text to translate", style = inputStyle, color = colors.onSurfaceVariant)
+        val compactActions = maxWidth < 320.dp
+        val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) != 0
+        Column(Modifier.fillMaxWidth()) {
+            BasicTextField(
+                value = state.input,
+                onValueChange = actions::input,
+                modifier = (if (expanded) Modifier.weight(1f, fill = false) else Modifier)
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
+                    .onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = "Source text" },
+                textStyle = inputStyle,
+                cursorBrush = SolidColor(colors.primary),
+                minLines = if (keyboardVisible) 2 else if (expanded) 5 else 3,
+                maxLines = if (expanded) Int.MAX_VALUE else if (keyboardVisible) 3 else 5,
+                decorationBox = { field ->
+                    Box {
+                        if (state.input.isEmpty()) {
+                            Text("Type or paste text to translate", style = inputStyle, color = colors.onSurfaceVariant)
+                        }
+                        field()
                     }
-                    field()
-                }
-            },
-        )
-        Row(
-            Modifier.fillMaxWidth().padding(start = 6.dp, end = 8.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextAction(R.drawable.ic_paste, "Paste", {
-                focus.clearFocus()
-                actions.paste()
-            })
-            Spacer(Modifier.weight(1f))
-            if (state.configured) {
-                TextButton(
-                    onClick = { submit(LookupMode.GUIDE) },
-                    enabled = state.input.isNotBlank() && !state.busy,
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("Guide")
-                }
-            }
-            Button(
-                onClick = { if (state.busy) actions.stopLookup() else submit(LookupMode.TRANSLATE) },
-                enabled = state.busy || !state.configured || state.input.isNotBlank(),
-                contentPadding = PaddingValues(horizontal = 16.dp),
+                },
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(start = 6.dp, end = 8.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (state.busy) "Stop" else if (state.configured) "Translate" else "Set up a model")
+                val paste = {
+                    focus.clearFocus()
+                    actions.paste()
+                }
+                if (compactActions) IconAction(R.drawable.ic_paste, "Paste", paste)
+                else TextAction(R.drawable.ic_paste, "Paste", paste)
+                Spacer(Modifier.weight(1f))
+                if (state.configured) {
+                    TextButton(
+                        onClick = { submit(LookupMode.GUIDE) },
+                        enabled = state.input.isNotBlank() && !state.busy,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text("Guide")
+                    }
+                }
+                Button(
+                    onClick = { if (state.busy) actions.stopLookup() else submit(LookupMode.TRANSLATE) },
+                    enabled = state.busy || !state.configured || state.input.isNotBlank(),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                ) {
+                    Text(if (state.busy) "Stop" else if (state.configured) "Translate" else "Set up a model")
+                }
             }
         }
     }

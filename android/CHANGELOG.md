@@ -1,5 +1,11 @@
 # Android 更新日志
 
+## 0.2.5
+
+- On wide screens, read the original text and translation or guided explanation side by side.
+- Read articles in a comfortable-width column, with word and sentence explanations beside the text when there is room.
+- Keep translation and reading usable in phone and split-screen windows, with a stacked layout and controls that fit the available space.
+
 ## 0.2.4
 
 - Show or hide the model provider and Alibaba Cloud IQS API keys in Settings. Both start hidden.

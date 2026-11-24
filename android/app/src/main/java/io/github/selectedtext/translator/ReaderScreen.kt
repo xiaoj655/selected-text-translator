@@ -1,6 +1,8 @@
 package io.github.selectedtext.translator
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -17,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -41,6 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +65,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -88,6 +94,7 @@ internal fun ReaderScreen(
     onSettings: () -> Unit,
     onReadingSettings: () -> Unit,
     libraryNavigation: @Composable () -> Unit,
+    libraryRail: @Composable () -> Unit = {},
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
     val article = state.activeArticle
@@ -105,17 +112,22 @@ internal fun ReaderScreen(
         if (state.result != null) reader.dismissResult() else reader.closeArticle()
     }
     if (article == null) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
-                libraryState.SaveableStateProvider("reading-library") {
-                    ReadingLibrary(state, reader, onReadingSettings) {
-                        reader.clearImportError()
-                        sharedDraft = ""
-                        adding = true
+        Row(Modifier.fillMaxSize()) {
+            libraryRail()
+            Column(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                    Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+                        libraryState.SaveableStateProvider("reading-library") {
+                            ReadingLibrary(state, reader, onReadingSettings) {
+                                reader.clearImportError()
+                                sharedDraft = ""
+                                adding = true
+                            }
+                        }
                     }
                 }
+                libraryNavigation()
             }
-            libraryNavigation()
         }
     } else {
         key(article.id) {
@@ -372,6 +384,8 @@ private fun ArticleContent(
     val list = rememberLazyListState(article.position.index, article.position.offset)
     var tap by remember { mutableStateOf<ReadingTap?>(null) }
     var panelHeight by remember { mutableIntStateOf(0) }
+    val resultScroll = key(result?.blockIndex, result?.selection) { rememberScrollState() }
+    var detailsOpen by rememberSaveable(result?.blockIndex, result?.selection) { mutableStateOf(false) }
     val lineMargin = with(LocalDensity.current) { 12.dp.toPx() }
     val uriHandler = LocalUriHandler.current
     val typography = MaterialTheme.typography
@@ -418,12 +432,16 @@ private fun ArticleContent(
     DisposableEffect(list) {
         onDispose { reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)) }
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val sideResult = maxWidth >= 900.dp && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val resultWidth = if (sideResult) (maxWidth * 0.34f).coerceIn(304.dp, 360.dp) else 0.dp
+        val bodyWidth = minOf(664.dp, maxWidth - resultWidth)
         val resultHeight = maxHeight * 0.48f
+        val bodyWidthPx = with(LocalDensity.current) { bodyWidth.roundToPx() }
         val scrollMetrics = rememberArticleScrollMetrics(
-            constraints.maxWidth, article.title, source, article.blocks, titleStyle, sourceStyle, bodyStyle, headingStyle,
+            bodyWidthPx, article.title, source, article.blocks, titleStyle, sourceStyle, bodyStyle, headingStyle,
         )
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.width(bodyWidth + resultWidth).fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -462,73 +480,85 @@ private fun ArticleContent(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            LazyColumn(
-                Modifier.weight(1f).fillMaxWidth().articleScrollbar(list, scrollMetrics),
-                state = list,
-                contentPadding = articleContentPadding,
-                verticalArrangement = Arrangement.spacedBy(articleItemSpacing),
-            ) {
-                item(key = "title") {
-                    Column(verticalArrangement = Arrangement.spacedBy(articleTitleSpacing)) {
-                        Text(article.title, style = titleStyle)
-                        Text(source, style = sourceStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.weight(1f)) {
+                Column(Modifier.width(bodyWidth).fillMaxSize()) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().articleScrollbar(list, scrollMetrics),
+                        state = list,
+                        contentPadding = articleContentPadding,
+                        verticalArrangement = Arrangement.spacedBy(articleItemSpacing),
+                    ) {
+                        item(key = "title") {
+                            Column(verticalArrangement = Arrangement.spacedBy(articleTitleSpacing)) {
+                                Text(article.title, style = titleStyle)
+                                Text(source, style = sourceStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
+                            val paragraphResult = result?.takeIf { it.blockIndex == index }
+                            ArticleParagraph(
+                                block,
+                                phrase?.takeIf { it.blockIndex == index }?.selection ?: paragraphResult?.selection,
+                                paragraphResult?.grammar,
+                                if (block.heading) headingStyle else bodyStyle,
+                                onLongPress = { offset, line ->
+                                    resolveArticleSelection(block.text, offset, ArticleSelectionKind.WORD)?.let {
+                                        stopSpeech()
+                                        reader.dismissResult()
+                                        val selection = ReadingTap(index, it, line)
+                                        phraseAnchor = selection
+                                        phrase = selection
+                                    }
+                                },
+                                onTap = { offset, line ->
+                                    val anchor = phraseAnchor
+                                    if (anchor != null) {
+                                        if (anchor.blockIndex == index) {
+                                            resolveArticlePhrase(block.text, anchor.selection, offset)?.let {
+                                                phrase = ReadingTap(index, it, line)
+                                            }
+                                        }
+                                    } else {
+                                        resolveArticleSelection(block.text, offset, mode)?.let {
+                                            tap = ReadingTap(index, it, line)
+                                            stopSpeech()
+                                            reader.select(index, it)
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    phrase?.let { selection ->
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(selection.selection.text, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                TextButton(onClick = {
+                                    tap = selection
+                                    cancelPhrase()
+                                    reader.select(selection.blockIndex, selection.selection)
+                                }) { Text("Look up") }
+                                IconAction(R.drawable.ic_close, "Cancel selection", ::cancelPhrase)
+                            }
+                        }
                     }
                 }
-                itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
-                    val paragraphResult = result?.takeIf { it.blockIndex == index }
-                    ArticleParagraph(
-                        block,
-                        phrase?.takeIf { it.blockIndex == index }?.selection ?: paragraphResult?.selection,
-                        paragraphResult?.grammar,
-                        if (block.heading) headingStyle else bodyStyle,
-                        onLongPress = { offset, line ->
-                            resolveArticleSelection(block.text, offset, ArticleSelectionKind.WORD)?.let {
-                                stopSpeech()
-                                reader.dismissResult()
-                                val selection = ReadingTap(index, it, line)
-                                phraseAnchor = selection
-                                phrase = selection
-                            }
-                        },
-                        onTap = { offset, line ->
-                            val anchor = phraseAnchor
-                            if (anchor != null) {
-                                if (anchor.blockIndex == index) {
-                                    resolveArticlePhrase(block.text, anchor.selection, offset)?.let {
-                                        phrase = ReadingTap(index, it, line)
-                                    }
-                                }
-                            } else {
-                                resolveArticleSelection(block.text, offset, mode)?.let {
-                                    tap = ReadingTap(index, it, line)
-                                    stopSpeech()
-                                    reader.select(index, it)
-                                }
-                            }
-                        },
+                if (sideResult && result != null) {
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ReaderResultPanel(
+                        result, reader, speaking, speak, onSettings, back, Modifier.weight(1f).fillMaxSize(),
+                        resultScroll, detailsOpen, { detailsOpen = !detailsOpen }, side = true,
                     )
                 }
             }
-            phrase?.let { selection ->
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(selection.selection.text, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = {
-                            tap = selection
-                            cancelPhrase()
-                            reader.select(selection.blockIndex, selection.selection)
-                        }) { Text("Look up") }
-                        IconAction(R.drawable.ic_close, "Cancel selection", ::cancelPhrase)
-                    }
-                }
-            }
-            if (result != null) {
+            if (!sideResult && result != null) {
                 ReaderResultPanel(
                     result, reader, speaking, speak, onSettings, back,
                     Modifier.heightIn(max = resultHeight).onSizeChanged { panelHeight = it.height },
+                    resultScroll, detailsOpen, { detailsOpen = !detailsOpen }, side = false,
                 )
                 DisposableEffect(Unit) {
                     onDispose { panelHeight = 0 }
@@ -595,12 +625,16 @@ private fun ReaderResultPanel(
     onSettings: () -> Unit,
     dismiss: () -> Unit,
     modifier: Modifier,
+    scroll: ScrollState,
+    detailsOpen: Boolean,
+    toggleDetails: () -> Unit,
+    side: Boolean,
 ) {
     val selection = result.selection
     val meaningSelection = selection.kind != ArticleSelectionKind.SENTENCE
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
         Column {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (!side) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (meaningSelection) selection.text else "Sentence analysis",
@@ -618,51 +652,48 @@ private fun ReaderResultPanel(
                 IconAction(R.drawable.ic_close, "Close result", dismiss)
             }
             if (result.meaningBusy || result.grammarBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
-            key(result.blockIndex, selection) {
-                Column(
-                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-                        .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (result.meaningBusy) Text("Looking up…", style = MaterialTheme.typography.bodyMedium)
-                    result.meaning?.let { meaning ->
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(meaning.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            if (meaning.phonetic.isNotBlank()) {
-                                Text(meaning.phonetic, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (meaning.contextualAnalysis.isNotBlank()) {
-                                Text(meaning.contextualAnalysis, style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(scroll)
+                    .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (result.meaningBusy) Text("Looking up…", style = MaterialTheme.typography.bodyMedium)
+                result.meaning?.let { meaning ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(meaning.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        if (meaning.phonetic.isNotBlank()) {
+                            Text(meaning.phonetic, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (meaning.contextualAnalysis.isNotBlank()) {
+                            Text(meaning.contextualAnalysis, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
-                    if (meaningSelection && result.grammar == null && !result.grammarBusy && result.grammarError == null) {
-                        TextButton(onClick = reader::analyzeSentence, contentPadding = PaddingValues(horizontal = 2.dp)) {
-                            Text("Analyze sentence")
-                        }
-                    }
-                    if (result.grammarBusy) Text("Analyzing the sentence…", style = MaterialTheme.typography.bodyMedium)
-                    result.grammarError?.let { ReaderRetry(it, reader::retryGrammar, onSettings) }
-                    result.grammar?.let { analysis ->
-                        if (meaningSelection && result.meaning != null) HorizontalDivider()
-                        GrammarExplanation(selection.sentence, analysis)
-                    }
-                    result.saveError?.let { ReaderError(it) }
                 }
+                result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
+                if (meaningSelection && result.grammar == null && !result.grammarBusy && result.grammarError == null) {
+                    TextButton(onClick = reader::analyzeSentence, contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        Text("Analyze sentence")
+                    }
+                }
+                if (result.grammarBusy) Text("Analyzing the sentence…", style = MaterialTheme.typography.bodyMedium)
+                result.grammarError?.let { ReaderRetry(it, reader::retryGrammar, onSettings) }
+                result.grammar?.let { analysis ->
+                    if (meaningSelection && result.meaning != null) HorizontalDivider()
+                    GrammarExplanation(selection.sentence, analysis, detailsOpen, toggleDetails)
+                }
+                result.saveError?.let { ReaderError(it) }
             }
         }
     }
 }
 
 @Composable
-private fun GrammarExplanation(sentence: String, analysis: ArticleSentenceAnalysis) {
-    var detailsOpen by rememberSaveable { mutableStateOf(false) }
+private fun GrammarExplanation(sentence: String, analysis: ArticleSentenceAnalysis, detailsOpen: Boolean, toggleDetails: () -> Unit) {
     Text(analysis.paraphrase, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
     if (analysis.details.isNotEmpty()) {
-        TextButton(onClick = { detailsOpen = !detailsOpen }, contentPadding = PaddingValues(horizontal = 2.dp)) {
+        TextButton(onClick = toggleDetails, contentPadding = PaddingValues(horizontal = 2.dp)) {
             Text(if (detailsOpen) "Hide grammar details" else "Grammar details")
         }
         if (detailsOpen) {
