@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.3
+
+- Keep the reading scrollbar steady and accurate as paragraphs of different lengths move through the viewport.
+
 ## 0.2.2
 
 - See your place in an article with a slim scrollbar that appears while scrolling and fades when you stop.

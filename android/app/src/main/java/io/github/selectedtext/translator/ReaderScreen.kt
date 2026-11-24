@@ -1,8 +1,6 @@
 package io.github.selectedtext.translator
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -59,11 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -73,6 +66,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -81,8 +75,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.net.URI
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 
 @Composable
@@ -382,6 +374,18 @@ private fun ArticleContent(
     var panelHeight by remember { mutableIntStateOf(0) }
     val lineMargin = with(LocalDensity.current) { 12.dp.toPx() }
     val uriHandler = LocalUriHandler.current
+    val typography = MaterialTheme.typography
+    val titleStyle = typography.headlineMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold)
+    val sourceStyle = typography.bodySmall
+    val bodyStyle = typography.bodyLarge.copy(
+        fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal,
+        fontSize = fontSize.sp, lineHeight = (fontSize + 11).sp,
+    )
+    val headingStyle = typography.titleLarge.copy(
+        fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold,
+        fontSize = (fontSize + 4).sp, lineHeight = bodyStyle.lineHeight,
+    )
+    val source = article.sourceLabel()
     fun cancelPhrase() {
         phraseAnchor = null
         phrase = null
@@ -416,6 +420,9 @@ private fun ArticleContent(
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val resultHeight = maxHeight * 0.48f
+        val scrollMetrics = rememberArticleScrollMetrics(
+            constraints.maxWidth, article.title, source, article.blocks, titleStyle, sourceStyle, bodyStyle, headingStyle,
+        )
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -456,16 +463,15 @@ private fun ArticleContent(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth().articleScrollbar(list),
+                Modifier.weight(1f).fillMaxWidth().articleScrollbar(list, scrollMetrics),
                 state = list,
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                contentPadding = articleContentPadding,
+                verticalArrangement = Arrangement.spacedBy(articleItemSpacing),
             ) {
                 item(key = "title") {
-                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(article.title, style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.SemiBold)
-                        Text(article.sourceLabel(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(articleTitleSpacing)) {
+                        Text(article.title, style = titleStyle)
+                        Text(source, style = sourceStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
@@ -474,7 +480,7 @@ private fun ArticleContent(
                         block,
                         phrase?.takeIf { it.blockIndex == index }?.selection ?: paragraphResult?.selection,
                         paragraphResult?.grammar,
-                        fontSize,
+                        if (block.heading) headingStyle else bodyStyle,
                         onLongPress = { offset, line ->
                             resolveArticleSelection(block.text, offset, ArticleSelectionKind.WORD)?.let {
                                 stopSpeech()
@@ -533,57 +539,11 @@ private fun ArticleContent(
 }
 
 @Composable
-private fun Modifier.articleScrollbar(list: LazyListState): Modifier {
-    val opacity = remember(list) { Animatable(0f) }
-    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
-    LaunchedEffect(list) {
-        snapshotFlow { list.isScrollInProgress }.collectLatest { scrolling ->
-            if (scrolling) {
-                opacity.snapTo(1f)
-            } else if (opacity.value > 0f) {
-                delay(400)
-                opacity.animateTo(0f, tween(durationMillis = 250))
-            }
-        }
-    }
-
-    return drawWithContent {
-        drawContent()
-        val alpha = opacity.value
-        if (alpha == 0f || (!list.canScrollForward && !list.canScrollBackward)) return@drawWithContent
-        val indicator = list.scrollIndicatorState ?: return@drawWithContent
-        val contentHeight = indicator.contentSize
-        val viewportHeight = indicator.viewportSize
-        val trackInset = 4.dp.toPx()
-        val trackHeight = size.height - 2 * trackInset
-        if (contentHeight == Int.MAX_VALUE || viewportHeight <= 0 || contentHeight <= viewportHeight || trackHeight <= 0f) {
-            return@drawWithContent
-        }
-
-        val thumbWidth = 3.dp.toPx()
-        val thumbHeight = (trackHeight * viewportHeight / contentHeight)
-            .coerceIn(minOf(24.dp.toPx(), trackHeight), trackHeight)
-        val progress = when {
-            !list.canScrollBackward -> 0f
-            !list.canScrollForward -> 1f
-            else -> (indicator.scrollOffset.toFloat() / (contentHeight - viewportHeight)).coerceIn(0f, 1f)
-        }
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(size.width - 5.dp.toPx() - thumbWidth, trackInset + (trackHeight - thumbHeight) * progress),
-            size = Size(thumbWidth, thumbHeight),
-            cornerRadius = CornerRadius(thumbWidth / 2),
-            alpha = alpha,
-        )
-    }
-}
-
-@Composable
 private fun ArticleParagraph(
     block: ArticleBlock,
     selection: ArticleSelection?,
     grammar: ArticleSentenceAnalysis?,
-    fontSize: Int,
+    style: TextStyle,
     onLongPress: (Int, Rect) -> Unit,
     onTap: (Int, Rect) -> Unit,
 ) {
@@ -620,11 +580,7 @@ private fun ArticleParagraph(
             detectTapGestures(onLongPress = { handle(it, longPress) }, onTap = { handle(it, tap) })
         },
         onTextLayout = { layout = it },
-        style = if (block.heading) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
-        fontFamily = FontFamily.Serif,
-        fontWeight = if (block.heading) FontWeight.SemiBold else FontWeight.Normal,
-        fontSize = (fontSize + if (block.heading) 4 else 0).sp,
-        lineHeight = (fontSize + 11).sp,
+        style = style,
     )
 }
 
