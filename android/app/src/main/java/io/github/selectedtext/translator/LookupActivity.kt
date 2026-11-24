@@ -35,8 +35,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (external) {
-            val barStyle = SystemBarStyle.dark(Color.TRANSPARENT)
-            enableEdgeToEdge(statusBarStyle = barStyle, navigationBarStyle = barStyle)
+            enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))
             if (savedInstanceState == null) acceptIntent(intent)
         } else {
             enableEdgeToEdge()

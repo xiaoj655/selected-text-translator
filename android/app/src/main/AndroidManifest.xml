@@ -12,7 +12,7 @@
         android:name=".TranslatorApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:icon="@drawable/selected_icon"
+        android:icon="@mipmap/selected_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Selected"
