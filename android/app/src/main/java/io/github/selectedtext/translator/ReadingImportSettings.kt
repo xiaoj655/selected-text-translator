@@ -6,11 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,8 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -40,15 +36,11 @@ internal fun ReadingImportSettings(state: ReaderUiState, reader: ReaderViewModel
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Web import", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(
+        ApiKeyField(
             value = key,
             onValueChange = { key = it; reader.clearIqsSettingsMessage() },
-            modifier = Modifier.fillMaxWidth(),
+            label = "Alibaba Cloud IQS API key (optional)",
             enabled = !state.savingIqsKey,
-            label = { Text("Alibaba Cloud IQS API key (optional)") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         )
         Text(
             "With a key saved, web import sends the article link to Alibaba Cloud. Usage charges may apply.",

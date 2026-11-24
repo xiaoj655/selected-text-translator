@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.4
+
+- Show or hide the model provider and Alibaba Cloud IQS API keys in Settings. Both start hidden.
+
 ## 0.2.3
 
 - Keep the reading scrollbar steady and accurate as paragraphs of different lengths move through the viewport.
