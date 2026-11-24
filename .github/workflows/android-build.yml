@@ -30,7 +30,6 @@ jobs:
     outputs:
       version: ${{ steps.apk.outputs.version }}
       version_code: ${{ steps.apk.outputs.version_code }}
-      apk: ${{ steps.apk.outputs.name }}
     steps:
       - name: Require Android signing secrets
         if: startsWith(github.ref, 'refs/tags/android-v') && github.event_name == 'push'
@@ -137,7 +136,6 @@ jobs:
             '$ARGS.named' > update.json
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: startsWith(github.ref, 'refs/tags/android-v') && github.event_name == 'push'
@@ -174,17 +172,17 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.build.outputs.version }}
           VERSION_CODE: ${{ needs.build.outputs.version_code }}
-          APK_NAME: ${{ needs.build.outputs.apk }}
         run: |
+          apk_name="selected-text-translator-android-$VERSION.apk"
           (cd dist && sha256sum --check SHA256SUMS.txt)
-          checksum=$(sha256sum "dist/$APK_NAME")
-          jq -e --arg version "$VERSION" --arg name "$APK_NAME" \
+          checksum=$(sha256sum "dist/$apk_name")
+          jq -e --arg version "$VERSION" --arg name "$apk_name" \
             --argjson versionCode "$VERSION_CODE" \
-            --arg sha256 "${checksum%% *}" --argjson bytes "$(stat --format=%s "dist/$APK_NAME")" \
+            --arg sha256 "${checksum%% *}" --argjson bytes "$(stat --format=%s "dist/$apk_name")" \
             '.applicationId == "io.github.selectedtext.translator" and .versionName == $version
              and .versionCode == $versionCode and .fileName == $name and .sha256 == $sha256 and .bytes == $bytes' \
             dist/update.json > /dev/null
-          assets=("dist/$APK_NAME" dist/SHA256SUMS.txt dist/update.json)
+          assets=("dist/$apk_name" dist/SHA256SUMS.txt dist/update.json)
           if release_assets=$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease,assets 2>/dev/null); then
             for asset in "${assets[@]}"; do
               if ! jq -e --arg name "${asset##*/}" \
