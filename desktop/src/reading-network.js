@@ -1,3 +1,4 @@
+import http from 'node:http'
 import { lookup } from 'node:dns'
 import https from 'node:https'
 import { isIP } from 'node:net'
@@ -5,11 +6,12 @@ import ipaddr from 'ipaddr.js'
 
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
 
-export function publicReadingUrl(value, base) {
+export function publicReadingUrl(value, base, { allowHttp = false } = {}) {
   if (typeof value !== 'string' || value.length > 4096) throw new Error('Invalid public HTTPS URL')
   const url = URL.parse(value.trim(), base)
   const host = url?.hostname.replace(/\.$/u, '')
-  if (!url || url.protocol !== 'https:' || url.username || url.password || url.port
+  const validProtocol = url && (url.protocol === 'https:' || (allowHttp && url.protocol === 'http:'))
+  if (!validProtocol || url.username || url.password || url.port
     || !host.includes('.') || isIP(host) || /\.(?:localhost|local|internal|test|invalid|example)$/u.test(host)
     || host.endsWith('.home.arpa') || url.href.length > 4096) throw new Error('Invalid public HTTPS URL')
   url.hash = ''
@@ -38,18 +40,74 @@ export function publicLookup(host, options, callback) {
 
 function requestResource(url, { signal, headers }) {
   return new Promise((resolve, reject) => {
-    const request = https.get(url, { agent: false, lookup: publicLookup, signal, headers }, resolve)
+    const client = url.protocol === 'http:' ? http : https
+    const request = client.get(url, { agent: false, lookup: publicLookup, signal, headers }, resolve)
     request.once('error', reject)
   })
 }
 
-export async function openReadingResource(value, { signal, headers = {}, requestImpl = requestResource } = {}) {
-  let url = publicReadingUrl(String(value))
+export async function openReadingResource(value, { signal, headers = {}, requestImpl = requestResource, allowHttp = false } = {}) {
+  let url = publicReadingUrl(String(value), undefined, { allowHttp })
   for (let redirects = 0; redirects <= 5; redirects += 1) {
     const response = await requestImpl(url, { signal, headers })
     if (!REDIRECT_STATUS.has(response.statusCode) || !response.headers.location) return { url, response }
     response.destroy()
-    url = publicReadingUrl(response.headers.location, url)
+    url = publicReadingUrl(response.headers.location, url, { allowHttp })
   }
   throw new Error('Too many redirects')
+}
+
+function normalizeHeaders(headers = {}) {
+  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), Array.isArray(value) ? value[0] : value]))
+}
+
+function wrapResponse(response, cleanup) {
+  response.once('end', cleanup)
+  response.once('close', cleanup)
+  response.once('error', cleanup)
+  return {
+    statusCode: response.statusCode,
+    headers: normalizeHeaders(response.headers),
+    destroy: response.destroy.bind(response),
+    [Symbol.asyncIterator]: () => response[Symbol.asyncIterator](),
+  }
+}
+
+function electronRequest(netModule) {
+  return (url, { signal, headers }) => new Promise((resolve, reject) => {
+    let settled = false
+    const request = netModule.request({
+      url: url.href,
+      method: 'GET',
+      redirect: 'manual',
+      useSessionCookies: false,
+      headers,
+    })
+    const abort = () => request.abort()
+    const cleanup = () => signal?.removeEventListener('abort', abort)
+    signal?.addEventListener('abort', abort, { once: true })
+    request.on('response', (response) => {
+      settled = true
+      resolve(wrapResponse(response, cleanup))
+    })
+    request.on('redirect', (statusCode, _method, _redirectUrl, responseHeaders) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      request.abort()
+      resolve({ statusCode, headers: normalizeHeaders(responseHeaders), destroy() {} })
+    })
+    request.on('error', (error) => {
+      if (!settled) {
+        cleanup()
+        reject(error)
+      }
+    })
+    request.end()
+  })
+}
+
+export function createElectronReadingResource(netModule) {
+  const requestImpl = electronRequest(netModule)
+  return (value, options) => openReadingResource(value, { ...options, requestImpl, allowHttp: true })
 }

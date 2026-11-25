@@ -11,7 +11,7 @@ const ARTICLES_PER_SOURCE = 8
 const EXCERPT_LENGTH = 380
 const FEED_STORAGE_KEY = 'desktop_reading_custom_feeds'
 const FEED_ACCEPT = 'application/rss+xml, application/atom+xml, application/xml, text/xml'
-const INVALID_FEED_URL = 'Enter a public HTTPS feed URL.'
+const INVALID_FEED_URL = 'Enter a public HTTP or HTTPS feed URL.'
 const DUPLICATE_FEED = 'This feed is already added.'
 const INVALID_FEED = 'This URL did not return an RSS or Atom feed.'
 const FEED_TAGS = /<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->|<(\/?)([A-Za-z][\w:.-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>/g
@@ -139,7 +139,7 @@ function readArticleUrl(entry, source) {
   }
   if (!link) return ''
   try {
-    if (!source.hosts) return publicReadingUrl(link, source.url).href
+    if (!source.hosts) return publicReadingUrl(link, source.url, { allowHttp: source.allowHttp }).href
     const url = new URL(link.trim(), source.url)
     if (url.protocol !== 'https:' || url.port || url.username || url.password || !source.hosts.includes(url.hostname)) return ''
     url.hash = ''
@@ -233,7 +233,7 @@ async function loadSource(source, fetchImpl) {
 
 function customFeedUrl(value) {
   try {
-    return publicReadingUrl(value)
+    return publicReadingUrl(value, undefined, { allowHttp: true })
   } catch {
     throw new Error(INVALID_FEED_URL)
   }
@@ -288,7 +288,7 @@ async function loadCustomFeed(feedUrl, openResource, savedName) {
     const { title, hasEntries } = readFeedMetadata(xml)
     const url = resource.url.href
     const name = savedName || title || resource.url.hostname
-    const articles = readFeedArticles(xml, { url, name })
+    const articles = readFeedArticles(xml, { url, name, allowHttp: true })
     if (hasEntries && !articles.length) throw new Error('This feed has no readable article links. Try another feed URL.')
     return { url, name, articles }
   } catch (error) {

@@ -79,6 +79,7 @@ export async function installReadingFeeds(app) {
     }
   }
   await app.evaluate(({ session, net }, { feeds, cloudText, cloudTitle }) => {
+    globalThis.__sttE2EReadingFeedResponses = feeds
     session.defaultSession.protocol.handle('https', async (request) => {
       if (request.url === 'https://cloud-iqs.aliyuncs.com/readpage/scrape') {
         const key = request.headers.get('X-API-Key')
@@ -89,9 +90,11 @@ export async function installReadingFeeds(app) {
         const input = await request.json()
         return Response.json({ data: { statusCode: 200, text: cloudText, metadata: { title: cloudTitle, url: input.url } } })
       }
-      const feed = feeds[request.url]
+      const feed = feeds[request.url] || globalThis.__sttE2ECustomFeedResponses?.[request.url]
       if (!feed) return net.fetch(request, { bypassCustomProtocolHandlers: true })
+      if (feed.redirectTo) return new Response(null, { status: 301, headers: { location: feed.redirectTo } })
       feed.requests += 1
+      if (feed.failureFlag && globalThis[feed.failureFlag]) return new Response(null, { status: 503 })
       if (feed.failureAttempts.includes(feed.requests)) {
         return new Response(null, { status: 503 })
       }

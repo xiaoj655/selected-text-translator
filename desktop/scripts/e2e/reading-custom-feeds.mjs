@@ -29,29 +29,34 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?>
 
 async function installCustomFeed(app) {
   await app.evaluate((_electron, { feedUrl, articleUrl, rss, articleHtml, claudeUrl, claudeRss }) => {
+    const feeds = globalThis.__sttE2EReadingFeedResponses
+    globalThis.__sttE2ECustomFeedResponses = feeds
+    globalThis.__sttE2ECustomFeedUnavailable = false
+    feeds[`${feedUrl}/`] = { redirectTo: feedUrl }
+    feeds[feedUrl] = {
+      body: rss,
+      type: 'application/rss+xml; charset=utf-8',
+      requests: 0,
+      failureAttempts: [],
+      failureFlag: '__sttE2ECustomFeedUnavailable',
+    }
+    feeds[claudeUrl] = {
+      body: claudeRss,
+      type: 'application/rss+xml; charset=utf-8',
+      requests: 0,
+      failureAttempts: [],
+    }
     const https = process.getBuiltinModule('node:https')
     const { Readable } = process.getBuiltinModule('node:stream')
     const originalGet = https.get
     https.get = (target, options, callback) => {
-      let statusCode = 200
-      let headers = { 'content-type': 'application/rss+xml; charset=utf-8' }
-      let body = rss
-      if (target.href === `${feedUrl}/`) {
-        statusCode = 301
-        headers = { location: feedUrl }
-        body = ''
-      } else if (target.href === articleUrl) {
-        headers = { 'content-type': 'text/html; charset=utf-8' }
-        body = articleHtml
-      } else if (target.href === claudeUrl) {
-        body = claudeRss
-      } else if (target.href !== feedUrl) {
+      if (target.href !== articleUrl) {
         return originalGet(target, options, callback)
-      } else if (globalThis.__sttE2ECustomFeedUnavailable) {
-        statusCode = 503
-        body = ''
       }
-      const response = Object.assign(Readable.from([Buffer.from(body)]), { statusCode, headers })
+      const response = Object.assign(Readable.from([Buffer.from(articleHtml)]), {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
       queueMicrotask(() => callback(response))
       return response
     }
@@ -86,12 +91,18 @@ export async function verifyCustomReadingFeeds({ app, page, check, shot, restart
     const submit = page.locator('#reading-feed-submit')
     const status = page.locator('#reading-feed-status')
     await add.click()
-    await input.fill('http://feeds.example.org/fieldnotes')
+    await input.fill('http://127.0.0.1/fieldnotes')
     await submit.click()
-    await status.getByText(/public HTTPS feed URL/u).waitFor()
+    await status.getByText(/public HTTP or HTTPS feed URL/u).waitFor()
     await input.fill(`${FEED_URL}/`)
     await submit.click()
-    await feedArticle(page).waitFor()
+    try {
+      await feedArticle(page).waitFor({ timeout: 10000 })
+    } catch (error) {
+      const listStatus = await page.locator('.reading-list-status').first().textContent()
+      const addStatus = await status.textContent()
+      throw new Error(`${error.message} (list: ${listStatus}; add: ${addStatus})`)
+    }
     const firstRow = feedArticle(page).locator('..')
     await firstRow.getByText(FEED_NAME, { exact: true }).waitFor()
     await firstRow.getByText(/words in feed/u).waitFor()

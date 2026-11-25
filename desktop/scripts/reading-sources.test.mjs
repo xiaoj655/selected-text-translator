@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { createReadingDiscovery, discoverReadingArticles, READING_SOURCES } from '../src/reading-sources.js'
+import { createElectronReadingResource } from '../src/reading-network.js'
 import { createStorage } from '../src/storage.js'
 
 test('article discovery preserves full plain text and sanitized feed formatting', async () => {
@@ -193,8 +195,8 @@ function feedResponse(url, xml, statusCode = 200) {
 test('custom subscriptions use the redirected URL, reuse the initial response, and survive restart', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'stt-rss-'))
   t.after(() => rm(profile, { recursive: true, force: true }))
-  const typed = 'https://rss.reader-sample.com/redirect#feed'
-  const canonical = 'https://rss.reader-sample.com/blog/feed.xml'
+  const typed = 'http://rss.reader-sample.com/redirect#feed'
+  const canonical = 'http://rss.reader-sample.com/blog/feed.xml'
   const xml = `<rss><channel>
     <!-- <title>Ignore this</title> -->
     <title><![CDATA[News &amp; notes]]></title>
@@ -214,13 +216,13 @@ test('custom subscriptions use the redirected URL, reuse the initial response, a
   }
   const discovery = createReadingDiscovery({ storage: createStorage(profile), openResource })
   const added = await discovery.addFeed(typed)
-  assert.deepEqual(requested, ['https://rss.reader-sample.com/redirect'])
+  assert.deepEqual(requested, ['http://rss.reader-sample.com/redirect'])
   const [source] = added.sources
   assert.deepEqual({ name: source.name, url: source.url }, { name: 'News & notes', url: canonical })
   assert.deepEqual(added.articles.map(({ title }) => title), ['A full article', 'A headline'])
   assert.match(added.articles[0].html, /<em>readable<\/em>/)
   assert.doesNotMatch(added.articles[0].html, /ignore me/)
-  assert.equal(added.articles[1].url, 'https://rss.reader-sample.com/blog/posts/one')
+  assert.equal(added.articles[1].url, 'http://rss.reader-sample.com/blog/posts/one')
   assert.equal(added.articles[1].text, '')
   assert.match(added.articles[0].id, /^custom-feed-[a-f0-9]{64}$/)
   assert.equal(discovery.getArticle(added.articles[0].id)?.title, 'A full article')
@@ -277,7 +279,7 @@ test('custom refresh keeps prior articles on failure, deduplicates links, and ca
 })
 
 test('custom source addition rejects invalid URLs and non-feed pages, and accepts a valid empty Atom feed', async () => {
-  const empty = 'https://rss.reader-sample.com/empty.xml'
+  const empty = 'http://rss.reader-sample.com/empty.xml'
   const requests = []
   const discovery = createReadingDiscovery({ openResource: async (url) => {
     requests.push(url)
@@ -285,14 +287,68 @@ test('custom source addition rejects invalid URLs and non-feed pages, and accept
       ? '<feed xmlns="http://www.w3.org/2005/Atom"><title>Empty</title></feed>'
       : '<html><body><rss><channel><title>Nested</title></channel></rss></body></html>')
   } })
-  await assert.rejects(discovery.addFeed('http://rss.reader-sample.com/feed'), /public HTTPS/)
-  await assert.rejects(discovery.addFeed('https://192.168.0.1/feed'), /public HTTPS/)
+  await assert.rejects(discovery.addFeed('ftp://rss.reader-sample.com/feed'), /public HTTP or HTTPS/)
+  await assert.rejects(discovery.addFeed('https://192.168.0.1/feed'), /public HTTP or HTTPS/)
+  await assert.rejects(discovery.addFeed('http://localhost/feed'), /public HTTP or HTTPS/)
   assert.equal(requests.length, 0)
   await assert.rejects(discovery.addFeed('https://rss.reader-sample.com/'), /did not return an RSS or Atom feed/)
   const result = await discovery.addFeed(empty)
   assert.equal(result.sources[0].name, 'Empty')
+  assert.equal(result.sources[0].url, empty)
   assert.deepEqual(result.articles, [])
   assert.deepEqual(result.unavailableSources, [])
+})
+
+test('the proxy-aware feed request follows only validated redirects and reads the final response', async () => {
+  const start = 'http://rss.reader-sample.com/redirect'
+  const final = 'https://rss.reader-sample.com/feed.xml'
+  const requests = []
+  const netModule = {
+    request(options) {
+      requests.push(options)
+      const request = new EventEmitter()
+      request.abort = () => {}
+      request.end = () => queueMicrotask(() => {
+        if (options.url === start) {
+          request.emit('redirect', 302, 'GET', final, { Location: final })
+        } else {
+          const response = feedResponse(final, '<feed xmlns="http://www.w3.org/2005/Atom"><title>Feed</title></feed>')
+          request.emit('response', response.response)
+        }
+      })
+      return request
+    },
+  }
+  const openResource = createElectronReadingResource(netModule)
+  const resource = await openResource(start, {
+    signal: AbortSignal.timeout(1000),
+    headers: { Accept: 'application/atom+xml' },
+  })
+  assert.equal(resource.url.href, final)
+  assert.equal(resource.response.statusCode, 200)
+  const chunks = []
+  for await (const chunk of resource.response) chunks.push(chunk)
+  assert.match(Buffer.concat(chunks).toString(), /<title>Feed<\/title>/u)
+  assert.deepEqual(requests.map(({ url }) => url), [start, final])
+  assert.ok(requests.every(({ redirect }) => redirect === 'manual'))
+  assert.equal(requests[0].useSessionCookies, false)
+  assert.equal(requests[0].headers.Accept, 'application/atom+xml')
+
+  let privateRedirectRequests = 0
+  const privateRedirect = createElectronReadingResource({
+    request(options) {
+      privateRedirectRequests += 1
+      const request = new EventEmitter()
+      request.abort = () => {}
+      request.end = () => queueMicrotask(() => request.emit('redirect', 302, 'GET', '', { location: 'http://127.0.0.1/private' }))
+      return request
+    },
+  })
+  await assert.rejects(privateRedirect(start, {
+    signal: AbortSignal.timeout(1000),
+    headers: {},
+  }), /public HTTPS/)
+  assert.equal(privateRedirectRequests, 1)
 })
 
 test('simultaneous aliases of the same source save only one subscription', async () => {

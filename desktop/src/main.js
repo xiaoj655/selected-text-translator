@@ -14,7 +14,7 @@ import { createReadingDiscovery } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
 import { createReadingHistory } from './reading-history.js'
-import { publicReadingUrl } from './reading-network.js'
+import { createElectronReadingResource, publicReadingUrl } from './reading-network.js'
 import { handleReadingMediaRequest } from './reading-media.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
 import { createRequestDebug } from './request-debug.js'
@@ -114,7 +114,11 @@ function installRequestDebugIpc(requestDebug) {
 function installReadingIpc(storage, fetcher) {
   const readingTutor = createReadingTutor({ storage, fetcher })
   const readingHistory = createReadingHistory(app.getPath('userData'))
-  const readingDiscovery = createReadingDiscovery({ fetchImpl: net.fetch, storage })
+  const readingDiscovery = createReadingDiscovery({
+    fetchImpl: net.fetch,
+    openResource: createElectronReadingResource(net),
+    storage,
+  })
   const articles = new Map()
   function rememberArticle(article) {
     articles.delete(article.id)
@@ -180,7 +184,7 @@ function installReadingIpc(storage, fetcher) {
     },
     'stt:reading-open'(articleId) {
       const article = readingDiscovery.getArticle(articleId) ?? articles.get(articleId)
-      if (!article?.url.startsWith('https://')) throw new Error('Could not open the original article. Refresh the list and try again.')
+      if (!article?.url || !/^https?:\/\//u.test(article.url)) throw new Error('Could not open the original article. Refresh the list and try again.')
       return shell.openExternal(article.url)
     },
   }

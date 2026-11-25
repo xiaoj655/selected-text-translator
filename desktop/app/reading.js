@@ -486,7 +486,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     async function subscribe(url) {
       if (changingFeeds) return
       if (!url) {
-        status.textContent = 'Enter a public HTTPS feed URL.'
+        status.textContent = 'Enter a public HTTP or HTTPS feed URL.'
         input.focus()
         return
       }
