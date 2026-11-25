@@ -124,6 +124,14 @@ class TranslationClient internal constructor(
         }
     }
 
+    internal suspend fun guideArticle(config: ProviderConfig, selection: ArticleSelection): LookupResult {
+        validateArticleInput(selection.text)
+        val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings for Guided Reading.")
+        return complete(config, contracts.buildArticleGuideRequest(model, selection)) { content ->
+            parseResult(content, selection.text, LookupMode.GUIDE, isMt = false)
+        }
+    }
+
     internal suspend fun analyzeArticleSentence(
         config: ProviderConfig,
         selection: ArticleSelection,
@@ -246,6 +254,9 @@ internal class ModelContracts(json: String) {
 
     fun buildArticleMeaningRequest(model: String, selection: ArticleSelection): JSONObject =
         articleRequest("articleMeaning", model, articleMeaningInput(selection))
+
+    fun buildArticleGuideRequest(model: String, selection: ArticleSelection): JSONObject =
+        articleRequest("guide", model, articleMeaningInput(selection))
 
     fun buildArticleAnalysisRequest(model: String, sentence: String): JSONObject =
         articleRequest(

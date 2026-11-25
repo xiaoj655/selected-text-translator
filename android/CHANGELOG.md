@@ -1,5 +1,11 @@
 # Android 更新日志
 
+## 0.2.7
+
+- Article lookups show the selected meaning first, with sentence explanations available on demand. Grammar highlights appear automatically, and the selected text stays underlined.
+- Use Guided Reading in articles to see one hint at a time or reveal the answer immediately. Open the sentence explanation after revealing the answer.
+- Phone and split-screen layouts use a compact, scrollable reading panel with fixed actions. Wide windows keep the side panel.
+
 ## 0.2.6
 
 - Keep reading text and controls legible in Android dark mode.

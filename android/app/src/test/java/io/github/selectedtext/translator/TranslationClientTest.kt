@@ -220,6 +220,34 @@ class TranslationClientTest {
     }
 
     @Test
+    fun guidesTheSelectedOccurrenceInAnArticle(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("""{
+                "guideType":"term",
+                "hints":["Notice the word a.","Compare the two uses of record.","Think of a list of monthly payments."],
+                "answer":{"meaning":"A written account.","explanation":"The article a signals a noun.",
+                          "example":"She keeps a record of each payment."}
+            }"""))
+            val config = config(server)
+            val sentence = "We record a record every month."
+            val selection = resolveArticleSelection(sentence, 14, ArticleSelectionKind.WORD)!!
+
+            val guide = client().guideArticle(config, selection)
+
+            assertEquals("Notice the word a.", guide.hints.first())
+            assertEquals("A written account.", guide.text)
+            val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+            val input = JSONObject(payload.getJSONArray("messages").getJSONObject(1).getString("content"))
+            assertEquals(config.learningModel, payload.getString("model"))
+            assertEquals("record", input.getString("selectedText"))
+            assertEquals("word", input.getString("selectionType"))
+            assertEquals(sentence, input.getString("surroundingContext"))
+            assertEquals(12, input.getInt("contextStart"))
+            assertEquals("We record a ", input.getJSONObject("selectedOccurrence").getString("before"))
+        }
+    }
+
+    @Test
     fun articleLookupRequiresAGeneralPurposeLearningModel(): Unit = runBlocking {
         MockWebServer().use { server ->
             val config = config(server).copy(learningModel = "")

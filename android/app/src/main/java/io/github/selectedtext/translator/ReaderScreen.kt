@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -77,6 +79,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -377,13 +380,16 @@ private fun ArticleContent(
     back: () -> Unit,
 ) {
     var mode by rememberSaveable { mutableStateOf(ArticleSelectionKind.WORD) }
+    var guided by rememberSaveable { mutableStateOf(false) }
     var phraseAnchor by remember { mutableStateOf<ReadingTap?>(null) }
     var phrase by remember { mutableStateOf<ReadingTap?>(null) }
     var optionsOpen by remember { mutableStateOf(false) }
     var tap by remember { mutableStateOf<ReadingTap?>(null) }
     var panelHeight by remember { mutableIntStateOf(0) }
-    val resultScroll = key(result?.blockIndex, result?.selection) { rememberScrollState() }
-    var detailsOpen by rememberSaveable(result?.blockIndex, result?.selection) { mutableStateOf(false) }
+    val resultScroll = key(result?.blockIndex, result?.selection, result?.guided) { rememberScrollState() }
+    var sentenceOpen by rememberSaveable(result?.blockIndex, result?.selection, result?.guided) { mutableStateOf(false) }
+    var detailsOpen by rememberSaveable(result?.blockIndex, result?.selection, result?.guided) { mutableStateOf(false) }
+    var visibleHints by rememberSaveable(result?.blockIndex, result?.selection, result?.guided) { mutableIntStateOf(1) }
     val lineMargin = with(LocalDensity.current) { 12.dp.toPx() }
     val uriHandler = LocalUriHandler.current
     val typography = MaterialTheme.typography
@@ -405,12 +411,20 @@ private fun ArticleContent(
     val closeOrBack = {
         if (phraseAnchor != null) cancelPhrase() else back()
     }
+    val toggleGuide = {
+        result?.let {
+            guided = !it.guided
+            stopSpeech()
+            reader.select(it.blockIndex, it.selection, guided)
+        }
+        Unit
+    }
     BackHandler(onBack = closeOrBack)
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val sideResult = maxWidth >= 900.dp && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val resultWidth = if (sideResult) (maxWidth * 0.34f).coerceIn(304.dp, 360.dp) else 0.dp
         val bodyWidth = minOf(664.dp, maxWidth - resultWidth)
-        val resultHeight = maxHeight * 0.48f
+        val resultHeight = minOf(320.dp, maxHeight * 0.42f)
         val bodyWidthPx = with(LocalDensity.current) { bodyWidth.roundToPx() }
         // A taller viewport can temporarily clamp the first visible paragraph near the end.
         // Start each new viewport from the last position reached by scrolling.
@@ -533,7 +547,7 @@ private fun ArticleContent(
                                         resolveArticleSelection(block.text, offset, mode)?.let {
                                             tap = ReadingTap(index, it, line)
                                             stopSpeech()
-                                            reader.select(index, it)
+                                            reader.select(index, it, guided)
                                         }
                                     }
                                 },
@@ -550,7 +564,7 @@ private fun ArticleContent(
                                 TextButton(onClick = {
                                     tap = selection
                                     cancelPhrase()
-                                    reader.select(selection.blockIndex, selection.selection)
+                                    reader.select(selection.blockIndex, selection.selection, guided)
                                 }) { Text("Look up") }
                                 IconAction(R.drawable.ic_close, "Cancel selection", ::cancelPhrase)
                             }
@@ -561,7 +575,8 @@ private fun ArticleContent(
                     VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ReaderResultPanel(
                         result, reader, speaking, speak, onSettings, back, Modifier.weight(1f).fillMaxSize(),
-                        resultScroll, detailsOpen, { detailsOpen = !detailsOpen }, side = true,
+                        resultScroll, sentenceOpen, { sentenceOpen = !sentenceOpen },
+                        detailsOpen, { detailsOpen = !detailsOpen }, visibleHints, { visibleHints++ }, toggleGuide, side = true,
                     )
                 }
             }
@@ -569,7 +584,8 @@ private fun ArticleContent(
                 ReaderResultPanel(
                     result, reader, speaking, speak, onSettings, back,
                     Modifier.heightIn(max = resultHeight).onSizeChanged { panelHeight = it.height },
-                    resultScroll, detailsOpen, { detailsOpen = !detailsOpen }, side = false,
+                    resultScroll, sentenceOpen, { sentenceOpen = !sentenceOpen },
+                    detailsOpen, { detailsOpen = !detailsOpen }, visibleHints, { visibleHints++ }, toggleGuide, side = false,
                 )
                 DisposableEffect(Unit) {
                     onDispose { panelHeight = 0 }
@@ -597,9 +613,11 @@ private fun ArticleParagraph(
                     addStyle(SpanStyle(background = grammarColor(span.role)),
                         selection.sentenceStart + span.start, selection.sentenceStart + span.end)
                 }
-                if (grammar == null || selection.kind != ArticleSelectionKind.SENTENCE) {
-                    addStyle(SpanStyle(background = emphasis), selection.start, selection.end)
-                }
+                val selectionStyle = SpanStyle(
+                    textDecoration = TextDecoration.Underline,
+                    background = if (grammar?.structure.isNullOrEmpty()) emphasis else Color.Unspecified,
+                )
+                addStyle(selectionStyle, selection.start, selection.end)
             }
         }
     }
@@ -637,21 +655,45 @@ private fun ReaderResultPanel(
     dismiss: () -> Unit,
     modifier: Modifier,
     scroll: ScrollState,
+    sentenceOpen: Boolean,
+    toggleSentence: () -> Unit,
     detailsOpen: Boolean,
     toggleDetails: () -> Unit,
+    visibleHints: Int,
+    nextHint: () -> Unit,
+    toggleGuide: () -> Unit,
     side: Boolean,
 ) {
     val selection = result.selection
-    val meaningSelection = selection.kind != ArticleSelectionKind.SENTENCE
+    val directSentence = !result.guided && selection.kind == ArticleSelectionKind.SENTENCE
+    val hasMeaning = result.meaning != null || result.meaningError != null
+    val canShowSentence = if (result.guided) result.answerRevealed else !directSentence && hasMeaning
+    val showSentence = directSentence || (canShowSentence && sentenceOpen)
+    val guide = result.guide
+    val sentenceStart = remember { BringIntoViewRequester() }
+    val latestHint = remember { BringIntoViewRequester() }
+    LaunchedEffect(visibleHints) {
+        if (result.guided && !result.answerRevealed && visibleHints > 1) latestHint.bringIntoView()
+    }
+    LaunchedEffect(result.answerRevealed, sentenceOpen) {
+        if (!sentenceOpen && !directSentence) scroll.scrollTo(0)
+    }
+    LaunchedEffect(showSentence, result.grammar, result.grammarError) {
+        if (showSentence && !directSentence) sentenceStart.bringIntoView()
+    }
+    val inset = if (side) 20.dp else 14.dp
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
         Column {
             if (!side) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(start = inset, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (meaningSelection) selection.text else "Sentence analysis",
+                    if (directSentence) "Sentence analysis" else selection.text,
                     Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                TextButton(onClick = toggleGuide, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(if (result.guided) "Direct" else "Guide", maxLines = 1)
+                }
                 IconAction(if (speaking) R.drawable.ic_stop else R.drawable.ic_volume,
                     if (speaking) "Stop reading" else "Read aloud", { speak(selection.text) })
                 IconAction(
@@ -662,12 +704,38 @@ private fun ReaderResultPanel(
                 )
                 IconAction(R.drawable.ic_close, "Close result", dismiss)
             }
-            if (result.meaningBusy || result.grammarBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+            if (result.meaningBusy || result.guideBusy || (showSentence && result.grammarBusy)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+            }
             Column(
-                Modifier.weight(1f, fill = false).verticalScroll(scroll)
-                    .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.weight(1f, fill = side).verticalScroll(scroll)
+                    .padding(start = inset, end = inset, top = 2.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(if (side) 8.dp else 6.dp),
             ) {
+                if (result.guided) {
+                    if (result.guideBusy) Text("Preparing hints…", style = MaterialTheme.typography.bodyMedium)
+                    result.guideError?.let { ReaderRetry(it, reader::retryGuide, onSettings) }
+                    if (guide != null) {
+                        if (result.answerRevealed) {
+                            Text(guide.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            if (guide.explanation.isNotBlank()) Text(guide.explanation, style = MaterialTheme.typography.bodyMedium)
+                            if (guide.example.isNotBlank()) Text(guide.example, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            val hints = guide.hints.take(visibleHints)
+                            hints.forEachIndexed { index, hint ->
+                                Row(
+                                    if (index == hints.lastIndex) Modifier.bringIntoViewRequester(latestHint) else Modifier,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text("${index + 1}", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(hint, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                        }
+                    }
+                }
                 if (result.meaningBusy) Text("Looking up…", style = MaterialTheme.typography.bodyMedium)
                 result.meaning?.let { meaning ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -683,26 +751,48 @@ private fun ReaderResultPanel(
                     }
                 }
                 result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
-                if (selection.kind == ArticleSelectionKind.PHRASE && result.grammar == null && !result.grammarBusy && result.grammarError == null) {
-                    TextButton(onClick = reader::analyzeSentence, contentPadding = PaddingValues(horizontal = 2.dp)) {
-                        Text("Analyze sentence")
+                if (showSentence) {
+                    if (!directSentence) HorizontalDivider()
+                    if (result.grammarBusy) {
+                        Text("Analyzing the sentence…", Modifier.bringIntoViewRequester(sentenceStart),
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                    result.grammarError?.let {
+                        Column(Modifier.bringIntoViewRequester(sentenceStart)) { ReaderRetry(it, reader::retryGrammar, onSettings) }
+                    }
+                    result.grammar?.let { analysis ->
+                        GrammarExplanation(selection.sentence, analysis, detailsOpen, toggleDetails,
+                            Modifier.bringIntoViewRequester(sentenceStart))
                     }
                 }
-                if (result.grammarBusy) Text("Analyzing the sentence…", style = MaterialTheme.typography.bodyMedium)
-                result.grammarError?.let { ReaderRetry(it, reader::retryGrammar, onSettings) }
-                result.grammar?.let { analysis ->
-                    if (meaningSelection && result.meaning != null) HorizontalDivider()
-                    GrammarExplanation(selection.sentence, analysis, detailsOpen, toggleDetails)
-                }
                 result.saveError?.let { ReaderError(it) }
+            }
+            if (canShowSentence || (guide != null && !result.answerRevealed)) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = inset),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (canShowSentence) {
+                        TextButton(onClick = toggleSentence) { Text(if (sentenceOpen) "Hide sentence" else "Show sentence") }
+                    } else if (guide != null) {
+                        if (visibleHints < guide.hints.size) {
+                            TextButton(onClick = nextHint) { Text("Next hint") }
+                        }
+                        Button(onClick = reader::revealAnswer) { Text("Reveal answer") }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun GrammarExplanation(sentence: String, analysis: ArticleSentenceAnalysis, detailsOpen: Boolean, toggleDetails: () -> Unit) {
-    Text(analysis.paraphrase, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+private fun GrammarExplanation(
+    sentence: String, analysis: ArticleSentenceAnalysis, detailsOpen: Boolean, toggleDetails: () -> Unit, modifier: Modifier,
+) {
+    Text(analysis.paraphrase, modifier, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
     if (analysis.details.isNotEmpty()) {
         TextButton(onClick = toggleDetails, contentPadding = PaddingValues(horizontal = 2.dp)) {
             Text(if (detailsOpen) "Hide grammar details" else "Grammar details")

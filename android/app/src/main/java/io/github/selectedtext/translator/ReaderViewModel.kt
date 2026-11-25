@@ -50,12 +50,21 @@ internal data class ReaderResult(
     val grammar: ArticleSentenceAnalysis? = null,
     val grammarBusy: Boolean = false,
     val grammarError: String? = null,
+    val guided: Boolean = false,
+    val guide: LookupResult? = null,
+    val guideBusy: Boolean = false,
+    val guideError: String? = null,
+    val answerRevealed: Boolean = false,
     val isSaved: Boolean = false,
     val saveBusy: Boolean = false,
     val saveError: String? = null,
 ) {
     val saveText: String?
-        get() = if (selection.kind == ArticleSelectionKind.SENTENCE) grammar?.paraphrase else meaning?.text
+        get() = when {
+            guided -> guide?.text?.takeIf { answerRevealed }
+            selection.kind == ArticleSelectionKind.SENTENCE -> grammar?.paraphrase
+            else -> meaning?.text
+        }
 }
 
 internal class ReaderViewModel(
@@ -83,6 +92,7 @@ internal class ReaderViewModel(
     private var selectionRevision = 0
     private var meaningJob: Job? = null
     private var grammarJob: Job? = null
+    private var guideJob: Job? = null
     private var feedJob: Job? = null
     private var loadedFeeds = false
     private var cachedMeaning: CachedMeaning? = null
@@ -327,26 +337,27 @@ internal class ReaderViewModel(
         }
     }
 
-    fun select(blockIndex: Int, selection: ArticleSelection) {
+    fun select(blockIndex: Int, selection: ArticleSelection, guided: Boolean = false) {
         val current = state.value
         if (current.activeArticle == null) return
-        if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection } == true) return
+        if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection && it.guided == guided } == true) return
         dismissResult()
-        state.update { it.copy(result = ReaderResult(blockIndex, selection)) }
-        if (selection.kind != ArticleSelectionKind.SENTENCE) retryMeaning()
-        if (selection.kind != ArticleSelectionKind.PHRASE) analyzeSentence()
+        state.update { it.copy(result = ReaderResult(blockIndex, selection, guided = guided)) }
+        if (guided) retryGuide() else if (selection.kind != ArticleSelectionKind.SENTENCE) retryMeaning()
+        analyzeSentence()
     }
 
     fun dismissResult() {
         selectionRevision++
         meaningJob?.cancel()
         grammarJob?.cancel()
+        guideJob?.cancel()
         state.update { it.copy(result = null) }
     }
 
     fun retryMeaning() {
         val result = state.value.result ?: return
-        if (result.selection.kind == ArticleSelectionKind.SENTENCE || result.meaningBusy) return
+        if (result.guided || result.selection.kind == ArticleSelectionKind.SENTENCE || result.meaningBusy) return
         val revision = selectionRevision
         val cached = cachedMeaning?.takeIf { it.config == store.config.value && it.selection == result.selection }
         if (cached != null) {
@@ -369,6 +380,32 @@ internal class ReaderViewModel(
                 }
             }
         }
+    }
+
+    fun retryGuide() {
+        val result = state.value.result ?: return
+        if (!result.guided || result.guideBusy || result.guide != null) return
+        val revision = selectionRevision
+        updateResult(revision) { it.copy(guideBusy = true, guideError = null) }
+        guideJob = viewModelScope.launch {
+            try {
+                store.load()
+                val guide = client.guideArticle(store.config.value, result.selection)
+                updateResult(revision) { it.copy(guide = guide, guideBusy = false) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                updateResult(revision) {
+                    it.copy(guideBusy = false, guideError = error.lookupMessage("Couldn't prepare hints. Try again."))
+                }
+            }
+        }
+    }
+
+    fun revealAnswer() {
+        val result = state.value.result ?: return
+        if (!result.guided || result.guide == null || result.answerRevealed) return
+        updateResult(selectionRevision) { it.copy(answerRevealed = true).withSavedStatus(store.saved.value) }
     }
 
     fun analyzeSentence() {
