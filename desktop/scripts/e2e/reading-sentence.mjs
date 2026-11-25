@@ -50,6 +50,10 @@ async function highlights(page) {
   ])))
 }
 
+function showSentence(page) {
+  return page.locator('#reading-sentence-explanation > summary')
+}
+
 export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
   await check('article sentence: a word and phrase both get a direct lookup and reuse the full sentence explanation', async () => {
     const analyses = []
@@ -73,6 +77,14 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         const overview = page.locator('.reading-sentence-paraphrase')
         const clause = page.getByText(FIRST_CLAUSE, { exact: true })
         const grammar = page.locator('#reading-sentence-toggle')
+        await page.waitForFunction(() => CSS.highlights.get('reading-lookup-verb')?.size === 1)
+        const selection = await page.evaluate(() => {
+          const highlight = CSS.highlights.get('reading-lookup-selection')
+          return { text: [...highlight][0].toString(), priority: highlight.priority }
+        })
+        assert.deepEqual(selection, { text: 'proposed', priority: 1 })
+        assert.equal(await overview.isVisible(), false)
+        await showSentence(page).click()
         await overview.waitFor()
         assert.equal(await overview.textContent(), FIRST_PARAPHRASE)
         assert.equal(await grammar.getAttribute('open'), '')
@@ -84,13 +96,16 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         assert.equal(analyses[0].surroundingContext, `A separate introduction is available.\n\n${FIRST}\n\n${SECOND}`)
         await shot?.(page, 'main-reading-partial-sentence')
         await grammar.locator(':scope > summary').click()
-        await page.waitForFunction(() => !CSS.highlights.has('reading-lookup-verb'))
+        await clause.waitFor({ state: 'hidden' })
+        assert.deepEqual((await highlights(page)).verb, ['could reduce'])
         await selectText(page, 'the team proposed', 0, { keepOpen: true })
         await page.locator('.translation-text').filter({ hasText: 'Selected meaning: the team proposed' }).waitFor()
+        assert.equal(await overview.isVisible(), false)
+        await showSentence(page).click()
         assert.equal(await overview.textContent(), FIRST_PARAPHRASE)
         assert.equal(await grammar.getAttribute('open'), null, 'keep the reader’s choice to fold grammar in the same sentence')
         assert.equal(await clause.isVisible(), false)
-        assert.deepEqual((await highlights(page)).verb, [])
+        assert.deepEqual((await highlights(page)).verb, ['could reduce'])
         assert.equal(analyses.length, 1, 'another selection in the same complete sentence reuses its analysis')
         assert.deepEqual(translations, ['proposed', 'the team proposed'], 'translation stays scoped to selected text')
       })
@@ -115,6 +130,7 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
             + '<p>The team will <a href="https://example.com/record">record</a> the outcome.</p><p>An unrelated conclusion follows.</p>'
         })
         await selectText(page, 'the team proposed could reduce costs.The team will record')
+        await showSentence(page).click()
         await page.locator('#reading-sentence-structure[data-status="done"]').waitFor()
         assert.deepEqual(analyses, [`${FIRST}\n\n${SECOND}`])
         assert.deepEqual(await page.locator('.reading-sentence-source').allTextContents(), [FIRST, SECOND])
@@ -155,6 +171,7 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         await openPastedText(page, sentence)
         await clickWord(page, 'checked')
         await waitForRequests(() => translations === 1 && analyses === 1, 'both requests before either responds')
+        await showSentence(page).click()
         await page.locator('#reading-sentence-structure[data-status="loading"]').waitFor()
         const meaning = page.locator('#reading-lookup-result .translation-text')
         assert.equal(await meaning.count(), 0)
@@ -210,6 +227,7 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         await openPastedText(page, sentence)
         await selectText(page, 'So much for')
         const structure = page.locator('#reading-sentence-structure[data-status="done"]')
+        await showSentence(page).click()
         await structure.waitFor()
         const structureNode = await structure.elementHandle()
         assert.equal(await page.locator('#reading-lookup-result .translation-text').count(), 0, 'show analysis while translation is still pending')
@@ -229,13 +247,14 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         await page.locator('#reading-lookup-guide').click()
         await waitForRequests(() => guides === 1, 'the guided reading request')
         const sentenceDisclosure = page.locator('#reading-sentence-explanation')
-        assert.equal(await sentenceDisclosure.evaluate((node) => node.open), false)
+        assert.equal(await showSentence(page).isVisible(), false)
         assert.equal(await structure.isVisible(), false, 'guided reading keeps the explanation folded while solving')
         assert.equal(await page.locator('#reading-lookup-result .hint').count(), 0)
         pendingGuide.release()
         await page.locator('#reading-lookup-result .hint').first().waitFor()
         const answer = page.locator('#reading-lookup-meaning .answer')
         assert.equal(await answer.count(), 0, 'a completed guide leaves the answer hidden')
+        assert.equal(await showSentence(page).isVisible(), false)
         await page.getByRole('button', { name: 'Reveal answer', exact: true }).click()
         await answer.getByText('forget about the plan', { exact: false }).waitFor()
         assert.equal(await structure.isVisible(), false, 'guide reveal leaves the independent explanation folded')
@@ -243,6 +262,9 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         await structure.getByText(paraphrase, { exact: true }).waitFor()
         assert.equal(await structure.locator('.reading-sentence-source').textContent(), sentence)
         assert.equal(await structureNode.evaluate((node) => node.isConnected), true)
+        await page.getByRole('button', { name: 'Hide answer', exact: true }).click()
+        assert.equal(await structure.isVisible(), false)
+        assert.equal(await showSentence(page).isVisible(), false)
         assert.equal(analyses, 1, 'translation retry and mode changes reuse the existing analysis')
       })
     } finally { pendingMeaning.release(); pendingGuide.release(); mock.resetHandler() }
@@ -276,6 +298,7 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
         await currentMeaning.waitFor()
         pendingFirst.release()
         pendingAnalysis.release()
+        await showSentence(page).click()
         await page.locator('#reading-sentence-structure[data-status="done"]').waitFor()
         assert.equal(await currentMeaning.isVisible(), true)
         assert.deepEqual(translations, ['small', 'tool'])
@@ -305,9 +328,10 @@ export async function verifyReadingSentenceScope({ page, mock, check, shot }) {
       await withState(page, async () => {
         await openPastedText(page, `${oldSentence} ${newSentence}`)
         await selectText(page, 'reviewed the first')
-        await page.locator('#reading-sentence-structure[data-status="loading"]').waitFor()
+        await page.locator('#reading-sentence-structure[data-status="loading"]').waitFor({ state: 'attached' })
         await waitForRequests(() => firstStarted, 'the analysis of the old selection')
         await selectText(page, 'revealed a different', 0, { keepOpen: true })
+        await showSentence(page).click()
         await page.locator('#reading-sentence-structure[data-status="done"]').waitFor()
         await waitForRequests(() => firstClosed, 'cancellation of the old analysis')
         pending.release()

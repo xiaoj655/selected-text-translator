@@ -32,20 +32,21 @@ async function resizeWindow(app, page, width, height = 800) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
-async function openLookup(page) {
+async function openLookup(page, { placement = 'side', nearBottom = false } = {}) {
   await page.locator('#btn-tutor-workspace').click()
   await page.locator('#tutor-reading-mode').click()
   if (await page.locator('#reading-back').isVisible()) await page.locator('#reading-back').click()
   await page.locator('#reading-paste').click()
   await page.locator('#reading-paste-text').fill(PASSAGE)
   await page.locator('#reading-paste-open').click()
-  await page.evaluate(async () => {
+  await page.evaluate(async (nearBottom) => {
     const material = document.querySelector('.reading-preview')
     const { rangeForOffsets } = await import(new URL('./reading-selection.js', location.href))
     const start = material.textContent.indexOf('Observation 18:')
     const range = rangeForOffsets(material, start, start + 'Observation'.length)
     const scroller = document.getElementById('tutor-workspace')
-    scroller.scrollTop += range.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 100
+    const sourceOffset = nearBottom ? scroller.clientHeight - 38 : 100
+    scroller.scrollTop += range.getBoundingClientRect().top - scroller.getBoundingClientRect().top - sourceOffset
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     const selection = window.getSelection()
     selection.removeAllRanges()
@@ -53,8 +54,8 @@ async function openLookup(page) {
     const rect = range.getClientRects()[0]
     material.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, detail: 1,
       clientX: rect.left + 1, clientY: rect.top + 1 }))
-  })
-  await page.locator('#reading-lookup[data-placement="side"]').waitFor()
+  }, nearBottom)
+  await page.locator(`#reading-lookup[data-placement="${placement}"]`).waitFor()
 }
 
 async function geometry(page) {
@@ -68,6 +69,8 @@ async function geometry(page) {
       sidebar: document.querySelector('.reading-lookup-dock').getBoundingClientRect().width,
       reading: scroller.getBoundingClientRect().width,
       sourceTop: source.getBoundingClientRect().top,
+      sourceBottom: source.getBoundingClientRect().bottom,
+      articleBottom: scroller.getBoundingClientRect().bottom,
       overflow: document.documentElement.scrollWidth > innerWidth,
     }
   })
@@ -130,7 +133,6 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
       assert.ok(limited.sidebar <= 520 && limited.reading >= 440, 'a smaller window should clamp the sidebar width')
       await resizeWindow(app, page, 1280)
       assert.ok(Math.abs((await geometry(page)).sidebar - wider.sidebar) <= 1, 'a wider window should restore the preferred width')
-      await shot?.(page, 'main-article-lookup-resized')
 
       await dragDivider(page, 1000)
       assert.equal((await geometry(page)).sidebar, 720, 'the sidebar should have a useful maximum width')
@@ -144,14 +146,35 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
       await openLookup(page)
       assert.equal((await geometry(page)).sidebar, persisted, 'reloading should retain the local width preference')
 
+      const beforeNarrow = await geometry(page)
       await resizeWindow(app, page, 620)
-      await page.locator('#reading-lookup[data-placement="inline"]').waitFor()
+      const bottom = page.locator('#reading-lookup[data-placement="bottom"]')
+      await bottom.waitFor()
       assert.equal(await page.locator('#reading-lookup-resize').isVisible(), false)
-      await page.locator('#reading-lookup-expand').click()
-      await page.locator('#reading-lookup[data-placement="bottom"]').waitFor()
+      const timeAtSource = await geometry(page)
+      assert.ok(Math.abs(timeAtSource.sourceTop - beforeNarrow.sourceTop) <= 66,
+        'moving the sidebar below the article should retain the current passage')
+      const docked = await bottom.evaluate((panel) => {
+        const viewport = document.getElementById('tutor-workspace').getBoundingClientRect()
+        const dock = panel.closest('.reading-lookup-dock').getBoundingClientRect()
+        const footer = panel.querySelector('.reading-lookup-footer').getBoundingClientRect()
+        return { articleBottom: viewport.bottom, dockTop: dock.top, dockBottom: dock.bottom, footerBottom: footer.bottom }
+      })
+      assert.equal(docked.articleBottom, docked.dockTop, 'keep the bottom dock outside the article viewport')
+      assert.ok(docked.footerBottom <= docked.dockBottom, 'keep the footer in view in a narrow window')
       await page.locator('#reading-lookup-minimize').click()
       await page.locator('#reading-lookup-reopen').click()
-      await page.locator('#reading-lookup[data-placement="bottom"]').waitFor()
+      await bottom.waitFor()
+      const reopened = await geometry(page)
+      assert.ok(Math.abs(reopened.sourceTop - timeAtSource.sourceTop) <= 2,
+        'minimizing and reopening the dock should retain the current passage')
+      await page.locator('#reading-lookup-close').click()
+      await resizeWindow(app, page, 620, 500)
+      await openLookup(page, { placement: 'bottom', nearBottom: true })
+      const nearBottom = await geometry(page)
+      assert.ok(nearBottom.sourceBottom <= nearBottom.articleBottom
+        && nearBottom.articleBottom - nearBottom.sourceBottom <= 26,
+        'opening the dock should scroll just enough to keep the tapped line visible')
       await resizeWindow(app, page, 1280)
       await page.locator('#reading-lookup[data-placement="side"]').waitFor()
       assert.equal((await geometry(page)).sidebar, persisted)
@@ -180,7 +203,8 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
     const height = Math.min(workArea.height, 2160)
     mock.setHandler(async ({ body, res }) => {
       const prompt = body.messages[0].content
-      let result = { translation: '工程师先测试了软件包的本地副本，然后才操作公开索引。' }
+      const translation = '工程师先测试了软件包的本地副本，然后才操作公开索引。'
+      let result = { translation }
       if (isArticleExplanation(body)) {
         result = {
           paraphrase: 'The engineers checked a local copy before making any changes to the public index.',
@@ -203,6 +227,11 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
             explanation: 'The word “before” tells you which action happened first.',
           },
         }
+      } else if (body.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: translation } }] })}\n\n`)
+        res.end('data: [DONE]\n\n')
+        return
       }
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }))
@@ -221,15 +250,41 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
         const hint = snapshot.locator('.hint-text').first()
         const answer = snapshot.locator('.answer')
         const analysis = snapshot.locator('.reading-sentence-structure .sentence-analysis')
+        const sentence = snapshot.locator('#reading-sentence-explanation')
         await translation.waitFor()
+        assert.equal(await sentence.getAttribute('open'), null)
+        await sentence.locator(':scope > summary').click()
         await snapshot.locator('.reading-sentence-paraphrase').waitFor()
         assert.equal(await snapshot.locator('#reading-sentence-toggle').getAttribute('open'), '')
         assert.equal(await fontSize(article), '18px')
         assert.equal(await fontSize(translation), '18px')
+        await resizeWindow(app, page, 620, 500)
+        await page.locator('#reading-lookup-original').click()
+        const sourceVisible = await page.evaluate(() => {
+          const back = document.querySelector('#reading-detail > .reading-back').getBoundingClientRect()
+          const [selection] = CSS.highlights.get('reading-lookup-selection')
+          const line = selection.getClientRects()[0]
+          return line.top >= back.bottom && line.bottom <= document.getElementById('tutor-workspace').getBoundingClientRect().bottom
+        })
+        assert.ok(sourceVisible, 'Back to source should leave the first selected line visible below the sticky navigation')
+        await sentence.locator(':scope > summary').click()
+        await shot?.(page, 'main-article-lookup-bottom')
         await page.locator('#reading-lookup-guide').click()
+        await hint.waitFor()
+        await snapshot.locator('[data-hint-more]').waitFor()
+        assert.equal(await snapshot.locator('.hint-text').count(), 1)
+        assert.equal(await sentence.isVisible(), false)
+        const footerFits = await snapshot.evaluate((panel) => {
+          const footer = panel.querySelector('.reading-lookup-footer')
+          return footer.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom
+            && panel.scrollHeight <= panel.clientHeight + 1
+        })
+        assert.ok(footerFits, 'the first hint and fixed actions should fit in a short dock')
+        await shot?.(page, 'main-article-lookup-bottom-guided')
+        await resizeWindow(app, page, widest, height)
         await snapshot.locator('[data-hint-more]').click()
         await snapshot.getByRole('button', { name: 'Reveal answer', exact: true }).click()
-        await snapshot.locator('#reading-sentence-explanation > summary').click()
+        await sentence.locator(':scope > summary').click()
         await analysis.waitFor()
         assert.equal(await fontSize(answer), '18px')
         assert.equal(await fontSize(hint), '16px')

@@ -256,13 +256,12 @@
   color: var(--text-2);
 }
 .reading-sentence-trigger:hover { color: var(--text); }
-::highlight(reading-lookup-selection) { background: var(--accent-soft); color: var(--text); }
+::highlight(reading-lookup-selection) { text-decoration: underline 2px var(--accent); }
 ::highlight(reading-lookup-subject) { background-color: var(--sentence-subject); }
 ::highlight(reading-lookup-verb) { background-color: var(--sentence-verb); }
 ::highlight(reading-lookup-object) { background-color: var(--sentence-object); }
 ::highlight(reading-lookup-complement) { background-color: var(--sentence-complement); }
 
-.reading-lookup-space { display: block; pointer-events: none; }
 .reading-lookup-dock:not([hidden]) {
   flex: 0 0 auto;
   min-height: 0;
@@ -297,35 +296,31 @@
 .reading-lookup-resize:focus-visible::after,
 .is-resizing-lookup .reading-lookup-resize::after { background: var(--border-strong); }
 .tutor-shell.is-resizing-lookup, .tutor-shell.is-resizing-lookup * { cursor: col-resize !important; user-select: none; }
-.reading-lookup-dock[data-placement="bottom"] { max-height: min(46%, 420px); display: flex; }
+.reading-lookup-dock[data-placement="bottom"] {
+  display: flex;
+  justify-content: center;
+  flex-basis: clamp(220px, 46%, 420px);
+  max-height: 68%;
+}
 .reading-lookup:not([hidden]) {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 16px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
 .reading-lookup { --reading-lookup-detail-size: calc(var(--reading-lookup-font-size) - 2px); }
-.reading-lookup[data-placement="inline"] {
-  position: absolute;
-  z-index: 1;
-  background: var(--bg);
+.reading-lookup[data-placement="bottom"] {
+  gap: 8px;
+  max-width: 840px;
   padding: 8px 12px;
-  border-inline-start: 2px solid var(--accent);
-  border-block: 1px solid var(--border);
 }
-.reading-lookup[data-placement="inline"] .reading-lookup-text,
-.reading-lookup[data-placement="inline"] #reading-lookup-original,
-.reading-lookup[data-placement="inline"] .lexical-details,
-.reading-lookup[data-placement="inline"]:not(.is-detailed) .reading-lookup-actions:not(:has(#reading-lookup-stop:not([hidden]))) {
-  display: none;
-}
-.reading-lookup[data-placement="inline"] .reading-lookup-body { max-height: min(14em, 35vh); }
-.reading-lookup:not([data-placement="inline"]) #reading-lookup-expand { display: none; }
 .reading-lookup-header { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.reading-lookup[data-placement="bottom"] .reading-lookup-header { flex-direction: row; align-items: center; }
 .reading-lookup-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .reading-lookup-header-actions button { font-size: 13px; min-height: 26px; padding: 2px 8px; }
 .reading-lookup-header-actions #reading-lookup-close { margin-inline-start: auto; font-size: 20px; }
@@ -339,11 +334,22 @@
   font-size: var(--reading-lookup-font-size);
   line-height: 1.45;
 }
+.reading-lookup[data-placement="bottom"] .reading-lookup-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .reading-lookup-close { border: 0; background: transparent; min-width: 28px; min-height: 28px; padding: 0; font-size: 22px; }
 .reading-lookup-modes { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; }
 .reading-lookup-modes button { background: transparent; border-color: transparent; }
 .reading-lookup-modes button[aria-pressed="true"] { background: var(--surface); border-color: var(--border-strong); font-weight: 600; }
-.reading-lookup-body { min-height: min(32px, 100%); overflow: auto; overscroll-behavior: contain; }
+.reading-lookup-body {
+  flex: 1 1 0;
+  min-height: 32px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .reading-lookup .result { padding: 0; font-size: var(--reading-lookup-font-size); line-height: var(--lh-result); overflow-wrap: anywhere; }
 .reading-lookup .translation-answer { margin: 0; padding: 0; border: 0; background: transparent; }
 .reading-lookup .guide-tools { flex-wrap: wrap; }
@@ -355,7 +361,19 @@
 .reading-lookup .lexical-label { width: auto; }
 .reading-lookup-feedback { margin: 10px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
 .reading-lookup-feedback:empty { display: none; }
-.reading-lookup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0; padding-block-start: 10px; border-block-start: 1px solid var(--border); }
+.reading-lookup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  flex-shrink: 0;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--border);
+}
+.reading-lookup-guide-actions { margin: 0; }
+.reading-lookup-guide-actions:empty { display: none; }
+.reading-lookup-guide-actions::before { content: none; }
+.reading-lookup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .reading-lookup-actions button { font-size: 13px; padding: 6px 9px; min-height: 32px; }
 
 .reading-thread { margin-block-start: 22px; }

@@ -119,6 +119,8 @@ async function selectText(selected) {
 }
 
 async function waitForAnalysis() {
+  const showSentence = page.locator('#reading-lookup').getByText('Show sentence', { exact: true })
+  await showSentence.click()
   await page.waitForFunction(() => ['done', 'error', 'unavailable'].includes(
     document.getElementById('reading-sentence-structure')?.dataset.status))
   assert.equal(await page.locator('#reading-sentence-structure').getAttribute('data-status'), 'done',
@@ -270,7 +272,11 @@ try {
   await check('guided phrase keeps separate full-sentence structure', async () => {
     await selectText('the team proposed')
     await page.locator('#reading-lookup-guide').click()
-    await page.locator('#reading-lookup-result .guide-tools').waitFor()
+    const lookup = page.locator('#reading-lookup')
+    const reveal = lookup.getByRole('button', { name: 'Reveal answer', exact: true })
+    await reveal.waitFor()
+    await lookup.getByText('Show sentence', { exact: true }).waitFor({ state: 'hidden' })
+    await reveal.click()
     await waitForAnalysis()
     assert.deepEqual(await page.locator('.reading-sentence-source').allTextContents(), [first])
     await page.locator('#reading-lookup-translate').click()

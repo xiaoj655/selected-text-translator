@@ -8,7 +8,8 @@ const MIN_READING_WIDTH = 440
 // Keep the first visible line in place while the prose wraps to a new width.
 function readingAnchor(scroller) {
   if (scroller.scrollTop <= 0) return null
-  const top = scroller.getBoundingClientRect().top + 1
+  const viewportTop = scroller.getBoundingClientRect().top
+  const top = viewportTop + 1
   for (const material of scroller.querySelectorAll('.reading-preview')) {
     const bounds = material.getBoundingClientRect()
     if (bounds.top > top || bounds.bottom <= top) continue
@@ -28,29 +29,17 @@ function readingAnchor(scroller) {
       }
       range.setStart(text, start)
       range.collapse(true)
-      return { range, top: range.getBoundingClientRect().top }
+      return { range, offset: range.getBoundingClientRect().top - viewportTop }
     }
   }
   return null
 }
 
-// The empty marker reserves space in the prose. The controls stay outside the
-// text node tree so copying and context offsets only see the original article.
-function insertMarker(entry) {
-  const walker = document.createTreeWalker(entry.material, NodeFilter.SHOW_TEXT)
-  let remaining = entry.sentenceEnd
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (remaining <= node.length) {
-      const marker = el('span', 'reading-lookup-space')
-      marker.setAttribute('aria-hidden', 'true')
-      if (remaining === 0) node.before(marker)
-      else if (remaining === node.length) node.after(marker)
-      else node.splitText(remaining).before(marker)
-      return marker
-    }
-    remaining -= node.length
+function restoreAnchor(scroller, anchor) {
+  if (anchor && scroller.contains(anchor.range.startContainer)) {
+    const offset = anchor.range.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    scroller.scrollTop += offset - anchor.offset
   }
-  return null
 }
 
 export function createReadingLookupLayout({ panel, scroller, dock }) {
@@ -66,28 +55,22 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
   resize.hidden = true
   const reopen = button('Show lookup', 'reading-lookup-reopen', reveal, 'reading-lookup-reopen')
   function reveal() {
-    collapsed = false
-    refresh()
-    if (placement === 'inline') {
-      const source = entry.range.getClientRects()[0]
-      const viewport = scroller.getBoundingClientRect()
-      if (source && (source.top < viewport.top || source.bottom > viewport.bottom)) {
-        scroller.scrollTop += source.top - viewport.top - 16
-        position()
-      }
-    }
+    place(wide.matches ? 'side' : 'bottom')
   }
   dock.append(resize, reopen)
   reopen.hidden = true
-  let entry = null
-  let marker = null
-  let expanded = false
-  let collapsed = false
   let placement = ''
-  let scheduled = 0
+  let anchorFrame = 0
+  let currentAnchor = null
+  let shellWidth = shell.clientWidth
+  let shellHeight = shell.clientHeight
   let preferredWidth = null
   let widthTouched = false
   let drag = null
+
+  function rememberAnchor() {
+    currentAnchor = placement ? readingAnchor(scroller) : null
+  }
 
   function widthLimits() {
     return { min: MIN_WIDTH, max: Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, shell.clientWidth - MIN_READING_WIDTH)) }
@@ -104,9 +87,8 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
     if (Math.abs(dock.getBoundingClientRect().width - width) < 0.5) return
     const held = anchor === undefined ? readingAnchor(scroller) : anchor
     shell.style.setProperty('--reading-lookup-width', `${width}px`)
-    if (held && scroller.contains(held.range.startContainer)) {
-      scroller.scrollTop += held.range.getBoundingClientRect().top - held.top
-    }
+    restoreAnchor(scroller, held)
+    rememberAnchor()
   }
 
   function saveWidth() {
@@ -175,94 +157,69 @@ export function createReadingLookupLayout({ panel, scroller, dock }) {
     applyWidth()
   }).catch(() => {})
 
-  function position() {
-    if (!entry || placement !== 'inline' || !marker?.isConnected) return
-    const rect = marker.getBoundingClientRect()
-    const bounds = scroller.getBoundingClientRect()
-    panel.style.left = `${rect.left - bounds.left - scroller.clientLeft}px`
-    panel.style.width = `${rect.width}px`
-    panel.style.top = `${rect.top - bounds.top - scroller.clientTop + scroller.scrollTop}px`
-    marker.style.height = `${panel.offsetHeight}px`
-    const inView = rect.top < bounds.bottom && rect.top + panel.offsetHeight > bounds.top
-    reopen.hidden = inView
-    dock.hidden = inView
-  }
-
-  function schedulePosition() {
-    if (!scheduled) scheduled = requestAnimationFrame(() => {
-      scheduled = 0
-      applyWidth()
-      position()
-    })
-  }
-
-  function removeMarker() {
-    if (!marker) return
-    marker.remove()
-    marker = null
-  }
-
-  function refresh() {
-    if (!entry) return
-    const next = collapsed ? 'collapsed' : wide.matches ? 'side' : expanded ? 'bottom' : 'inline'
-    if (placement === next) {
-      applyWidth()
-      position()
-      return
-    }
+  function place(next, anchor) {
+    if (placement === next) return
+    const held = anchor === undefined ? readingAnchor(scroller) : anchor
     endResize()
-    const sourceTop = () => entry.range.getClientRects()[0]?.top
-    const before = sourceTop()
-    removeMarker()
     placement = next
-    dock.dataset.placement = next === 'inline' ? 'collapsed' : next
-    panel.dataset.placement = next
-    panel.style.left = panel.style.top = panel.style.width = ''
-    panel.hidden = collapsed
+    shellWidth = shell.clientWidth
+    shellHeight = shell.clientHeight
+    dock.dataset.placement = panel.dataset.placement = next
+    dock.hidden = !next
+    panel.hidden = !next || next === 'collapsed'
     resize.hidden = next !== 'side'
-    reopen.hidden = !collapsed
-    dock.hidden = next === 'inline'
-    if (next === 'inline') {
-      marker = insertMarker(entry)
-      scroller.append(panel)
-      position()
-    } else {
-      dock.append(panel)
-    }
+    reopen.hidden = next !== 'collapsed'
     applyWidth(preferredWidth, null)
-    const after = sourceTop()
-    if (Number.isFinite(before) && Number.isFinite(after)) scroller.scrollTop += after - before
-    schedulePosition()
+    restoreAnchor(scroller, held)
+    rememberAnchor()
   }
 
-  scroller.addEventListener('scroll', schedulePosition)
-  wide.addEventListener('change', refresh)
-  const observer = new ResizeObserver(schedulePosition)
-  observer.observe(scroller)
-  observer.observe(panel)
+  scroller.addEventListener('scroll', () => {
+    if (!placement || anchorFrame) return
+    anchorFrame = requestAnimationFrame(() => {
+      anchorFrame = 0
+      // Let ResizeObserver restore the last anchor before recording the new one.
+      if (shellWidth === shell.clientWidth && shellHeight === shell.clientHeight) rememberAnchor()
+    })
+  })
+  const observer = new ResizeObserver(() => {
+    const width = shell.clientWidth
+    const height = shell.clientHeight
+    if (width === shellWidth && height === shellHeight) return
+    shellWidth = width
+    shellHeight = height
+    if (!placement || !width) return
+    const anchor = currentAnchor
+    const next = placement === 'collapsed' ? placement : wide.matches ? 'side' : 'bottom'
+    if (next !== placement) place(next, anchor)
+    else {
+      applyWidth(preferredWidth, null)
+      restoreAnchor(scroller, anchor)
+      rememberAnchor()
+    }
+  })
   observer.observe(shell)
 
   return {
     open(current) {
-      entry = current
-      collapsed = false
-      expanded = current.mode === 'guide'
-      refresh()
-    },
-    close() {
-      const anchor = entry ? readingAnchor(scroller) : null
-      endResize()
-      removeMarker()
-      entry = null
-      placement = ''
-      panel.hidden = reopen.hidden = resize.hidden = dock.hidden = true
-      if (anchor && scroller.contains(anchor.range.startContainer)) {
-        scroller.scrollTop += anchor.range.getBoundingClientRect().top - anchor.top
+      if (wide.matches || placement === 'bottom') {
+        reveal()
+        return
+      }
+      const source = current.range.getClientRects()[0]
+      const viewport = scroller.getBoundingClientRect()
+      const wasVisible = source && source.bottom > viewport.top && source.top < viewport.bottom
+      reveal()
+      if (!wasVisible) return
+      const line = current.range.getClientRects()[0]
+      const bottom = scroller.getBoundingClientRect().bottom
+      if (line && line.bottom > bottom) {
+        scroller.scrollTop += line.bottom - bottom + 12
+        rememberAnchor()
       }
     },
+    close() { place('') },
     reopen: reveal,
-    collapse() { collapsed = true; refresh() },
-    expand() { expanded = true; refresh() },
-    position,
+    collapse() { place('collapsed') },
   }
 }

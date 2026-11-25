@@ -202,11 +202,13 @@ export function renderGuidePreview(hint) {
   return renderHints([hint])
 }
 
-export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceLegend = false } = {}) {
+export function renderGuide(entry, {
+  onRevealHint, onToggleAnswer, showSentenceLegend = false, showSentenceAnalysis = true, actions,
+} = {}) {
   const guide = entry.guide
   if (!guide) return null
   const box = document.createDocumentFragment()
-  const tools = el('div', 'guide-tools')
+  const tools = actions || el('div', 'guide-tools')
   const structure = showSentenceLegend ? sentenceStructure(entry) : []
   if (structure.length) box.append(renderSentenceLegend(structure))
   if (guide.phonetic) box.append(lexicalRow('Pronunciation', guide.phonetic))
@@ -223,16 +225,17 @@ export function renderGuide(entry, { onRevealHint, onToggleAnswer, showSentenceL
       tools.append(more)
     }
   }
-  const analysis = renderSentenceAnalysis(entry)
+  const analysis = showSentenceAnalysis && renderSentenceAnalysis(entry)
   if (analysis) box.append(analysis)
   const answer = guide.answer
   if (answer) {
     const reveal = el('button', '', entry.answerRevealed ? 'Hide answer' : 'Reveal answer')
     reveal.type = 'button'
+    reveal.dataset.guideAnswerToggle = 'true'
     reveal.addEventListener('click', () => onToggleAnswer?.(entry))
     tools.append(reveal)
   }
-  if (tools.childElementCount) box.append(tools)
+  if (!actions && tools.childElementCount) box.append(tools)
   if (answer && entry.answerRevealed) {
     const panel = el('div', 'answer')
     if (answer.meaning) {

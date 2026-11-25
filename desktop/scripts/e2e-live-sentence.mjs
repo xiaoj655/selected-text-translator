@@ -93,6 +93,7 @@ async function articleRoles(page) {
 }
 
 async function verifyArticleAnalysis(host) {
+  await host.getByText('Show sentence', { exact: true }).click()
   const paraphrase = host.locator('.reading-sentence-paraphrase')
   await paraphrase.waitFor()
   const meaning = (await paraphrase.textContent()).trim()
@@ -198,7 +199,7 @@ export async function runLiveSentenceE2E() {
     await page.locator('#reading-paste-open').click()
     await page.locator('.reading-preview').first().waitFor()
     await selectArticleText(page)
-    const lookup = page.locator('#reading-lookup-result')
+    const lookup = page.locator('#reading-lookup')
 
     await check('article-direct', async () => {
       await lookup.locator('.translation-text').waitFor()
@@ -217,19 +218,19 @@ export async function runLiveSentenceE2E() {
     await check('article-guided', async () => {
       await page.locator('#reading-lookup-guide').click()
       await lookup.locator('.hint').first().waitFor()
-      const explanation = lookup.locator('#reading-sentence-explanation')
-      assert.equal(await explanation.getAttribute('open'), null)
-      await explanation.locator('#reading-sentence-structure[data-status="done"]').waitFor({ state: 'attached' })
+      await lookup.getByText('Show sentence', { exact: true }).waitFor({ state: 'hidden' })
+      await lookup.locator('.reading-sentence-paraphrase').waitFor({ state: 'hidden' })
       const roles = await articleRoles(page)
-      await explanation.locator(':scope > summary').click()
+      await lookup.getByRole('button', { name: 'Reveal answer', exact: true }).click()
       const paraphrase = await verifyArticleAnalysis(lookup)
       assert.deepEqual(await articleRoles(page), roles)
-      assert.equal(await lookup.locator('.answer').count(), 0, 'Exploring clauses must not reveal the answer.')
+      await lookup.locator('.answer').waitFor()
       await screenshot('live-sentence-article-guided')
       return { paraphrase, roles }
     })
 
     await check('article-ellipsis', async () => {
+      await page.locator('#reading-lookup-translate').click()
       await clickWord(page, 'sooner')
       await lookup.locator('.translation-text').waitFor()
       const paraphrase = await verifyArticleAnalysis(lookup)

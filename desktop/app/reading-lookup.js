@@ -4,7 +4,7 @@ import { expandNextResultDetail, renderGuide, renderGuidePreview, renderTranslat
 import { resultPlainText, resultText } from './result-text.js'
 import { showCopyDone } from './ui-text.js'
 import { classifyReadingSelection } from '../vendor/src/reading-support.js'
-import { installReadingSelection, readingSentenceStructureRanges } from './reading-selection.js'
+import { installReadingSelection, rangeForOffsets, readingSentenceStructureRanges } from './reading-selection.js'
 import { createReadingLookupLayout } from './reading-lookup-layout.js'
 import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.js'
 
@@ -42,15 +42,16 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   title.lang = 'en'
   const dismiss = button('×', 'reading-lookup-close', () => close(), 'reading-lookup-close')
   dismiss.setAttribute('aria-label', 'Close lookup')
-  const expand = button('Expand', 'reading-lookup-expand', () => layout.expand())
   const collapse = button('Minimize', 'reading-lookup-minimize', () => layout.collapse())
   const jump = button('Back to source', 'reading-lookup-original', () => {
-    const bounds = scroller.getBoundingClientRect()
     const rect = entry?.range.getClientRects()[0]
-    if (rect) scroller.scrollTop += rect.top - bounds.top - 18
+    if (!rect) return
+    const back = entry.material.closest('.reading-detail')?.querySelector(':scope > .reading-back')
+    const inset = (back?.offsetHeight ?? 0) + 8
+    scroller.scrollTop += rect.top - scroller.getBoundingClientRect().top - inset
   })
   const headerActions = el('div', 'reading-lookup-header-actions')
-  headerActions.append(jump, expand, collapse, dismiss)
+  headerActions.append(jump, collapse, dismiss)
   header.append(title, headerActions)
   const modes = el('div', 'reading-lookup-modes')
   const translate = button('Translate', 'reading-lookup-translate', () => selectMode('translate'))
@@ -64,16 +65,17 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const structure = el('div')
   const sentenceDisclosure = el('details', 'reading-sentence-disclosure')
   sentenceDisclosure.id = 'reading-sentence-explanation'
-  sentenceDisclosure.open = true
-  const sentenceSummary = el('summary', '', 'Sentence explanation')
-  sentenceSummary.hidden = true
+  sentenceDisclosure.hidden = true
+  const sentenceSummary = el('summary', '', 'Show sentence')
   sentenceDisclosure.append(sentenceSummary, structure)
-  sentenceDisclosure.addEventListener('toggle', () => layout.position())
   result.append(meaning, sentenceDisclosure)
   const feedback = el('p', 'reading-lookup-feedback')
   feedback.setAttribute('role', 'status')
   body.append(result, feedback)
-  const actions = el('footer', 'reading-lookup-actions')
+  const footer = el('footer', 'reading-lookup-footer')
+  const guideActions = el('div', 'guide-tools reading-lookup-guide-actions')
+  guideActions.hidden = true
+  const actions = el('div', 'reading-lookup-actions')
   const copy = button('Copy result', 'reading-lookup-copy', () => void copyResult())
   const speak = button('Read aloud', 'reading-lookup-speak', () => void toggleSpeech())
   speak.title = 'Read aloud or stop (R)'
@@ -83,7 +85,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const retry = button('Retry lookup', 'reading-lookup-retry', () => void request(entry?.mode || lastMode, true))
   const settings = button('Open settings', 'reading-lookup-settings', () => { close(); onOpenSettings?.() })
   actions.append(copy, speak, save, stop, retry, settings)
-  popover.append(header, modes, body, actions)
+  footer.append(guideActions, actions)
+  popover.append(header, modes, body, footer)
   dock.append(popover)
   const layout = createReadingLookupLayout({ panel: popover, scroller, dock })
 
@@ -134,14 +137,17 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function renderHighlights() {
     if (!CSS.highlights || typeof Highlight !== 'function') return false
     clearStructureHighlights()
-    const spans = entry.analysis.detailExpanded ? sentenceStructure(readingAnalysisEntry(entry)) : []
-    const ranges = readingSentenceStructureRanges(entry, spans)
-    if (!ranges.length) {
-      CSS.highlights.set(SELECTION_HIGHLIGHT, new Highlight(entry.range))
-      return false
+    const selected = entry.range.toString() === entry.text ? entry.range : rangeForOffsets(entry.material, entry.start, entry.end)
+    if (selected) {
+      const selection = new Highlight(selected)
+      // Paint the underline above the backgrounds of overlapping grammar roles.
+      selection.priority = 1
+      CSS.highlights.set(SELECTION_HIGHLIGHT, selection)
     }
+    const spans = sentenceStructure(readingAnalysisEntry(entry))
+    const ranges = readingSentenceStructureRanges(entry, spans)
+    if (!ranges.length) return false
 
-    CSS.highlights.delete(SELECTION_HIGHLIGHT)
     for (const { role, range } of ranges) {
       const name = STRUCTURE_HIGHLIGHTS[role]
       if (!CSS.highlights.has(name)) CSS.highlights.set(name, new Highlight())
@@ -154,15 +160,19 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     return true
   }
 
-  function close({ preserveAnalysis = false } = {}) {
+  function clearLookup({ preserveAnalysis = false } = {}) {
     selection.clearPending()
     cancel()
     if (!preserveAnalysis) cancelAnalysis()
     stopSpeech()
     entry = null
-    layout.close()
     CSS.highlights?.delete(SELECTION_HIGHLIGHT)
     clearStructureHighlights()
+  }
+
+  function close() {
+    clearLookup()
+    layout.close()
   }
 
   function renderMeaning() {
@@ -172,6 +182,10 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const viewingStructure = structurePanel && structureTop <= body.getBoundingClientRect().top
     translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
     guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
+    const focusedControl = document.activeElement
+    const guideFocus = guideActions.contains(focusedControl) && (focusedControl.matches('[data-hint-more]')
+      ? '[data-hint-more]' : '[data-guide-answer-toggle]')
+    guideActions.replaceChildren()
     meaning.replaceChildren()
     meaning.dataset.status = entry.status
     meaning.classList.toggle('is-error', ['error', 'cancelled'].includes(entry.status))
@@ -180,12 +194,19 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       meaning.textContent = entry.error
     } else if (entry.mode === 'guide' && entry.guide) {
       meaning.append(renderGuide(entry, {
+        actions: guideActions,
+        showSentenceAnalysis: false,
         onRevealHint(current) {
           current.hintCount += 1
           renderMeaning()
           scrollToLatestHint(meaning, body)
         },
-        onToggleAnswer(current) { current.answerRevealed = !current.answerRevealed; renderMeaning() },
+        onToggleAnswer(current) {
+          current.answerRevealed = !current.answerRevealed
+          renderMeaning()
+          const answer = meaning.querySelector('.answer')
+          if (answer) body.scrollTop += Math.max(0, answer.getBoundingClientRect().top - body.getBoundingClientRect().top)
+        },
       }))
     } else if (entry.mode === 'guide' && entry.previewHint) {
       meaning.append(renderGuidePreview(entry.previewHint))
@@ -194,13 +215,19 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     } else {
       meaning.textContent = 'Waiting for the model…'
     }
+    guideActions.hidden = !guideActions.childElementCount
+    if (guideFocus) {
+      const nextFocus = guideActions.querySelector(guideFocus) || popover
+      nextFocus.focus({ preventScroll: true })
+    }
+    sentenceDisclosure.hidden = entry.mode == null || (entry.mode === 'guide' && !entry.answerRevealed)
+    if (sentenceDisclosure.hidden) sentenceDisclosure.open = false
     renderActions()
-    if (viewingStructure) {
+    if (viewingStructure && sentenceDisclosure.open) {
       body.scrollTop += structurePanel.getBoundingClientRect().top - structureTop
     } else {
       body.scrollTop = scrollTop
     }
-    layout.position()
   }
 
   function renderActions() {
@@ -210,22 +237,15 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     stop.hidden = !entry.requestId || !ACTIVE.has(entry.status)
     retry.hidden = !['error', 'cancelled'].includes(entry.status)
     settings.hidden = entry.status !== 'error'
-    popover.classList.toggle('is-detailed', entry.mode === 'guide' || entry.status === 'error' || entry.status === 'cancelled')
   }
 
   function renderAnalysis() {
     const scrollTop = body.scrollTop
     renderHighlights()
     structure.replaceChildren(renderReadingSentence(entry, {
-      onToggle(expanded) {
-        entry.analysis.detailExpanded = expanded
-        renderHighlights()
-        layout.position()
-      },
       onRetry() { void requestAnalysis(true) },
     }))
     body.scrollTop = scrollTop
-    layout.position()
   }
 
   function open(selected) {
@@ -238,7 +258,9 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const preserveAnalysis = sameMaterial && sameSentenceScope(entry.sentenceScope, selected.sentenceScope)
     const analysis = preserveAnalysis ? entry.analysis
       : { status: 'idle', detailExpanded: false, requestId: null, result: null, error: '' }
-    close({ preserveAnalysis })
+    const grammarDetails = preserveAnalysis && structure.querySelector('#reading-sentence-toggle')
+    if (grammarDetails) analysis.detailExpanded = grammarDetails.open
+    clearLookup({ preserveAnalysis })
     const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', analysis }
     entry = current
     title.textContent = selected.text
@@ -247,6 +269,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     save.textContent = 'Save'
     copy.textContent = 'Copy result'
     copy.classList.remove('is-done')
+    sentenceDisclosure.open = false
     structure.replaceChildren()
     body.scrollTop = 0
     layout.open(current)
@@ -277,17 +300,11 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     cancel()
     const current = entry
     const modeChanged = current.mode !== mode
-    const guided = mode === 'guide'
     const requestId = id()
     Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null,
       sentenceAnalysis: null, analysisExpanded: false, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
-    if (modeChanged) {
-      sentenceDisclosure.classList.toggle('is-guided', guided)
-      sentenceSummary.hidden = !guided
-      sentenceDisclosure.open = !guided
-    }
-    if (guided) layout.expand()
+    if (modeChanged) sentenceDisclosure.open = false
     feedback.textContent = ''
     save.textContent = 'Save'
     renderMeaning()
@@ -421,17 +438,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   function handleResultShortcut(key, target) {
     if (!entry || !popover.checkVisibility()) return false
     if (target !== document.body && !scroller.contains(target) && !popover.contains(target)) return false
-    if (popover.dataset.placement === 'inline') {
-      const panelBounds = popover.getBoundingClientRect()
-      const articleBounds = scroller.getBoundingClientRect()
-      if (panelBounds.bottom <= articleBounds.top || panelBounds.top >= articleBounds.bottom) return false
-    }
     if (key === 'r') {
       void toggleSpeech()
       return true
     }
     if (entry.mode === 'translate') return expandNextResultDetail(result)
-    const nextHint = meaning.querySelector('[data-hint-more]')
+    const nextHint = guideActions.querySelector('[data-hint-more]')
     if (!nextHint) return false
     nextHint.click()
     return true

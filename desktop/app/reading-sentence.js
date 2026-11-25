@@ -9,7 +9,7 @@ export function readingAnalysisEntry(entry) {
   }
 }
 
-export function renderReadingSentence(entry, { onToggle, onRetry }) {
+export function renderReadingSentence(entry, { onRetry }) {
   const analysis = entry.analysis
   const scope = entry.sentenceScope
   const section = el('section', 'reading-sentence-structure')
@@ -58,9 +58,6 @@ export function renderReadingSentence(entry, { onToggle, onRetry }) {
     markSentence(quote, source, spans)
     body.append(quote)
   }
-  details.addEventListener('toggle', () => {
-    if (details.isConnected && details.open !== analysis.detailExpanded) onToggle(details.open)
-  })
   section.append(details)
   return section
 }
