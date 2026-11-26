@@ -245,7 +245,8 @@
 .reading-rich a { color: inherit; text-decoration: underline; text-underline-offset: .15em; cursor: pointer; }
 .reading-rich hr { border: 0; border-block-start: 1px solid var(--border); margin-block: 1.5em; }
 .reading-media-status:not([hidden]) { display: block; font-family: var(--font-reading); font-size: 13px; color: var(--text-2); }
-.reading-media-status::before { content: attr(data-label); }
+.reading-media-status::before { content: attr(aria-label); }
+.reading-image-actions:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-block: 8px; }
 .reading-sentence-trigger {
   position: fixed;
   z-index: 2;

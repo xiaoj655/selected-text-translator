@@ -56,6 +56,26 @@ test('native media is streamed with byte ranges while credentials and upstream h
   assert.equal(response.headers.get('set-cookie'), null)
 })
 
+test('temporary upstream failures are not cached and a fresh request can serve the image', async () => {
+  let requests = 0
+  const handler = createReadingMediaHandler({ openResource: async () => {
+    requests += 1
+    if (requests === 1) throw new Error('Connection reset')
+    if (requests === 2) return { response: upstream([], {}, 503) }
+    return { response: upstream(['image'], { 'content-type': 'image/png' }) }
+  } })
+  const request = () => mediaRequest('https://cdn.publisher.com/image.png')
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await handler(request())
+    assert.equal(response.status, 502)
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+  }
+  const response = await handler(request())
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'private, max-age=300')
+  assert.equal(await response.text(), 'image')
+})
+
 test('unsafe destinations, active content and oversized media fail without exposing a usable response', async () => {
   const neverOpen = createReadingMediaHandler({ openResource: () => assert.fail('Must reject before network') })
   assert.equal((await neverOpen(mediaRequest('https://127.0.0.1/private'))).status, 502)

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { isArticleExplanation } from './mock-api.mjs'
 
 const ARTICLE_URL = 'https://reader.example.org/articles/rich-fixture'
+const IMAGE_RETRY_ARTICLE_URL = `${ARTICLE_URL}?image-retry`
+const AUTO_RETRY_IMAGE = 'https://reader.example.org/assets/retry-once.png?variant=night%20view&rev=2'
+const MANUAL_RETRY_IMAGE = 'https://reader.example.org/assets/retry-twice.png?variant=night%20view&rev=2'
 const TITLE = 'Reading the complete calibration report'
 const INLINE_SELECTION = 'record the interview and keep a release note'
 const FOCUS_TEXT = 'The iridescence filter is adjusted only after the observatory cools down. Its delayed calibration compensates for a temperature shift that appears late in the experiment. The operators compare the final spectrum against an independent reference before accepting it.'
@@ -12,7 +15,7 @@ const COACH_REPLY = 'This paragraph explains why the operators wait for the obse
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAeAAAAB4CAIAAACl9LZYAAAACXBIWXMAAAABAAAAAQBPJcTWAAACHUlEQVR4nO3coU1EQRhGUQg4BC2+Bl4FT69fsg1seQgECCQJBokc8l825zQwX0bcjJr717f3OwB6HqcHAPA7gQaIEmiAKIEGiBJogCiBBogSaIAogQYWO12u0xMWO/Zt5FyBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJo+OEHCWoEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqg/73Ph+fpCYs9fX1MT4AEgf73zueX6QmLHfs2PQESBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGixgJ9ulynjv4jx75NTwBuihc0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRA1Figj32bOvrGuMlV3OQqbnIVL2iAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAqG/mvRi7zROJ6gAAAABJRU5ErkJggg=='
 const WEBM = 'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwH/////////EU2bdKtNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHLTbuMU6uEElTDZ1OsggEY7AEAAAAAAABoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmpSrXsYMPQkBNgIxMYXZmNjIuMy4xMDBXQYxMYXZmNjIuMy4xMDAWVK5ryK4BAAAAAAAAP9eBAXPFiDVPrcx+awennIEAIrWcg3VuZIiBAIaFVl9WUDiDgQEj44OEBfXhAOCQsIFguoFAmoECVbCEVbmBARJUw2fXc3OfY8CAZ8iZRaOHRU5DT0RFUkSHjExhdmY2Mi4zLjEwMHNzsmPAi2PFiDVPrcx+awenZ8ihRaOHRU5DT0RFUkSHlExhdmM2Mi4xMS4xMDAgbGlidnB4H0O2dUCg54EAo7uBAACAsAMAnQEqYABAAABHCIWFiIWEiAICAnWqAgaf586dOnTp06dOnTfA/uQBf7gzPq7HD+5sc4tkMKOWgQBkANEBAAEQEAAYABhYL/QACIUoAKOWgQDIANEBAAEQEAAYABhYL/QACIUoAKOWgQEsANEBAAEQEAAYABhYL/QACIUoAKOWgQGQANEBAAEQEAAYABhYL/QACIUoAA=='
 
-function articleHtml() {
+function articleHtml({ imageRetry = false } = {}) {
   const paragraphs = Array.from({ length: 74 }, (_value, index) => index === 60
     ? `<p>${FOCUS_TEXT}</p>`
     : `<p>Observation ${index + 1} explains how the engineering team checks a complete sequence of measurements. Each experiment uses the same reference instrument so that a change in the environment can be distinguished from a change in the equipment. The team reviews the evidence before continuing.</p>`).join('')
@@ -21,6 +24,8 @@ function articleHtml() {
     <p>Before the inline example. We will <strong>record the interview</strong> and keep a <a href="../notes/details">release note</a> for the team. After the inline example.</p>
     <p>The next paragraph explains why the measurements matter. The team checks them before a release.</p>
     <figure><img data-src="../assets/chart.png" src="../assets/placeholder.png" width="480" height="120" alt="Calibration chart"><figcaption>Figure 1. Measurements rise after calibration.</figcaption></figure>
+    ${imageRetry ? `<figure><img src="${AUTO_RETRY_IMAGE}" width="480" height="120" alt="Night calibration chart"><figcaption>Figure 2. The night measurements follow the same pattern.</figcaption></figure>
+    <figure><img src="${MANUAL_RETRY_IMAGE}" width="480" height="120" alt="Independent calibration chart"><figcaption>Figure 3. An independent instrument confirms the result.</figcaption></figure>` : ''}
     <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 40" width="240" height="40" onload="window.richInjected=true"><title>Static calibration diagram</title><rect width="240" height="40" fill="#e5eaee"/><text x="12" y="26" fill="#27313a">Calibration reference</text><script>window.richInjected=true</script></svg></figure>
     <ul><li>Keep the original measurements.</li><li>Compare each independent sample.</li></ul>
     <table><caption>Calibration observations</caption><thead><tr><th>Phase</th><th>Reading</th></tr></thead><tbody><tr><td>Before</td><td>Two independent samples are within the expected range.</td></tr><tr><td>After</td><td>Four independent samples confirm the correction.</td></tr></tbody></table>
@@ -102,22 +107,30 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
   async function prepare() {
     if (installed) return
     saved = await page.evaluate(() => chrome.storage.sync.get(['model', 'learning_model', 'desktop_iqs_api_key', 'desktop_reading_lookup_mode']))
-    await app.evaluate(({ shell }, { url, html, png, webm }) => {
+    await app.evaluate(({ shell }, { articles, failedImageRequests, png, webm }) => {
       const https = process.getBuiltinModule('node:https')
       const { Readable } = process.getBuiltinModule('node:stream')
       globalThis.__richReadingFixture = { get: https.get, openExternal: shell.openExternal, requests: [], opened: [] }
       shell.openExternal = async (target) => { globalThis.__richReadingFixture.opened.push(target) }
       https.get = (target, options, callback) => {
         const href = typeof target === 'string' ? target : target.href
-        if (href !== url && !href.startsWith('https://reader.example.org/assets/')) {
+        const html = articles[href]
+        if (!html && !href.startsWith('https://reader.example.org/assets/')) {
           return globalThis.__richReadingFixture.get(target, options, callback)
         }
         const range = options.headers?.Range || options.headers?.range || ''
         globalThis.__richReadingFixture.requests.push({ url: href, range })
-        let body = href === url ? Buffer.from(html)
-          : href.endsWith('/chart.png') ? Buffer.from(png, 'base64')
-            : href.endsWith('/clip.webm') ? Buffer.from(webm, 'base64') : Buffer.from('Not a playable WebM file')
-        const type = href === url ? 'text/html; charset=utf-8' : href.endsWith('.png') ? 'image/png' : 'video/webm'
+        const path = new URL(href).pathname
+        const isFixtureImage = path === '/assets/chart.png' || Object.hasOwn(failedImageRequests, href)
+        let body = html ? Buffer.from(html)
+          : isFixtureImage ? Buffer.from(png, 'base64')
+            : path.endsWith('/clip.webm') ? Buffer.from(webm, 'base64') : Buffer.from('Not a playable WebM file')
+        // Truncate the PNG to exercise the image error without logging an expected HTTP error.
+        if (failedImageRequests[href] > 0) {
+          failedImageRequests[href]--
+          body = body.subarray(0, 8)
+        }
+        const type = html ? 'text/html; charset=utf-8' : path.endsWith('.png') ? 'image/png' : 'video/webm'
         const total = body.length
         const headers = { 'content-type': type, 'content-length': String(total), 'accept-ranges': 'bytes' }
         let statusCode = 200
@@ -134,7 +147,12 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
         queueMicrotask(() => callback(response))
         return response
       }
-    }, { url: ARTICLE_URL, html: articleHtml(), png: PNG, webm: WEBM })
+    }, {
+      articles: { [ARTICLE_URL]: articleHtml(), [IMAGE_RETRY_ARTICLE_URL]: articleHtml({ imageRetry: true }) },
+      failedImageRequests: { [AUTO_RETRY_IMAGE]: 1, [MANUAL_RETRY_IMAGE]: 2 },
+      png: PNG,
+      webm: WEBM,
+    })
     installed = true
     await page.evaluate(async () => {
       await chrome.storage.sync.set({ model: 'mock-generic', learning_model: 'mock-generic', desktop_iqs_api_key: '', desktop_reading_lookup_mode: 'translate' })
@@ -154,13 +172,13 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
     })
   }
 
-  async function openFixture() {
+  async function openFixture(url = ARTICLE_URL) {
     await prepare()
     await page.locator('#btn-tutor-workspace').click()
     await page.locator('#tutor-reading-mode').click()
     if (await page.locator('#reading-back').isVisible()) await page.locator('#reading-back').click()
     await page.locator('#reading-import').click()
-    await page.locator('#reading-import-url').fill(ARTICLE_URL)
+    await page.locator('#reading-import-url').fill(url)
     await page.getByRole('button', { name: 'Import article', exact: true }).click()
     await page.locator('#reading-detail').getByRole('heading', { name: TITLE, exact: true }).waitFor()
     return page.locator('#reading-detail .reading-preview')
@@ -216,6 +234,43 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
       assert.equal(mock.requests.length, before, 'reading and media loading must not call a model')
       await material.locator('h2').first().evaluate((node) => node.scrollIntoView({ block: 'start' }))
       await shot?.(page, 'main-tutor-rich-article')
+    })
+
+    await check('rich article: temporary image failure recovers automatically and persistent failure can be retried', async () => {
+      const material = await openFixture(IMAGE_RETRY_ARTICLE_URL)
+      const originalText = await page.evaluate(async (url) =>
+        (await window.sttDesktop.reading.importPage(url)).text, IMAGE_RETRY_ARTICLE_URL)
+      const requestUrls = (pathname) => app.evaluate((_electron, path) => globalThis.__richReadingFixture.requests
+        .map(({ url }) => url).filter((url) => new URL(url).pathname === path), pathname)
+
+      const auto = material.getByRole('img', { name: 'Night calibration chart', exact: true })
+      await auto.scrollIntoViewIfNeeded()
+      await page.waitForFunction(() => document.querySelector('img[alt="Night calibration chart"]')?.naturalWidth > 0)
+      assert.deepEqual(await requestUrls('/assets/retry-once.png'), [AUTO_RETRY_IMAGE, AUTO_RETRY_IMAGE])
+
+      const manual = page.locator('img[alt="Independent calibration chart"]')
+      const figure = material.locator('figure').filter({ has: manual })
+      await figure.scrollIntoViewIfNeeded()
+      const retryButton = figure.getByRole('button', { name: 'Retry image', exact: true })
+      const originalLink = figure.getByRole('link', { name: 'Open original ↗', exact: true })
+      await retryButton.waitFor({ state: 'visible' })
+      assert.deepEqual(await requestUrls('/assets/retry-twice.png'), [MANUAL_RETRY_IMAGE, MANUAL_RETRY_IMAGE])
+      assert.ok(await originalLink.isVisible())
+      assert.equal(await originalLink.getAttribute('href'), IMAGE_RETRY_ARTICLE_URL)
+      assert.equal(await material.textContent(), originalText, 'image controls must preserve article text and offsets')
+      await figure.evaluate((node) => node.scrollIntoView({ block: 'center' }))
+      await shot?.(page, 'main-tutor-image-retry')
+
+      const failedSource = await manual.getAttribute('src')
+      await retryButton.click()
+      await page.waitForFunction(() => document.querySelector('img[alt="Independent calibration chart"]')?.naturalWidth > 0)
+      const recoveredSource = await manual.getAttribute('src')
+      assert.notEqual(recoveredSource, failedSource, 'manual retry must use a fresh proxy URL')
+      assert.equal(new URL(recoveredSource).searchParams.get('url'), MANUAL_RETRY_IMAGE)
+      assert.deepEqual(await requestUrls('/assets/retry-twice.png'), Array(3).fill(MANUAL_RETRY_IMAGE))
+      await retryButton.waitFor({ state: 'hidden' })
+      assert.equal(await originalLink.isVisible(), false)
+      assert.equal(await material.textContent(), originalText)
     })
 
     await check('rich article: cross-tag selections and sentence context at the end', async () => {
