@@ -183,7 +183,15 @@ internal class ReaderViewModel(
 
     fun reloadArticle(article: ReadingArticle) {
         if (article.sourceUrl == null || article.hasImages || state.value.importing) return
-        importArticle(null, reload = true) { library.reloadImages(article) }
+        importArticle(null, reloadFailureMessage = "Couldn't reload images. Try again.") { library.reloadImages(article) }
+    }
+
+    fun reimportArticle(article: ReadingArticle) {
+        if (article.sourceUrl == null || state.value.importing) return
+        importArticle(null, reloadFailureMessage = "Couldn't reimport this article. Try again.") {
+            store.load()
+            library.reimportArticle(article, iqsApiKey.value)
+        }
     }
 
     fun openFeedArticle(article: FeedArticle) {
@@ -276,12 +284,12 @@ internal class ReaderViewModel(
         state.update { it.copy(iqsSettingsMessage = null, iqsSettingsError = false) }
     }
 
-    private fun importArticle(sharedUrl: String?, reload: Boolean = false, request: suspend () -> ReadingArticle) {
+    private fun importArticle(sharedUrl: String?, reloadFailureMessage: String? = null, request: suspend () -> ReadingArticle) {
         importJob?.cancel()
         val revision = ++importRevision
         state.update {
             it.copy(importing = true, importError = null, pendingUrl = sharedUrl, directImportAvailable = false,
-                reloadingArticle = reload, articleReloadError = null)
+                reloadingArticle = reloadFailureMessage != null, articleReloadError = null)
         }
         importJob = viewModelScope.launch {
             try {
@@ -294,11 +302,10 @@ internal class ReaderViewModel(
                 throw error
             } catch (error: Exception) {
                 if (revision == importRevision) {
-                    val message = (error as? ArticleImportException)?.message ?: if (reload) {
-                        "Couldn't reload images. Try again."
-                    } else "Couldn't add the article. Try again."
+                    val message = (error as? ArticleImportException)?.message
+                        ?: reloadFailureMessage ?: "Couldn't add the article. Try again."
                     state.update {
-                        if (reload) it.copy(importing = false, reloadingArticle = false, articleReloadError = message)
+                        if (reloadFailureMessage != null) it.copy(importing = false, reloadingArticle = false, articleReloadError = message)
                         else it.copy(importing = false, importError = message, directImportAvailable = error is IqsImportException)
                     }
                 }
@@ -321,7 +328,7 @@ internal class ReaderViewModel(
     fun open(article: ReadingArticle) {
         val stored = library.articles.value.firstOrNull { it.id == article.id } ?: article
         val active = state.value.activeArticle
-        if (active?.id == stored.id && active.blocks === stored.blocks) return
+        if (active?.id == stored.id && active.title == stored.title && active.blocks === stored.blocks) return
         dismissResult()
         restored[ARTICLE_KEY] = article.id
         state.update { it.copy(activeArticle = stored.copy(position = readingPosition(stored)), articleReloadError = null) }

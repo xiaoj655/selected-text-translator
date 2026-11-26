@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
@@ -35,8 +36,35 @@ internal class ArticleRepository(context: Context) {
         val original = source.toString()
         load()
         entries.value.firstOrNull { it.sourceUrl == original }?.let { return it }
-        val article = if (iqsApiKey.isBlank()) importer.fetch(original) else iqsImporter.fetch(source, iqsApiKey)
+        val article = fetchWebArticle(source, iqsApiKey)
         return insert(article.copy(sourceUrl = original))
+    }
+
+    suspend fun reimportArticle(article: ReadingArticle, iqsApiKey: String): ReadingArticle {
+        val url = article.sourceUrl ?: throw ArticleImportException("This article has no original page.")
+        val refreshed = fetchWebArticle(publicArticleUrl(url), iqsApiKey)
+        return replaceArticle(article.id) { current ->
+            if (current.blocks == refreshed.blocks) {
+                return@replaceArticle if (current.title == refreshed.title) current else current.copy(title = refreshed.title)
+            }
+            current.copy(
+                title = refreshed.title,
+                blocks = refreshed.blocks,
+                position = reimportPosition(current, refreshed.blocks),
+            )
+        }
+    }
+
+    private suspend fun fetchWebArticle(source: HttpUrl, iqsApiKey: String): ReadingArticle {
+        if (iqsApiKey.isBlank()) return importer.fetch(source.toString())
+        if (isPsycheArticle(source)) {
+            try {
+                return importer.fetch(source.toString())
+            } catch (_: ArticleImportException) {
+                // Use IQS when direct parsing of the source page is unavailable.
+            }
+        }
+        return iqsImporter.fetch(source, iqsApiKey)
     }
 
     suspend fun importFeedArticle(url: String, title: String, html: String): ReadingArticle {
@@ -56,18 +84,35 @@ internal class ArticleRepository(context: Context) {
         val url = article.sourceUrl ?: throw ArticleImportException("This article has no original page.")
         val refreshed = importer.fetch(url)
         if (!refreshed.hasImages) throw ArticleImportException("Couldn't find images on the original page.")
-        return withContext(Dispatchers.IO) {
+        return replaceArticle(article.id) { current ->
+            if (current.hasImages) return@replaceArticle current
+            current.copy(blocks = refreshed.blocks, position = positionWithImages(current, refreshed.blocks))
+        }
+    }
+
+    private suspend fun replaceArticle(id: String, replace: (ReadingArticle) -> ReadingArticle): ReadingArticle =
+        withContext(Dispatchers.IO) {
             mutations.withLock {
-                val current = entries.value.firstOrNull { it.id == article.id }
+                loadLocked()
+                val current = entries.value.firstOrNull { it.id == id }
                     ?: throw ArticleImportException("This article was removed.")
-                if (current.hasImages) return@withLock current
-                val updated = current.copy(blocks = refreshed.blocks, position = positionWithImages(current, refreshed.blocks))
+                val updated = replace(current)
+                if (updated === current) return@withLock current
                 write(updated)
-                storePosition(updated.id, updated.position)
-                entries.value = entries.value.map { if (it.id == updated.id) updated else it }
+                storePosition(id, updated.position)
+                entries.value = entries.value.map { if (it.id == id) updated else it }
                 updated
             }
         }
+
+    private fun reimportPosition(current: ReadingArticle, blocks: List<ArticleBlock>): ArticlePosition {
+        val position = current.position
+        if (position.index == 0) return position
+        val index = position.index - 1
+        val previous = current.blocks.getOrNull(index) ?: return ArticlePosition()
+        if (blocks.getOrNull(index) == previous) return position
+        val matches = blocks.indices.filter { blocks[it] == previous }
+        return matches.singleOrNull()?.let { ArticlePosition(it + 1, position.offset) } ?: ArticlePosition()
     }
 
     suspend fun savePosition(article: ReadingArticle, position: ArticlePosition) = withContext(Dispatchers.IO) {

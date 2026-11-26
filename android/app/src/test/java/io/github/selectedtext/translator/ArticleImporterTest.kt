@@ -58,6 +58,39 @@ class ArticleImporterTest {
     }
 
     @Test
+    fun `reads the requested Psyche story and skips recommendations and preloaded stories`() {
+        val url = "https://psyche.co/notes-to-self/coming-home"
+        val opening = "I am returning to the neighbourhood where I spent my childhood."
+        val ending = "It will take a while to find my place in the familiar streets again."
+        val document = Jsoup.parse("""
+            <head><meta property="og:title" content="Coming home | Psyche Notes to Self"></head>
+            <main>
+              <div data-index="0">
+                <h1>Coming home</h1>
+                <div class="article-content text-copy">
+                  <p>$opening</p>
+                  <article class="group/card"><p>A recommended article with enough text to be mistaken for the main story.</p></article>
+                  <figure><img src="/illustrations/home.jpg"></figure>
+                  <p>$ending</p>
+                </div>
+              </div>
+              <div data-index="1">
+                <h1>A different story</h1>
+                <div class="article-content text-copy"><p>${"Another article is loaded to enable continuous reading. ".repeat(5)}</p></div>
+              </div>
+            </main>
+        """.trimIndent(), url)
+
+        val article = extractArticle(document, "psyche.co")
+        assertEquals("Coming home", article.title)
+        assertEquals(listOf(
+            ArticleBlock(opening),
+            ArticleBlock("", image = ArticleImage("https://psyche.co/illustrations/home.jpg")),
+            ArticleBlock(ending),
+        ), article.blocks)
+    }
+
+    @Test
     fun `keeps public article images and captions in reading order`() {
         val url = "https://news.example.org/essays/story.html"
         val article = extractArticle(Jsoup.parse("""

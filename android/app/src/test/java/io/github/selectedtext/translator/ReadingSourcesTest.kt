@@ -19,8 +19,10 @@ class ReadingSourcesTest {
         val firstParagraph = "This example explains the author's argument in detail. ".repeat(1_100).trimEnd()
         val finalParagraph = "This final paragraph should remain available after the entire article is saved."
         val html = """
-            <article><h1>Long essay</h1><p>$firstParagraph</p>
-            <img src="figures/sketch.jpg" alt="Sketch"><p>$finalParagraph</p></article>
+            <main>
+              <article><h1>Long essay</h1><p>$firstParagraph</p><img src="figures/sketch.jpg" alt="Sketch"></article>
+              <section><p>$finalParagraph</p></section>
+            </main>
         """.trimIndent()
         val sourceUrl = publicArticleUrl("[Open the essay](https://example.com/long-essay)")
         MockWebServer().use { server ->
@@ -38,6 +40,20 @@ class ReadingSourcesTest {
             val request = server.takeRequest()
             assertEquals("test-iqs-key", request.getHeader("X-API-Key"))
             assertEquals(sourceUrl.toString(), JSONObject(request.body.readUtf8()).getString("url"))
+        }
+    }
+
+    @Test
+    fun iqsDoesNotSaveAPsycheRecommendationAsText() = runBlocking {
+        val recommendation = "This paragraph is a preview of a different story recommended by the publisher."
+        val html = "<article class=\"group/card\"><p>$recommendation</p></article>"
+        val sourceUrl = publicArticleUrl("https://psyche.co/ideas/published-story")
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(JSONObject().put("data", JSONObject()
+                .put("statusCode", 200).put("html", html).put("text", recommendation)).toString()))
+            val importer = IqsArticleImporter(OkHttpClient(), server.url("/readpage/scrape"))
+            val failure = runCatching { importer.fetch(sourceUrl, "test-iqs-key") }.exceptionOrNull()
+            assertTrue(failure is IqsImportException)
         }
     }
 

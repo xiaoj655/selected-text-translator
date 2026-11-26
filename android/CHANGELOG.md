@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.9
+
+- Import the selected Psyche story with its paragraphs and inline images. Use **Aa → Reimport article** to replace an incomplete saved copy from the original page.
+- Keep later sections when importing article content returned by Alibaba Cloud IQS.
+
 ## 0.2.8
 
 - Show article images in Reading and retry images that fail to load. In older articles, use **Aa → Reload images** to load the original page and keep your reading position.

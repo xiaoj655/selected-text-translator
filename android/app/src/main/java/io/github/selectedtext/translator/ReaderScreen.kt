@@ -384,10 +384,10 @@ private fun ArticleContent(
 ) {
     var mode by rememberSaveable { mutableStateOf(ArticleSelectionKind.WORD) }
     var guided by rememberSaveable { mutableStateOf(false) }
-    var phraseAnchor by remember { mutableStateOf<ReadingTap?>(null) }
-    var phrase by remember { mutableStateOf<ReadingTap?>(null) }
+    var phraseAnchor by remember(article.blocks) { mutableStateOf<ReadingTap?>(null) }
+    var phrase by remember(article.blocks) { mutableStateOf<ReadingTap?>(null) }
     var optionsOpen by remember { mutableStateOf(false) }
-    var tap by remember { mutableStateOf<ReadingTap?>(null) }
+    var tap by remember(article.blocks) { mutableStateOf<ReadingTap?>(null) }
     var panelHeight by remember { mutableIntStateOf(0) }
     val resultScroll = key(result?.blockIndex, result?.selection, result?.guided) { rememberScrollState() }
     var sentenceOpen by rememberSaveable(result?.blockIndex, result?.selection, result?.guided) { mutableStateOf(false) }
@@ -431,7 +431,7 @@ private fun ArticleContent(
         val bodyWidthPx = with(LocalDensity.current) { bodyWidth.roundToPx() }
         // A taller viewport can temporarily clamp the first visible paragraph near the end.
         // Start each new viewport from the last position reached by scrolling.
-        val list = remember(bodyWidthPx, constraints.maxHeight, fontSize) {
+        val list = remember(article.blocks, bodyWidthPx, constraints.maxHeight, fontSize) {
             val position = reader.readingPosition(article)
             LazyListState(position.index, position.offset)
         }
@@ -506,6 +506,11 @@ private fun ArticleContent(
                                     reader.reloadArticle(article)
                                 })
                             }
+                            DropdownMenuItem(text = { Text("Reimport article") }, enabled = !reloading, onClick = {
+                                optionsOpen = false
+                                stopSpeech()
+                                reader.reimportArticle(article)
+                            })
                             DropdownMenuItem(text = { Text("Open original") }, onClick = {
                                 optionsOpen = false
                                 runCatching { uriHandler.openUri(url) }

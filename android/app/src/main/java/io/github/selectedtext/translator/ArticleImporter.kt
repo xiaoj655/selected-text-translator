@@ -108,6 +108,12 @@ internal class ArticleImporter(
 
 internal open class ArticleImportException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
+internal class MissingPsycheArticleException : ArticleImportException("Couldn't find the article body on Psyche.")
+
+internal fun isPsycheArticle(url: HttpUrl): Boolean =
+    url.host.removePrefix("www.") == "psyche.co" && url.pathSegments.size >= 2 &&
+        url.pathSegments[0] in PSYCHE_ARTICLE_SECTIONS && url.pathSegments[1].isNotEmpty()
+
 internal fun publicArticleUrl(value: String): HttpUrl {
     val trimmed = value.trim()
     val link = MARKDOWN_ARTICLE_URL.matchEntire(trimmed)?.groupValues?.get(1)
@@ -148,14 +154,19 @@ internal fun pastedArticle(text: String, title: String = ""): ReadingArticle {
     return ReadingArticle("", resolvedTitle.take(MAX_TITLE_LENGTH), null, body)
 }
 
-internal fun extractArticle(document: Document, host: String): ReadingArticle {
+internal fun extractArticle(document: Document, host: String, alreadyExtracted: Boolean = false): ReadingArticle {
     val body = document.body()
     body.select(UNREADABLE_ELEMENTS).remove()
     val main = body.select("main,[role=main]").maxByOrNull(::contentScore) ?: body
-    val article = main.select("article,[itemprop=articleBody]").map { it to contentScore(it) }.maxByOrNull { it.second }
-    val content = article?.takeIf { it.second >= MIN_READABLE_TEXT }?.first ?: main
+    val psyche = document.location().toHttpUrlOrNull()?.let(::isPsycheArticle) == true
+    val publisherBody = if (psyche) psycheArticleBody(body, main) else null
+    val content = publisherBody ?: if (alreadyExtracted) body else {
+        main.select("article,[itemprop=articleBody]")
+            .maxByOrNull(::contentScore)?.takeIf { contentScore(it) >= MIN_READABLE_TEXT } ?: main
+    }
     val title = sequenceOf(
         content.selectFirst("h1")?.text(),
+        publisherBody?.let { main.selectFirst("h1")?.text() },
         document.selectFirst("meta[property=og:title]")?.attr("content"),
         main.selectFirst("h1")?.text(),
         document.title(),
@@ -163,6 +174,16 @@ internal fun extractArticle(document: Document, host: String): ReadingArticle {
     val blocks = readBlocks(content, title)
     if (blocks.filterNot { it.heading }.sumOf { it.text.length } < MIN_READABLE_TEXT) throw noArticleText()
     return ReadingArticle("", title, null, blocks)
+}
+
+private fun psycheArticleBody(body: Element, main: Element): Element? {
+    // Psyche uses article tags for recommendations and can preload other stories below the first one.
+    val cards = body.getElementsByClass("group/card")
+    val hasCards = cards.isNotEmpty()
+    cards.remove()
+    val firstStory = main.selectFirst("[data-index=0]") ?: main
+    return firstStory.selectFirst(".article-content")
+        ?: if (hasCards) throw MissingPsycheArticleException() else null
 }
 
 private fun contentScore(element: Element): Int {
@@ -333,6 +354,7 @@ private const val MAX_TITLE_LENGTH = 200
 private const val MIN_READABLE_TEXT = 40
 private const val MAX_REDIRECTS = 5
 private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+private val PSYCHE_ARTICLE_SECTIONS = setOf("ideas", "guides", "notes-to-self", "turning-points", "films")
 private val LOCAL_HOST_SUFFIXES = listOf(".localhost", ".local", ".internal", ".test", ".invalid", ".example", ".home.arpa", ".onion")
 private val SHARED_LINK = Regex("""https://[^\s<>"\u0000-\u001F]+""", RegexOption.IGNORE_CASE)
 private val WHITESPACE = Regex("""[\s\u00a0]+""")

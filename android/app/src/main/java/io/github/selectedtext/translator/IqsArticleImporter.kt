@@ -79,7 +79,13 @@ internal class IqsArticleImporter(
         val title = metadata?.string("title")?.trim()?.take(200).orEmpty()
         val html = data.string("html")
         val article = html.takeIf(String::isNotBlank)?.let {
-            runCatching { extractArticle(Jsoup.parse(it, finalUrl.toString()), finalUrl.host) }.getOrNull()
+            try {
+                extractArticle(Jsoup.parse(it, finalUrl.toString()), finalUrl.host, alreadyExtracted = true)
+            } catch (error: MissingPsycheArticleException) {
+                throw IqsImportException(error.message.orEmpty())
+            } catch (_: ArticleImportException) {
+                null
+            }
         } ?: try {
             pastedArticle(data.string("text"), title)
         } catch (error: ArticleImportException) {
