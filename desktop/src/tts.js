@@ -146,12 +146,15 @@ export function createTts({
     else if (text.length > CLOUD_SPEECH_MAX_LENGTH) fallbackMessage = 'Using a system voice for text over 600 characters.'
     else {
       const signal = task.controller.signal
+      const useQwenAudio = settings?.desktop_tts_text_model === 'qwen-audio-3.1-tts-flash'
       let hasStarted = false
       try {
         const synthesizeWith = async (wordVoice, timeout) => {
           const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(timeout)])
           const audio = await synthesize(text, {
             apiKey, signal: requestSignal, isEnglishWord: wordVoice, pronunciation, rate: options.rate,
+            voice: wordVoice ? settings?.desktop_tts_word_voice : settings?.desktop_tts_text_voice,
+            textModel: settings?.desktop_tts_text_model,
           })
           requestSignal.throwIfAborted()
           return audio
@@ -165,16 +168,16 @@ export function createTts({
           wordVoice = false
           audio = await synthesizeWith(false, CLOUD_SPEECH_TIMEOUT_MS - CLOUD_WORD_TIMEOUT_MS)
           if (current !== task) return
-          task.onEvent({ type: 'fallback', message: 'Using the Jennifer cloud voice for this word.' })
+          task.onEvent({ type: 'fallback', message: 'Using the sentence and article cloud voice for this word.' })
         }
         if (current !== task) return
         await play(audio, {
-          rate: wordVoice ? 1 : options.rate,
+          rate: wordVoice || useQwenAudio ? 1 : options.rate,
           signal,
           onStart() {
             if (current !== task) return
             hasStarted = true
-            task.onEvent({ type: 'start', message: `Playing with ${wordVoice ? 'Abby' : 'Jennifer'} (Alibaba Cloud).` })
+            task.onEvent({ type: 'start', message: `Playing with the Alibaba Cloud ${wordVoice ? 'word' : 'sentence'} voice.` })
           },
         })
         finish(task, 'end')

@@ -167,6 +167,16 @@ test('article explanation asks for the full meaning in the target language with 
   assert.equal(JSON.parse(automatic.messages[1].content).targetLanguage, 'Chinese')
 })
 
+test('English article explanations request English paraphrases and context notes', () => {
+  const request = buildReadingRequest({
+    model: 'qwen3.8-flash', kind: 'article-explanation', text: 'The room was quiet.',
+    targetLanguage: 'english-explanation',
+  })
+  assert.equal(JSON.parse(request.messages[1].content).targetLanguage, 'English')
+  assert.match(request.messages[0].content, /plain, natural targetLanguage/u)
+  assert.match(request.messages[0].content, /explanation in targetLanguage/u)
+})
+
 test('article explanation succeeds without grammar and requires a plain-language paraphrase', () => {
   const options = { text: 'The sooner, the better.' }
   assert.deepEqual(parseReadingResponse('{"paraphrase":" 越早办成这件事，结果就越好。 "}', 'article-explanation', options),

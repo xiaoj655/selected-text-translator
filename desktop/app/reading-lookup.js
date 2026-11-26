@@ -10,6 +10,8 @@ import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.
 import { hasContextualPronunciations, resolveContextualPronunciation } from './contextual-pronunciation.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
+const TARGET_LANGUAGE_KEY = 'desktop_target_language'
+const ENGLISH_EXPLANATION_TARGET = 'english-explanation'
 const EXPLANATION_KIND = 'article-explanation'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
 const PRONUNCIATION_WAIT_MS = 4500
@@ -96,13 +98,27 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   let entry = null
   let counter = 0
   let lastMode
+  let targetLanguage = 'auto'
   let speechId = null
   let pendingSpeechTimer = null
   const id = () => `reading-${Date.now()}-${++counter}`
-  const modeReady = chrome.storage.sync.get(MODE_KEY).then(
-    (values) => { lastMode ??= values?.[MODE_KEY] === 'guide' ? 'guide' : 'translate' },
+  function updateTranslateLabel() {
+    translate.textContent = targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'Explain in English' : 'Translate'
+  }
+
+  const modeReady = chrome.storage.sync.get([MODE_KEY, TARGET_LANGUAGE_KEY]).then(
+    (values) => {
+      lastMode ??= values?.[MODE_KEY] === 'guide' ? 'guide' : 'translate'
+      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
+      updateTranslateLabel()
+    },
     () => { lastMode ??= 'translate' },
   )
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'sync' || !changes[TARGET_LANGUAGE_KEY]) return
+    targetLanguage = changes[TARGET_LANGUAGE_KEY].newValue || 'auto'
+    updateTranslateLabel()
+  })
 
   const selection = installReadingSelection(rootEl, open, scroller)
 
@@ -325,15 +341,17 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     save.textContent = 'Save'
     renderMeaning()
     try {
-      const values = await chrome.storage.sync.get(['desktop_target_language', 'desktop_glossary'])
+      const values = await chrome.storage.sync.get([TARGET_LANGUAGE_KEY, 'desktop_glossary'])
       if (entry !== current || current.requestId !== requestId) return
+      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
+      updateTranslateLabel()
       const response = await chrome.runtime.sendMessage({
         type: 'START_TRANSLATION',
         payload: {
           selectionId: current.id, requestId, requestScope: 'reading', kind: mode, forceRefresh,
           includeSentenceStructure: false,
           text: current.text, context: current.context, contextStart: current.contextStart, contextEnd: current.contextEnd,
-          sourceLanguage: 'english', targetLanguage: values.desktop_target_language || 'auto', glossary: values.desktop_glossary || [],
+          sourceLanguage: 'english', targetLanguage: values[TARGET_LANGUAGE_KEY] || 'auto', glossary: values.desktop_glossary || [],
         },
       })
       if (entry === current && current.requestId === requestId && !response?.accepted) {
@@ -361,8 +379,10 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     Object.assign(analysis, { status: 'loading', requestId, error: '', result: null })
     renderAnalysis()
     try {
-      const { desktop_target_language: targetLanguage } = await chrome.storage.sync.get('desktop_target_language')
+      const values = await chrome.storage.sync.get(TARGET_LANGUAGE_KEY)
       if (entry?.analysis !== analysis || analysis.requestId !== requestId) return
+      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
+      updateTranslateLabel()
       const { text, context, contextStart, contextEnd } = current.sentenceScope
       const response = await chrome.runtime.sendMessage({ type: 'START_TRANSLATION', payload: {
         selectionId: current.id, requestId, requestScope: 'reading', kind: EXPLANATION_KIND, forceRefresh,

@@ -153,6 +153,22 @@ test('desktop DashScope direct single words preview the translation before compl
   assert.equal(done.lexicalDetails.definitions[0].meaning, '记录');
 });
 
+test('English explanation requests use the configured general learning model', async (t) => {
+  const harness = await createHarness(t, async (body) => {
+    assert.equal(body.model, 'qwen3.8-flash');
+    assert.match(body.messages[0].content, /Explain only selectedText in plain, natural English\./u);
+    assert.doesNotMatch(body.messages[0].content, /If selectedText contains Chinese/u);
+    return Response.json({ choices: [{ message: { content: '{"translation":"They set the proposal aside."}' } }] });
+  });
+  harness.start('The committee shelved the proposal.', 'translate', 'english-explanation', {
+    sourceLanguage: 'English',
+    targetLanguage: 'english-explanation',
+  });
+  const result = await harness.event('success', 'english-explanation');
+  assert.equal(result.translatedText, 'They set the proposal aside.');
+  assert.equal(harness.requests.length, 1);
+})
+
 test('desktop stream previews never publish hidden answer fields or replace final validation', async (t) => {
   const sse = createSse();
   const harness = await createHarness(t, () => sse.response);

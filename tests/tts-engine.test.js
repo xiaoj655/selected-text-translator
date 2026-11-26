@@ -68,6 +68,28 @@ test('cloud word speech applies the selected rate during synthesis and passes th
   assert.deepEqual(events, [['record', 'start'], ['record', 'end']])
 })
 
+test('cloud speech sends each saved voice ID to its matching synthesis model', async () => {
+  const voices = []
+  const { tts } = setup({
+    readCloudSettings: async () => ({
+      ...cloudSettings, desktop_tts_word_voice: 'custom-word-voice', desktop_tts_text_voice: 'custom-text-voice',
+      desktop_tts_text_model: 'qwen-audio-3.1-tts-flash',
+    }),
+    synthesize: async (_text, { isEnglishWord, voice, textModel }) => {
+      voices.push([isEnglishWord, voice, textModel])
+      return Buffer.from('mock audio')
+    },
+  })
+  tts.speak('record', { lang: 'en-US' })
+  await setImmediate()
+  tts.speak('Read this passage.', { lang: 'en-US' })
+  await setImmediate()
+  assert.deepEqual(voices, [
+    [true, 'custom-word-voice', 'qwen-audio-3.1-tts-flash'],
+    [false, 'custom-text-voice', 'qwen-audio-3.1-tts-flash'],
+  ])
+})
+
 test('a cloud error retries ordinary words with Jennifer and avoids substituting a different contextual pronunciation', async () => {
   const calls = []
   const { speak, children, events } = setup({

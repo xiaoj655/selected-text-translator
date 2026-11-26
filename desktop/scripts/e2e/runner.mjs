@@ -10,6 +10,7 @@ import { createMockApi } from './mock-api.mjs'
 import { verifyComposerInput } from './composer-input.mjs'
 import { verifyResultMenu } from './result-menu.mjs'
 import { verifyDesktopWorkflow } from './desktop-workflow.mjs'
+import { verifyEnglishExplanation } from './english-explanation.mjs'
 import { verifyCloudSpeech } from './cloud-speech.mjs'
 import { installReadingFeeds, verifyReadingWorkflow } from './reading-workflow.mjs'
 import { verifyCustomReadingFeeds } from './reading-custom-feeds.mjs'
@@ -330,6 +331,7 @@ export async function runE2E(mode = 'core') {
 
     if (mode === 'core' || mode === 'all') {
       await verifySettings({ app, page: mainPage, check, shot })
+      await verifyEnglishExplanation({ page: mainPage, mock, check, shot, openSettings })
       await verifyCloudSpeech({ app, page: mainPage, check })
       await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })

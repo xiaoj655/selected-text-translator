@@ -13,6 +13,7 @@ import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, 
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
 import { supportsSentenceStructure, supportsTranslationStructure } from '../vendor/src/reading-support.js'
+import { ENGLISH_EXPLANATION_TARGET } from '../vendor/src/translation-contracts.js'
 import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
@@ -28,8 +29,13 @@ const DETECTED_LANGUAGE_TAGS = {
   chinese: 'zh', english: 'en', japanese: 'ja', korean: 'ko', french: 'fr', german: 'de', spanish: 'es',
 }
 const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
-const SPEECH_PREVIEW_ID = 'speech-preview'
+const ENGLISH_EXPLANATION_LABEL = 'Explain in English'
+const SPEECH_PREVIEW_ID = 'speech-preview-word'
+const SPEECH_TEXT_PREVIEW_ID = 'speech-preview-text'
 const SPEECH_PREVIEW_TEXT = 'record'
+const SPEECH_TEXT_PREVIEW = 'This is a preview of your English reading voice.'
+const DEFAULT_TEXT_TTS_MODEL = 'qwen3-tts-flash'
+const QWEN_AUDIO_TTS_MODEL = 'qwen-audio-3.1-tts-flash'
 const DEFAULT_ARTICLE_APPEARANCE = { font: 18, width: 840, fit: false, lookupFont: 18 }
 const ARTICLE_FONT_SIZES = [18, 20, 22, 24]
 const LOOKUP_FONT_SIZES = [16, 18, 20, 22]
@@ -146,15 +152,21 @@ function announceResult(text) {
   }, 250)
 }
 
+function renderTargetLanguage() {
+  for (const id of ['lang-target', 'opt-target-language']) {
+    $(id).value = state.targetLanguage
+  }
+  $('btn-swap-lang').disabled = state.targetLanguage === ENGLISH_EXPLANATION_TARGET
+  renderModes()
+}
+
 function setTargetLanguage(value, retranslate) {
+  const explanationChanged = value === ENGLISH_EXPLANATION_TARGET || state.targetLanguage === ENGLISH_EXPLANATION_TARGET
   state.targetLanguage = value
   void chrome.storage.sync.set({ desktop_target_language: value })
-  for (const id of ['lang-target', 'opt-target-language']) {
-    const select = $(id)
-    if (select) select.value = value
-  }
+  renderTargetLanguage()
   const label = $('lang-target').selectedOptions[0]?.textContent || value
-  if (retranslate) retranslateCurrent(`Target language set to ${label}`)
+  if (retranslate && (!explanationChanged || state.mode === 'translate')) retranslateCurrent(`Target language set to ${label}`)
   else setStatus(`Target language set to ${label}`)
 }
 
@@ -180,6 +192,7 @@ function setSourceLanguage(value, retranslate) {
 }
 
 function swapLanguages() {
+  if (state.targetLanguage === ENGLISH_EXPLANATION_TARGET) return
   const detected = detectSourceLanguage($('input').value)
   const plan = planLanguageSwap({ source: state.sourceLanguage, target: state.targetLanguage, detected })
   if (!plan) {
@@ -190,10 +203,7 @@ function swapLanguages() {
   state.targetLanguage = plan.target
   void chrome.storage.sync.set({ desktop_source_language: plan.source, desktop_target_language: plan.target })
   $('lang-source').value = plan.source
-  for (const id of ['lang-target', 'opt-target-language']) {
-    const select = $(id)
-    if (select) select.value = plan.target
-  }
+  renderTargetLanguage()
   updateComposer()
   retranslateCurrent('Languages swapped')
 }
@@ -963,7 +973,7 @@ function openSettings(headingId = 'settings-model-heading') {
 
 function closeSettings() {
   const wasOpen = !$('settings-panel').hidden
-  if (state.speechEntryId === SPEECH_PREVIEW_ID) {
+  if ([SPEECH_PREVIEW_ID, SPEECH_TEXT_PREVIEW_ID].includes(state.speechEntryId)) {
     setSpeechStatus('Playback stopped.')
     stopActiveSpeech()
     patchSpeechButtons()
@@ -983,11 +993,33 @@ async function loadFlags() {
   }
 }
 
+function defaultTextVoice(model) {
+  return model === QWEN_AUDIO_TTS_MODEL ? 'Abby_v3.1' : 'Jennifer'
+}
+
+function updateTextVoiceOptions() {
+  const model = $('cfg-cloud-text-model').value
+  const voiceList = $('cloud-text-voice-list')
+  const suggestions = model === QWEN_AUDIO_TTS_MODEL
+    ? ['Abby_v3.1', 'Annie_v3.1', 'Ava_v3.1', 'Beth_v3.1', 'Andy_v3.1', 'Brian_v3.1', 'David_v3.1']
+    : ['Jennifer', 'Cherry', 'Serena', 'Ethan', 'Chelsie', 'Ryan', 'Aiden', 'Bella']
+  voiceList.replaceChildren(...suggestions.map((voice) => {
+    const option = document.createElement('option')
+    option.value = voice
+    return option
+  }))
+  $('cfg-cloud-text-voice').placeholder = defaultTextVoice(model)
+  $('cloud-text-voice-tip').textContent = model === QWEN_AUDIO_TTS_MODEL
+    ? 'Use a Qwen Audio 3.1 voice ID. Custom voices must be created for qwen-audio-3.1-tts-flash.'
+    : 'Use a Qwen3 TTS voice ID. Switch to Qwen Audio 3.1 TTS for a custom voice created for that model.'
+}
+
 async function loadSettings() {
   try {
     const values = await chrome.storage.sync.get([
       'base_url', 'api_key', 'model', 'learning_model', 'speech_rate',
-      'desktop_tts_cloud', 'desktop_tts_api_key', 'desktop_iqs_api_key',
+      'desktop_tts_cloud', 'desktop_tts_api_key', 'desktop_tts_word_voice', 'desktop_tts_text_voice',
+      'desktop_tts_text_model', 'desktop_iqs_api_key',
     ])
     const rate = Number(values?.speech_rate)
     const safeRate = Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9
@@ -995,6 +1027,11 @@ async function loadSettings() {
     $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
     $('opt-cloud-speech').checked = values?.desktop_tts_cloud === true
     $('cfg-cloud-speech-key').value = String(values?.desktop_tts_api_key || '')
+    $('cfg-cloud-word-voice').value = String(values?.desktop_tts_word_voice || 'Abby_v3.1')
+    $('cfg-cloud-text-model').value = values?.desktop_tts_text_model || DEFAULT_TEXT_TTS_MODEL
+    updateTextVoiceOptions()
+    $('cfg-cloud-text-voice').value = String(values?.desktop_tts_text_voice || defaultTextVoice($('cfg-cloud-text-model').value))
+    $('cfg-cloud-text-voice').dataset.model = $('cfg-cloud-text-model').value
     $('cfg-iqs-key').value = String(values?.desktop_iqs_api_key || '')
     $('cfg-base-url').value = String(values?.base_url || '')
     $('cfg-api-key').value = String(values?.api_key || '')
@@ -1018,6 +1055,9 @@ async function saveSpeechSettings(event) {
     await chrome.storage.sync.set({
       desktop_tts_cloud: $('opt-cloud-speech').checked,
       desktop_tts_api_key: $('cfg-cloud-speech-key').value.trim(),
+      desktop_tts_word_voice: $('cfg-cloud-word-voice').value.trim() || 'Abby_v3.1',
+      desktop_tts_text_voice: $('cfg-cloud-text-voice').value.trim() || 'Jennifer',
+      desktop_tts_text_model: $('cfg-cloud-text-model').value,
     })
     statusEl.textContent = 'Speech settings saved.'
   } catch {
@@ -1174,7 +1214,8 @@ function renderModes() {
     button.classList.toggle('is-active', button.dataset.mode === state.mode)
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode))
   }
-  $('send-label').textContent = state.mode === 'guide' ? 'Start guided reading' : MODE_LABELS.translate
+  $('send-label').textContent = state.mode === 'guide' ? 'Start guided reading'
+    : state.targetLanguage === ENGLISH_EXPLANATION_TARGET ? ENGLISH_EXPLANATION_LABEL : MODE_LABELS.translate
 }
 
 async function setMode(mode) {
@@ -1209,8 +1250,8 @@ function sendRequest(entry, forceRefresh = false) {
         context: '',
         contextStart: null,
         contextEnd: null,
-        targetLanguage: state.targetLanguage,
-        sourceLanguage: state.sourceLanguage,
+        targetLanguage: entry.targetLanguage,
+        sourceLanguage: entry.sourceLanguage,
         glossary: state.glossary,
       },
     }, (response) => {
@@ -1286,15 +1327,19 @@ function scheduleLiveTranslate() {
   }, 850)
 }
 
-function workbenchMemoryKey(text, mode) {
-  const withStructure = mode === 'guide' ? supportsSentenceStructure(text, state.sourceLanguage)
-    : supportsTranslationStructure(text, state.sourceLanguage)
+function workbenchMemoryKey(text, mode, targetLanguage, sourceLanguage) {
+  const withStructure = mode === 'guide' ? supportsSentenceStructure(text, sourceLanguage)
+    : supportsTranslationStructure(text, sourceLanguage)
   const key = makeMemoryKey({
     text: withStructure ? '' : text, mode: withStructure ? `${mode}-structure-v2` : mode,
-    targetLanguage: state.targetLanguage, sourceLanguage: state.sourceLanguage, model: state.model, glossary: state.glossary,
+    targetLanguage, sourceLanguage, model: state.model, glossary: state.glossary,
   })
   // Highlights are offsets into the verbatim input. The ordinary memory key folds whitespace.
   return withStructure ? `${key}\u0000${text}` : key
+}
+
+function workbenchTargetLanguage(mode) {
+  return mode === 'guide' && state.targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'auto' : state.targetLanguage
 }
 
 function submit(options = {}) {
@@ -1313,7 +1358,9 @@ function submit(options = {}) {
     setStatus('Set up a translation model first')
     return
   }
-  const memoryKey = workbenchMemoryKey(text, state.mode)
+  const targetLanguage = workbenchTargetLanguage(state.mode)
+  const sourceLanguage = state.sourceLanguage
+  const memoryKey = workbenchMemoryKey(text, state.mode, targetLanguage, sourceLanguage)
   const pending = state.entries.some((entry) => entry.memoryKey === memoryKey && entry.text === text
     && ['pending', 'loading', 'streaming'].includes(entry.status))
   if (pending) {
@@ -1322,7 +1369,6 @@ function submit(options = {}) {
   }
   const id = makeId('s')
   const createdAt = Date.now()
-  const sourceLanguage = state.sourceLanguage
   const lookup = options.lookup === undefined
     ? { id, text, sourceLanguage, createdAt }
     : options.lookup
@@ -1340,6 +1386,7 @@ function submit(options = {}) {
     hintCount: 1,
     answerRevealed: false,
     fromMemory: false,
+    targetLanguage,
     sourceLanguage,
     lookupExcluded: lookup === null,
     lookup,
@@ -1455,7 +1502,7 @@ function handleTranslationEvent(payload) {
 }
 
 function setSpeechStatus(message) {
-  if (state.speechEntryId === SPEECH_PREVIEW_ID) $('speech-settings-status').textContent = message
+  if ([SPEECH_PREVIEW_ID, SPEECH_TEXT_PREVIEW_ID].includes(state.speechEntryId)) $('speech-settings-status').textContent = message
   else setStatus(message)
 }
 
@@ -1487,9 +1534,13 @@ function patchSpeechButtons() {
     button.setAttribute('aria-pressed', speaking ? 'true' : 'false')
   }
   const previewButton = $('btn-preview-speech')
-  const isPreviewPlaying = Boolean(state.speechId) && state.speechEntryId === SPEECH_PREVIEW_ID
-  previewButton.textContent = isPreviewPlaying ? 'Stop preview' : 'Preview voice'
-  previewButton.setAttribute('aria-pressed', String(isPreviewPlaying))
+  const wordPreviewPlaying = Boolean(state.speechId) && state.speechEntryId === SPEECH_PREVIEW_ID
+  previewButton.textContent = wordPreviewPlaying ? 'Stop preview' : 'Preview word voice'
+  previewButton.setAttribute('aria-pressed', String(wordPreviewPlaying))
+  const textPreviewButton = $('btn-preview-speech-text')
+  const textPreviewPlaying = Boolean(state.speechId) && state.speechEntryId === SPEECH_TEXT_PREVIEW_ID
+  textPreviewButton.textContent = textPreviewPlaying ? 'Stop preview' : 'Preview sentence voice'
+  textPreviewButton.setAttribute('aria-pressed', String(textPreviewPlaying))
 }
 
 function stopActiveSpeech() {
@@ -1610,6 +1661,8 @@ function renderResult(entry) {
 
 function startCompanionEntry(entry, mode) {
   if (!entry?.text || !['translate', 'guide'].includes(mode)) return
+  const targetLanguage = workbenchTargetLanguage(mode)
+  const sourceLanguage = state.sourceLanguage
   const companion = {
     id: makeId('s'),
     requestId: makeId('r'),
@@ -1624,10 +1677,11 @@ function startCompanionEntry(entry, mode) {
     hintCount: 1,
     answerRevealed: false,
     fromMemory: false,
-    sourceLanguage: state.sourceLanguage,
+    targetLanguage,
+    sourceLanguage,
     lookupExcluded: entry.lookupExcluded,
     lookup: entry.lookup,
-    memoryKey: workbenchMemoryKey(entry.text, mode),
+    memoryKey: workbenchMemoryKey(entry.text, mode, targetLanguage, sourceLanguage),
   }
   const cached = readMemoryEntry(state.translationMemory, companion.memoryKey)
   if (cached) {
@@ -1851,7 +1905,8 @@ function renderEntryEl(entry) {
   body.id = `entry-result-${entry.id}`
   const label = entry.status === 'error' ? 'Error'
     : ['pending', 'loading', 'streaming'].includes(entry.status) ? 'Processing'
-      : entry.mode === 'guide' ? 'Guidance' : 'Translation'
+      : entry.mode === 'guide' ? 'Guidance'
+        : entry.targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'English explanation' : 'Translation'
   body.append(el('div', 'result-label', label))
   body.append(renderResult(entry))
   if (entry.status !== 'error') body.append(renderActions(entry))
@@ -1948,6 +2003,9 @@ function cancelRequest(entry) {
 }
 
 function regenerate(entry) {
+  entry.targetLanguage ||= workbenchTargetLanguage(entry.mode)
+  entry.sourceLanguage ||= state.sourceLanguage
+  entry.memoryKey = workbenchMemoryKey(entry.text, entry.mode, entry.targetLanguage, entry.sourceLanguage)
   entry.requestId = makeId('r')
   entry.status = 'pending'
   entry.translatedText = ''
@@ -2145,7 +2203,7 @@ function bind() {
     void chrome.storage.sync.set({ desktop_live_translate: state.liveTranslate })
     setStatus(state.liveTranslate ? 'Translate as you type enabled' : 'Translate as you type disabled')
   })
-  $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, false))
+  $('opt-target-language').addEventListener('change', (event) => setTargetLanguage(event.target.value, true))
   $('glossary-add').addEventListener('click', () => {
     const source = $('glossary-source').value.trim()
     const target = $('glossary-target').value.trim()
@@ -2241,6 +2299,13 @@ function bind() {
     void chrome.storage.sync.set({ speech_rate: rate })
   })
   $('speech-settings-form').addEventListener('submit', (event) => void saveSpeechSettings(event))
+  $('cfg-cloud-text-model').addEventListener('change', () => {
+    const voice = $('cfg-cloud-text-voice')
+    const previousDefault = defaultTextVoice(voice.dataset.model || DEFAULT_TEXT_TTS_MODEL)
+    if (!voice.value || voice.value === previousDefault) voice.value = defaultTextVoice($('cfg-cloud-text-model').value)
+    voice.dataset.model = $('cfg-cloud-text-model').value
+    updateTextVoiceOptions()
+  })
   $('web-import-settings-form').addEventListener('submit', (event) => void saveWebImportSettings(event))
   $('iqs-console-link').addEventListener('click', async (event) => {
     event.preventDefault()
@@ -2261,7 +2326,11 @@ function bind() {
     })
   }
   $('btn-preview-speech').addEventListener('click', () => {
-    toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT, lexical: { phonetic: '/ˈrek.ɚd/' } })
+    toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT, sourceLanguage: 'english',
+      lexical: { phonetic: '/ˈrek.ɚd/' } })
+  })
+  $('btn-preview-speech-text').addEventListener('click', () => {
+    toggleSpeech({ id: SPEECH_TEXT_PREVIEW_ID, text: SPEECH_TEXT_PREVIEW, sourceLanguage: 'english' })
   })
   $('opt-theme').addEventListener('change', (event) => {
     state.prefs.theme = event.target.value
@@ -2591,10 +2660,7 @@ async function init() {
   try {
     const savedTarget = await chrome.storage.sync.get(['desktop_target_language'])
     state.targetLanguage = savedTarget?.desktop_target_language || 'auto'
-    for (const id of ['lang-target', 'opt-target-language']) {
-      const targetSelect = $(id)
-      if (targetSelect) targetSelect.value = state.targetLanguage
-    }
+    renderTargetLanguage()
   } catch {
     // default target language
   }

@@ -341,7 +341,10 @@ async function bootstrap() {
   const tts = createTts({
     logger,
     play,
-    readCloudSettings: () => storage.sync.get(['desktop_tts_cloud', 'desktop_tts_api_key', 'base_url', 'api_key']),
+    readCloudSettings: () => storage.sync.get([
+      'desktop_tts_cloud', 'desktop_tts_api_key', 'desktop_tts_word_voice', 'desktop_tts_text_voice',
+      'desktop_tts_text_model', 'base_url', 'api_key',
+    ]),
     synthesize: (text, options) => synthesizeDashScopeSpeech(text, { ...options, fetchImpl: fetchSpeech }),
   })
   const { desktop_main_zoom } = await storage.local.get('desktop_main_zoom')

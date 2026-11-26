@@ -1,3 +1,5 @@
+import { ENGLISH_EXPLANATION_TARGET } from '../vendor/src/translation-contracts.js'
+
 const ERROR_MESSAGES = new Map([
   ['No translated text returned by endpoint.', 'The model returned no translation. Try again or choose another model.'],
   ['Unable to read translated text from stream response.', 'Could not read the streamed translation. Try again.'],
@@ -9,8 +11,10 @@ const ERROR_MESSAGES = new Map([
 export function localizeErrorMessage(payload) {
   const message = String(payload?.message || '')
   if (payload?.status === 'missing-configuration') {
-    if (/learning model/i.test(message)) return payload.kind === 'article-explanation'
-      ? message : 'Choose a learning model in Settings to use guided mode.'
+    if (/learning model/i.test(message)) {
+      return payload.kind === 'article-explanation' || payload.targetLanguage === ENGLISH_EXPLANATION_TARGET
+        ? message : 'Choose a learning model in Settings to use guided mode.'
+    }
     return 'Enter your API URL, key, and model in Settings.'
   }
   if (!message) return 'Request failed. Try again.'

@@ -189,13 +189,46 @@
               <p class="drawer-tip" id="cloud-speech-key-tip">Leave blank to use your saved Model Studio (Beijing) translation key.</p>
               <a class="bailian-console-link" href="https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key">Get a Model Studio (Beijing) API key ↗</a>
             </div>
+            <div class="settings-field">
+              <label for="cfg-cloud-word-voice">Word voice ID</label>
+              <input id="cfg-cloud-word-voice" name="cloud_word_voice" list="cloud-word-voice-list"
+                spellcheck="false" autocapitalize="none" placeholder="Abby_v3.1"
+                aria-describedby="cloud-word-voice-tip">
+              <datalist id="cloud-word-voice-list">
+                <option value="Abby_v3.1"></option>
+                <option value="Annie_v3.1"></option>
+                <option value="Ava_v3.1"></option>
+                <option value="Beth_v3.1"></option>
+                <option value="Andy_v3.1"></option>
+                <option value="Brian_v3.1"></option>
+                <option value="David_v3.1"></option>
+              </datalist>
+              <p class="drawer-tip" id="cloud-word-voice-tip">Use a Qwen Audio 3.1 voice ID. Custom voices must be created for qwen-audio-3.1-tts-flash in Model Studio.</p>
+            </div>
+            <div class="settings-field">
+              <label for="cfg-cloud-text-model">Sentence and article speech model</label>
+              <select id="cfg-cloud-text-model" aria-describedby="cloud-text-model-tip">
+                <option value="qwen3-tts-flash">Qwen3 TTS</option>
+                <option value="qwen-audio-3.1-tts-flash">Qwen Audio 3.1 TTS</option>
+              </select>
+              <p class="drawer-tip" id="cloud-text-model-tip">Qwen Audio 3.1 supports voice cloning and voice design. Its custom voice ID must be created for the selected model.</p>
+            </div>
+            <div class="settings-field">
+              <label for="cfg-cloud-text-voice">Sentence and article voice ID</label>
+              <input id="cfg-cloud-text-voice" name="cloud_text_voice" list="cloud-text-voice-list"
+                spellcheck="false" autocapitalize="none" placeholder="Jennifer"
+                aria-describedby="cloud-text-voice-tip">
+              <datalist id="cloud-text-voice-list"></datalist>
+              <p class="drawer-tip" id="cloud-text-voice-tip">Use a Qwen3 TTS voice ID. Switch to Qwen Audio 3.1 TTS for a custom voice created for that model.</p>
+            </div>
             <label class="speech-rate-field settings-row" for="cfg-speech-rate">Playback speed
               <input id="cfg-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9">
               <span class="speech-rate-value" id="speech-rate-value" aria-hidden="true">0.9×</span>
             </label>
             <div class="drawer-actions">
               <button id="btn-save-speech" type="submit">Save speech settings</button>
-              <button id="btn-preview-speech" type="button" aria-pressed="false">Preview voice</button>
+              <button id="btn-preview-speech" type="button" aria-pressed="false">Preview word voice</button>
+              <button id="btn-preview-speech-text" type="button" aria-pressed="false">Preview sentence voice</button>
             </div>
             <p class="drawer-status" id="speech-settings-status" role="status"></p>
           </form>
@@ -242,6 +275,7 @@
             </div>
             <label class="settings-row" for="opt-target-language">Target language<select id="opt-target-language">
               <option value="auto">Automatic</option>
+              <option value="english-explanation">Explain in English</option>
               <option value="Chinese">Simplified Chinese</option>
               <option value="English">English</option>
               <option value="Japanese">Japanese</option>
@@ -338,6 +372,7 @@
                 <label class="sr-only" for="lang-target">Target language</label>
                 <select id="lang-target">
                   <option value="auto">Auto</option>
+                  <option value="english-explanation">Explain in English</option>
                   <option value="Chinese">Simplified Chinese</option>
                   <option value="English">English</option>
                   <option value="Japanese">Japanese</option>

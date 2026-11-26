@@ -39,6 +39,14 @@ const appSource = readFileSync(join(root, 'app', 'app.js'), 'utf8')
 const resultComponentSource = readFileSync(join(root, 'app', 'translation-result.js'), 'utf8')
 const htmlSource = readFileSync(join(root, 'app', 'index.html'), 'utf8')
 const mainSource = readFileSync(join(root, 'src', 'main.js'), 'utf8')
+
+function appFunctionSource(name) {
+  const start = appSource.indexOf(`function ${name}(`)
+  assert.notEqual(start, -1, `${name} function is required`)
+  const end = appSource.indexOf('\nfunction ', start + 1)
+  return appSource.slice(start, end === -1 ? undefined : end)
+}
+
 assert.match(htmlSource, /id="input"/u, 'composer input is required')
 assert.match(htmlSource, /id="settings-panel"/u, 'in-app settings panel is required')
 assert.ok(htmlSource.indexOf('class="composer"') < htmlSource.indexOf('class="stream"'),
@@ -62,9 +70,9 @@ assert.match(appSource, /function announceResult/u, 'translated text must be ann
 assert.match(appSource, /announceResult\(entry\.mode === 'guide'/u, 'both completion routes must announce the result')
 assert.match(appSource, /function cancelStaleRequests/u, 'superseded in-flight requests must be cancelled')
 assert.match(appSource, /cancelStaleRequests\(entry\.id\)/u, 'a new submission must cancel stale requests')
-assert.match(appSource, /function startCompanionEntry[\s\S]{0,1100}cancelStaleRequests\(companion\.id\)/u,
+assert.match(appFunctionSource('startCompanionEntry'), /cancelStaleRequests\(companion\.id\)/u,
   'starting a companion entry must cancel superseded in-flight requests')
-assert.match(appSource, /function regenerate[\s\S]{0,400}cancelStaleRequests\(entry\.id\)/u,
+assert.match(appFunctionSource('regenerate'), /cancelStaleRequests\(entry\.id\)/u,
   'regenerating must cancel superseded in-flight requests')
 assert.match(appSource, /desktop_live_translate/u, 'live translation setting must be persisted')
 assert.match(appSource, /function scheduleDraftSave/u, 'input draft must be autosaved with debounce')
@@ -259,7 +267,7 @@ assert.match(htmlSource, /id="lang-source"[^>]*>/u, 'source language must be a s
 assert.match(htmlSource, /id="btn-swap-lang"/u, 'workspace needs a one-click language swap button')
 assert.match(appSource, /function setSourceLanguage/u, 'source language must be set through one shared setter')
 assert.match(appSource, /function swapLanguages/u, 'language swap must be a dedicated action')
-assert.match(appSource, /sourceLanguage: state\.sourceLanguage/u, 'request payload must carry the source language')
+assert.match(appSource, /sourceLanguage: entry\.sourceLanguage/u, 'request payload must carry the source language')
 assert.match(appSource, /desktop_source_language/u, 'source language must be persisted')
 assert.match(sharedSourceLanguage, /export function planLanguageSwap/u, 'swap planning must be a shared pure helper')
 assert.match(sharedSourceLanguage, /export function speechLanguageCode/u, 'TTS language mapping must be a shared pure helper')
@@ -282,8 +290,8 @@ assert.match(appCss, /\.lexical-details\s*>\s*summary/u, 'dictionary disclosure 
 
 assert.match(htmlSource, /id="opt-target-language"/u, 'target language selector is required')
 assert.match(appSource, /desktop_target_language/u, 'target language must be persisted')
-assert.match(appSource, /targetLanguage: state\.targetLanguage/u, 'target language must be sent with translation requests')
-assert.match(sharedBackgroundSource, /targetLanguage: payload\?\.targetLanguage/u,
+assert.match(appSource, /targetLanguage: entry\.targetLanguage/u, 'target language must be sent with translation requests')
+assert.match(sharedBackgroundSource, /const targetLanguage = payload\?\.targetLanguage/u,
   'background must forward target language into request builders')
 assert.match(sharedContractsSource, /getTargetLanguage\(text, targetLanguage\)/u,
   'request builders must accept a target language override')
@@ -314,7 +322,7 @@ assert.match(sharedMemorySource, /memoryTextKey\(text\)/u,
   'translation memory key must use the case-preserving text normalizer')
 assert.match(sharedMemorySource, /sourceLanguage = 'auto'/u,
   'translation memory key must account for pinned source language')
-assert.match(appSource, /sourceLanguage: state\.sourceLanguage/u,
+assert.match(appSource, /targetLanguage, sourceLanguage, model: state\.model/u,
   'main window must include source language in the memory key')
 assert.match(sharedBackgroundSource, /sourceLanguage: payload\?\.sourceLanguage/u,
   'extension must include source language in the memory key')
@@ -344,7 +352,7 @@ assert.match(sharedBackgroundSource, /planRetry/u,
   'background must compute bounded retry delays for 429 responses')
 assert.match(sharedBackgroundSource, /sleepAbortable/u,
   'background retries must be abortable so cancellation stays responsive')
-assert.match(sharedBackgroundSource, /!IS_EXTENSION_SERVICE_WORKER && isQwenMtRequest && isSingleWordInput\(text\)/u,
+assert.match(sharedBackgroundSource, /const isDesktopWordTranslation = !IS_EXTENSION_SERVICE_WORKER && kind === 'translate' && isSingleWordInput\(text\)/u,
   'lexical enrichment must be desktop-only so the Chrome extension keeps its qwen-mt streaming behavior')
 assert.match(sharedBackgroundSource, /getLearningModel\('', reading\.learningModel\)/u,
   'single words must be enriched via the configured learning model when available')

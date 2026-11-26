@@ -24,6 +24,7 @@ function sanitize(entry) {
     createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
     hintCount: Math.max(1, Math.min(9, Number(entry.hintCount) || 1)),
     answerRevealed: Boolean(entry.answerRevealed),
+    ...(entry.targetLanguage && { targetLanguage: String(entry.targetLanguage).slice(0, 40) }),
     sourceLanguage: String(entry.sourceLanguage || 'auto').slice(0, 40),
     lookupExcluded: entry.lookupExcluded === true,
   }

@@ -149,7 +149,7 @@ const ARTICLE_EXPLANATION_INSTRUCTIONS = [
   'explain how the words express that relationship in one or two concise "connections" notes in targetLanguage.',
   'For example, explain "can\'t ... without" as making the "without" action necessary. Explain "Only when ..." as excluding earlier times.',
   'Skip notes about routine grammar or meanings that are already obvious from the words.',
-  'Each note is {"text":"exact source quote","explanation":"one concise explanation"}.',
+  'Each note is {"text":"exact source quote","explanation":"one concise explanation in targetLanguage"}.',
   'Use "clauses" for deeper clause relationships with the same note fields. Include an exact quote of a relative clause and say what noun it modifies.',
   'For a sentence with a clear main clause, put its main roles in top-level "structure": {"role":"verb","text":"could reduce"}.',
   'Use only the roles "subject", "verb", "object", and "complement". Skip absent or uncertain roles; never force a subject, verb, or object.',

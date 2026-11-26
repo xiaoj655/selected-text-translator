@@ -4,6 +4,7 @@ import { createQwenTranslationScope, extractQwenScopedTranslation } from './qwen
 import { handleVocabularyMessage } from './vocabulary-messages.js'
 import { handleProviderDiagnostics } from './provider-diagnostics.js'
 import {
+  ENGLISH_EXPLANATION_TARGET,
   STORAGE_KEYS,
   TRANSLATION_MESSAGE_TYPES,
   TRANSLATION_EVENT_STATUS,
@@ -150,7 +151,9 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
   const kind = ['guide', 'pronunciation'].includes(payload?.kind)
     || isDesktopReadingAnalysis(payload)
     ? payload.kind : 'translate'
-  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage, targetLanguage: payload?.targetLanguage,
+  const targetLanguage = payload?.targetLanguage
+  const explainInEnglish = kind === 'translate' && targetLanguage === ENGLISH_EXPLANATION_TARGET
+  const readingOptions = { text, sourceLanguage: payload?.sourceLanguage, targetLanguage,
     includeSentenceStructure: !IS_EXTENSION_SERVICE_WORKER && payload?.includeSentenceStructure !== false,
     includeSentenceAnalysis: kind === 'structure', requireStructure: kind === 'structure' }
   const contextSentence = getContextSentence({ text, context: payload?.context,
@@ -186,14 +189,14 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       return
     }
     let model = settings.model
-    if (kind !== 'translate') {
+    if (kind !== 'translate' || explainInEnglish) {
       const reading = await readReadingSettings()
       model = getLearningModel(settings.model, reading.learningModel)
       if (!model) {
-        emit({ status: TRANSLATION_EVENT_STATUS.MISSING_CONFIGURATION, kind,
-          message: kind === 'article-explanation'
-            ? 'Choose a general-purpose learning model in Settings to explain sentences.'
-            : 'Add a general-purpose learning model in settings for hints and phonetics. You can still listen.' })
+        const message = explainInEnglish ? 'Choose a general-purpose learning model in Settings to explain text in English.'
+          : kind === 'article-explanation' ? 'Choose a general-purpose learning model in Settings to explain sentences.'
+            : 'Add a general-purpose learning model in settings for hints and phonetics. You can still listen.'
+        emit({ status: TRANSLATION_EVENT_STATUS.MISSING_CONFIGURATION, kind, targetLanguage, message })
         return
       }
     }
@@ -211,7 +214,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     const useMemory = kind === 'translate' && IS_EXTENSION_SERVICE_WORKER
     const memoryKey = useMemory
-      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: payload?.targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model, glossary: payload?.glossary })}`
+      ? `${makeMemoryKey({ text, mode: kind, targetLanguage: targetLanguage || 'auto', sourceLanguage: payload?.sourceLanguage || 'auto', model, glossary: payload?.glossary })}`
         + `\u0000${String(payload?.context || '').slice(0, 2400)}`
         + `\u0000${payload?.contextStart ?? ''}\u0000${payload?.contextEnd ?? ''}`
       : null
@@ -234,10 +237,10 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
           contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, kind, stream: streamStructured })
       : isQwenMtRequest
         ? buildQwenMtRequest({ model, text, context: payload?.context,
-            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage,
             sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
         : buildGenericRequest({ model, text, context: payload?.context,
-            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
+            contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage,
             sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary, stream: streamStructured,
             requireWordPronunciation: isDesktopWordTranslation && payload?.requestScope === 'reading' })
     try {

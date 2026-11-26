@@ -118,6 +118,48 @@ test('word synthesis puts only validated phonemes and escaped text into SSML', a
   })))
 })
 
+test('DashScope synthesis uses voice IDs supplied for each model', async () => {
+  const requests = []
+  await synthesizeDashScopeSpeech('record', {
+    apiKey: API_KEY,
+    isEnglishWord: true,
+    voice: 'custom-word-voice',
+    fetchImpl: async (url, { body }) => {
+      requests.push({ url, body: JSON.parse(body) })
+      return speechResponse(speechEvent('AQACAA==', 'stop'))
+    },
+  })
+  await synthesizeDashScopeSpeech('Read this passage.', {
+    apiKey: API_KEY,
+    voice: 'custom-text-voice',
+    fetchImpl: async (url, { body }) => {
+      requests.push({ url, body: JSON.parse(body) })
+      return speechResponse(speechEvent('AQACAA==', 'stop'))
+    },
+  })
+  assert.deepEqual(requests.map(({ body }) => body.input.voice), ['custom-word-voice', 'custom-text-voice'])
+})
+
+test('Qwen Audio 3.1 can synthesize sentence text with its custom voice ID', async () => {
+  let request
+  await synthesizeDashScopeSpeech('Read this passage.', {
+    apiKey: API_KEY,
+    voice: 'custom-text-voice',
+    textModel: 'qwen-audio-3.1-tts-flash',
+    fetchImpl: async (url, { body }) => {
+      request = { url, body: JSON.parse(body) }
+      return speechResponse(speechEvent('AQACAA==', 'stop'))
+    },
+  })
+  assert.equal(request.url, WORD_TTS_ENDPOINT)
+  assert.deepEqual(request.body, {
+    model: 'qwen-audio-3.1-tts-flash',
+    input: {
+      text: 'Read this passage.', voice: 'custom-text-voice', format: 'pcm', sample_rate: 24000, rate: 1,
+    },
+  })
+})
+
 test('DashScope synthesis rejects incomplete, empty, malformed, and failed responses without leaking upstream data',
   async () => {
     const badResponses = [

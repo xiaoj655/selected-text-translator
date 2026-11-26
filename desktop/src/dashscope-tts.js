@@ -3,11 +3,15 @@ import { Buffer } from 'node:buffer'
 const DASHSCOPE_COMPATIBLE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 const DASHSCOPE_TTS_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 const DASHSCOPE_WORD_TTS_URL = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer'
+const QWEN_AUDIO_TTS_MODEL = 'qwen-audio-3.1-tts-flash'
+const DEFAULT_TEXT_TTS_MODEL = 'qwen3-tts-flash'
 const SAMPLE_RATE = 24000
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024
 const MAX_EVENT_CHARACTERS = 4 * Math.ceil(MAX_AUDIO_BYTES / 3) + 4096
 const CMU_PHONEME = /^(?:(?:AA|AE|AH|AO|AW|AY|EH|ER|EY|IH|IY|OW|OY|UH|UW)[012]?|B|CH|D|DH|F|G|HH|JH|K|L|M|N|NG|P|R|S|SH|T|TH|V|W|Y|Z|ZH)$/u
 const XML_TEXT_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;' }
+const DEFAULT_WORD_VOICE = 'Abby_v3.1'
+const DEFAULT_TEXT_VOICE = 'Jennifer'
 
 export function dashScopeSpeechKey(settings) {
   const speechKey = String(settings?.desktop_tts_api_key || '').trim()
@@ -89,10 +93,15 @@ async function readSpeechAudio(body, signal) {
   throw new Error('DashScope speech response ended before synthesis finished.')
 }
 
-function wordSpeechInput(text, pronunciation, rate) {
+function speechVoice(value, fallback) {
+  const voice = String(value || '').trim()
+  return voice && voice.length <= 120 ? voice : fallback
+}
+
+function wordSpeechInput(text, pronunciation, rate, voice) {
   const input = {
     text,
-    voice: 'Abby_v3.1',
+    voice: speechVoice(voice, DEFAULT_WORD_VOICE),
     format: 'pcm',
     sample_rate: SAMPLE_RATE,
     rate: Number.isFinite(rate) ? Math.min(1.5, Math.max(0.5, rate)) : 1,
@@ -109,7 +118,8 @@ function wordSpeechInput(text, pronunciation, rate) {
 }
 
 export async function synthesizeDashScopeSpeech(text, {
-  apiKey, signal, fetchImpl = globalThis.fetch, isEnglishWord = false, pronunciation = '', rate = 1,
+  apiKey, signal, fetchImpl = globalThis.fetch, isEnglishWord = false, pronunciation = '', rate = 1, voice = '',
+  textModel = DEFAULT_TEXT_TTS_MODEL,
 } = {}) {
   signal?.throwIfAborted()
   if (!apiKey) throw new Error('DashScope speech requires an API key.')
@@ -119,10 +129,13 @@ export async function synthesizeDashScopeSpeech(text, {
 
   try {
     const isWord = isEnglishWord === true
-    const body = isWord
-      ? { model: 'qwen-audio-3.1-tts-flash', input: wordSpeechInput(text, pronunciation, rate) }
-      : { model: 'qwen3-tts-flash', input: { text, voice: 'Jennifer', language_type: 'English' } }
-    const response = await fetchImpl(isWord ? DASHSCOPE_WORD_TTS_URL : DASHSCOPE_TTS_URL, {
+    const selectedTextModel = String(textModel || DEFAULT_TEXT_TTS_MODEL)
+    const useQwenAudio = isWord || selectedTextModel === QWEN_AUDIO_TTS_MODEL
+    const body = useQwenAudio
+      ? { model: isWord ? QWEN_AUDIO_TTS_MODEL : selectedTextModel,
+        input: wordSpeechInput(text, isWord ? pronunciation : '', rate, voice) }
+      : { model: selectedTextModel, input: { text, voice: speechVoice(voice, DEFAULT_TEXT_VOICE), language_type: 'English' } }
+    const response = await fetchImpl(useQwenAudio ? DASHSCOPE_WORD_TTS_URL : DASHSCOPE_TTS_URL, {
       method: 'POST',
       redirect: 'error',
       headers: {

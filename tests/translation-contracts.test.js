@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ENGLISH_EXPLANATION_TARGET,
   GENERIC_RESPONSE_FORMAT,
   buildGenericRequest,
   buildQwenMtRequest,
@@ -72,6 +73,25 @@ test('getTargetLanguage honors an explicit target language', () => {
   assert.equal(getTargetLanguage('hello world', 'auto'), 'Chinese');
   assert.equal(getTargetLanguage('hello world', '  '), 'Chinese');
   assert.equal(getTargetLanguage('hello world', undefined), 'Chinese');
+});
+
+test('English explanation targets request an English word definition with its exact occurrence', () => {
+  assert.equal(getTargetLanguage('The proposal was shelved.', ENGLISH_EXPLANATION_TARGET), 'English');
+  const request = buildGenericRequest({
+    model: 'qwen3.8-flash',
+    text: 'shelved',
+    context: 'The committee shelved the proposal.',
+    contextStart: 14,
+    contextEnd: 21,
+    targetLanguage: ENGLISH_EXPLANATION_TARGET,
+    requireWordPronunciation: true,
+  });
+  assert.match(request.messages[0].content, /Explain only selectedText in plain, natural English\./u);
+  assert.match(request.messages[0].content, /concise definition of the relevant sense/u);
+  assert.match(request.messages[0].content, /non-empty "phonetic" field/u);
+  const source = JSON.parse(request.messages[1].content);
+  assert.equal(source.targetLanguage, 'English');
+  assert.equal(source.selectedOccurrence.text, 'shelved');
 });
 
 test('buildQwenMtRequest uses an explicit target language', () => {
