@@ -75,8 +75,11 @@ internal fun rememberArticleScrollMetrics(
                 ensureActive()
                 height += itemSpacing
                 itemStarts[index + 1] = height
-                val style = if (block.heading) headingStyle else bodyStyle
-                height += measurer.measure(block.text, style = style, constraints = paragraphConstraints).size.height
+                val image = block.image
+                height += if (image != null) articleImageHeight(textWidth, image.aspectRatio) else {
+                    val style = if (block.heading) headingStyle else bodyStyle
+                    measurer.measure(block.text, style = style, constraints = paragraphConstraints).size.height
+                }
             }
             ArticleScrollMetrics(itemStarts, height + verticalPadding)
         }

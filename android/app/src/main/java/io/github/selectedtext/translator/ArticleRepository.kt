@@ -52,14 +52,33 @@ internal class ArticleRepository(context: Context) {
 
     suspend fun importText(text: String, title: String = "") = insert(pastedArticle(text, title))
 
-    suspend fun savePosition(id: String, position: ArticlePosition) = withContext(Dispatchers.IO) {
+    suspend fun reloadImages(article: ReadingArticle): ReadingArticle {
+        val url = article.sourceUrl ?: throw ArticleImportException("This article has no original page.")
+        val refreshed = importer.fetch(url)
+        if (!refreshed.hasImages) throw ArticleImportException("Couldn't find images on the original page.")
+        return withContext(Dispatchers.IO) {
+            mutations.withLock {
+                val current = entries.value.firstOrNull { it.id == article.id }
+                    ?: throw ArticleImportException("This article was removed.")
+                if (current.hasImages) return@withLock current
+                val updated = current.copy(blocks = refreshed.blocks, position = positionWithImages(current, refreshed.blocks))
+                write(updated)
+                storePosition(updated.id, updated.position)
+                entries.value = entries.value.map { if (it.id == updated.id) updated else it }
+                updated
+            }
+        }
+    }
+
+    suspend fun savePosition(article: ReadingArticle, position: ArticlePosition) = withContext(Dispatchers.IO) {
         mutations.withLock {
             loadLocked()
-            val current = entries.value.firstOrNull { it.id == id } ?: return@withLock
+            val current = entries.value.firstOrNull { it.id == article.id } ?: return@withLock
+            if (current.blocks !== article.blocks) return@withLock
             val bounded = ArticlePosition(position.index.coerceIn(0, current.blocks.lastIndex + 1), position.offset.coerceAtLeast(0))
             if (current.position == bounded) return@withLock
-            positions.edit { putString(id, "${bounded.index}:${bounded.offset}") }
-            entries.value = entries.value.map { if (it.id == id) it.copy(position = bounded) else it }
+            storePosition(current.id, bounded)
+            entries.value = entries.value.map { if (it.id == current.id) it.copy(position = bounded) else it }
         }
     }
 
@@ -103,6 +122,10 @@ internal class ArticleRepository(context: Context) {
 
     private fun fileFor(id: String) = AtomicFile(File(directory, "$id.json"))
 
+    private fun storePosition(id: String, position: ArticlePosition) {
+        positions.edit { putString(id, "${position.index}:${position.offset}") }
+    }
+
     private fun read(id: String): ReadingArticle {
         val data = JSONObject(fileFor(id).readFully().toString(Charsets.UTF_8))
         val blocks = data.getJSONArray("blocks")
@@ -113,7 +136,11 @@ internal class ArticleRepository(context: Context) {
             sourceUrl = data.optString("sourceUrl").ifBlank { null },
             blocks = List(blocks.length()) { index ->
                 val block = blocks.getJSONObject(index)
-                ArticleBlock(block.getString("text"), block.optBoolean("heading"))
+                val image = block.optJSONObject("image")?.let {
+                    ArticleImage(it.getString("url"), it.optString("alt"),
+                        it.optDouble("aspectRatio").toFloat().takeIf(Float::isFinite))
+                }
+                ArticleBlock(block.getString("text"), block.optBoolean("heading"), image)
             },
             position = ArticlePosition(
                 (position.getOrNull(0)?.toIntOrNull() ?: 0).coerceIn(0, blocks.length()),
@@ -125,7 +152,14 @@ internal class ArticleRepository(context: Context) {
 
     private fun write(article: ReadingArticle) {
         if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Couldn't save the article.")
-        val blocks = JSONArray(article.blocks.map { JSONObject().put("text", it.text).put("heading", it.heading) })
+        val blocks = JSONArray(article.blocks.map { block ->
+            val data = JSONObject().put("text", block.text).put("heading", block.heading)
+            block.image?.let { image ->
+                data.put("image", JSONObject().put("url", image.url).put("alt", image.alt)
+                    .put("aspectRatio", image.aspectRatio))
+            }
+            data
+        })
         val data = JSONObject().put("title", article.title).put("sourceUrl", article.sourceUrl)
             .put("updatedAt", article.updatedAt).put("blocks", blocks)
         val file = fileFor(article.id)

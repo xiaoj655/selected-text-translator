@@ -132,8 +132,9 @@ internal fun ReaderScreen(
             }
         }
     } else {
-        key(article.id) {
-            ArticleContent(article, state.result, state.fontSize, reader, speaking, speak, stopSpeech, onSettings, back)
+        key(article.id, article.hasImages) {
+            ArticleContent(article, state.result, state.fontSize, reader, speaking, speak, stopSpeech, onSettings, back,
+                state.reloadingArticle, state.articleReloadError)
         }
     }
     if (adding) {
@@ -378,6 +379,8 @@ private fun ArticleContent(
     stopSpeech: () -> Unit,
     onSettings: () -> Unit,
     back: () -> Unit,
+    reloading: Boolean,
+    reloadError: String?,
 ) {
     var mode by rememberSaveable { mutableStateOf(ArticleSelectionKind.WORD) }
     var guided by rememberSaveable { mutableStateOf(false) }
@@ -451,7 +454,7 @@ private fun ArticleContent(
             var wasScrolling = false
             snapshotFlow { list.isScrollInProgress }.collect { scrolling ->
                 if (wasScrolling && !scrolling) {
-                    reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
+                    reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
                 }
                 wasScrolling = scrolling
             }
@@ -459,7 +462,7 @@ private fun ArticleContent(
         DisposableEffect(list) {
             onDispose {
                 if (list.isScrollInProgress) {
-                    reader.savePosition(article.id, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
+                    reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
                 }
             }
         }
@@ -496,6 +499,13 @@ private fun ArticleContent(
                         }
                         article.sourceUrl?.let { url ->
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            if (!article.hasImages) {
+                                DropdownMenuItem(text = { Text("Reload images") }, enabled = !reloading, onClick = {
+                                    optionsOpen = false
+                                    stopSpeech()
+                                    reader.reloadArticle(article)
+                                })
+                            }
                             DropdownMenuItem(text = { Text("Open original") }, onClick = {
                                 optionsOpen = false
                                 runCatching { uriHandler.openUri(url) }
@@ -505,6 +515,8 @@ private fun ArticleContent(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            reloadError?.let { ReaderError(it, Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             Row(Modifier.weight(1f)) {
                 Column(Modifier.width(bodyWidth).fillMaxSize()) {
                     LazyColumn(
@@ -520,6 +532,11 @@ private fun ArticleContent(
                             }
                         }
                         itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
+                            val image = block.image
+                            if (image != null) {
+                                ArticleImageContent(image, article.sourceUrl)
+                                return@itemsIndexed
+                            }
                             val paragraphResult = result?.takeIf { it.blockIndex == index }
                             ArticleParagraph(
                                 block,

@@ -26,6 +26,8 @@ internal data class ReaderUiState(
     val importError: String? = null,
     val pendingUrl: String? = null,
     val directImportAvailable: Boolean = false,
+    val reloadingArticle: Boolean = false,
+    val articleReloadError: String? = null,
     val savingIqsKey: Boolean = false,
     val iqsSettingsMessage: String? = null,
     val iqsSettingsError: Boolean = false,
@@ -84,8 +86,10 @@ internal class ReaderViewModel(
     ))
     val uiState = state.asStateFlow()
 
-    private val positionWrites = Channel<Pair<String, ArticlePosition>>(Channel.UNLIMITED)
-    private val pendingPositions = mutableMapOf<String, ArticlePosition>()
+    private data class PositionWrite(val article: ReadingArticle, val position: ArticlePosition)
+
+    private val positionWrites = Channel<PositionWrite>(Channel.UNLIMITED)
+    private val pendingPositions = mutableMapOf<String, PositionWrite>()
     private var loadJob: Job? = null
     private var importJob: Job? = null
     private var importRevision = 0
@@ -131,10 +135,11 @@ internal class ReaderViewModel(
             }
         }
         viewModelScope.launch {
-            for ((id, position) in positionWrites) {
+            for (write in positionWrites) {
                 try {
-                    library.savePosition(id, position)
-                    if (pendingPositions[id] == position) pendingPositions.remove(id)
+                    library.savePosition(write.article, write.position)
+                    val id = write.article.id
+                    if (pendingPositions[id] === write) pendingPositions.remove(id)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
@@ -174,6 +179,11 @@ internal class ReaderViewModel(
 
     fun importText(text: String, title: String = "") {
         importArticle(null) { library.importText(text, title) }
+    }
+
+    fun reloadArticle(article: ReadingArticle) {
+        if (article.sourceUrl == null || article.hasImages || state.value.importing) return
+        importArticle(null, reload = true) { library.reloadImages(article) }
     }
 
     fun openFeedArticle(article: FeedArticle) {
@@ -266,23 +276,31 @@ internal class ReaderViewModel(
         state.update { it.copy(iqsSettingsMessage = null, iqsSettingsError = false) }
     }
 
-    private fun importArticle(sharedUrl: String?, request: suspend () -> ReadingArticle) {
+    private fun importArticle(sharedUrl: String?, reload: Boolean = false, request: suspend () -> ReadingArticle) {
         importJob?.cancel()
         val revision = ++importRevision
-        state.update { it.copy(importing = true, importError = null, pendingUrl = sharedUrl, directImportAvailable = false) }
+        state.update {
+            it.copy(importing = true, importError = null, pendingUrl = sharedUrl, directImportAvailable = false,
+                reloadingArticle = reload, articleReloadError = null)
+        }
         importJob = viewModelScope.launch {
             try {
                 val article = request()
                 if (revision == importRevision) {
                     open(article)
-                    state.update { it.copy(importing = false, pendingUrl = null, pastedDraft = "") }
+                    state.update { it.copy(importing = false, pendingUrl = null, pastedDraft = "", reloadingArticle = false) }
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (revision == importRevision) {
-                    val message = (error as? ArticleImportException)?.message ?: "Couldn't add the article. Try again."
-                    state.update { it.copy(importing = false, importError = message, directImportAvailable = error is IqsImportException) }
+                    val message = (error as? ArticleImportException)?.message ?: if (reload) {
+                        "Couldn't reload images. Try again."
+                    } else "Couldn't add the article. Try again."
+                    state.update {
+                        if (reload) it.copy(importing = false, reloadingArticle = false, articleReloadError = message)
+                        else it.copy(importing = false, importError = message, directImportAvailable = error is IqsImportException)
+                    }
                 }
             }
         }
@@ -295,32 +313,39 @@ internal class ReaderViewModel(
     fun cancelImport() {
         importRevision++
         importJob?.cancel()
-        state.update { it.copy(importing = false, importError = null, pendingUrl = null, directImportAvailable = false) }
+        state.update {
+            it.copy(importing = false, importError = null, pendingUrl = null, directImportAvailable = false, reloadingArticle = false)
+        }
     }
 
     fun open(article: ReadingArticle) {
-        if (state.value.activeArticle?.id == article.id) return
-        dismissResult()
         val stored = library.articles.value.firstOrNull { it.id == article.id } ?: article
-        val position = pendingPositions[article.id] ?: stored.position
+        val active = state.value.activeArticle
+        if (active?.id == stored.id && active.blocks === stored.blocks) return
+        dismissResult()
         restored[ARTICLE_KEY] = article.id
-        state.update { it.copy(activeArticle = stored.copy(position = position)) }
+        state.update { it.copy(activeArticle = stored.copy(position = readingPosition(stored)), articleReloadError = null) }
     }
 
     fun closeArticle() {
+        if (state.value.reloadingArticle) cancelImport()
         dismissResult()
         restored.remove<String>(ARTICLE_KEY)
-        state.update { it.copy(activeArticle = null) }
+        state.update { it.copy(activeArticle = null, articleReloadError = null) }
     }
 
     fun readingPosition(article: ReadingArticle): ArticlePosition = pendingPositions[article.id]
-        ?: library.articles.value.firstOrNull { it.id == article.id }?.position
+        ?.takeIf { it.article.blocks === article.blocks }?.position
+        ?: library.articles.value.firstOrNull { it.id == article.id && it.blocks === article.blocks }?.position
         ?: article.position
 
-    fun savePosition(articleId: String, position: ArticlePosition) {
-        if (pendingPositions[articleId] == position) return
-        pendingPositions[articleId] = position
-        positionWrites.trySend(articleId to position)
+    fun savePosition(article: ReadingArticle, position: ArticlePosition) {
+        if (library.articles.value.none { it.id == article.id && it.blocks === article.blocks }) return
+        val pending = pendingPositions[article.id]
+        if (pending?.article?.blocks === article.blocks && pending.position == position) return
+        val write = PositionWrite(article, position)
+        pendingPositions[article.id] = write
+        positionWrites.trySend(write)
     }
 
     fun delete(articleId: String) {

@@ -176,6 +176,7 @@ private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
     val text = StringBuilder()
     var heading = false
     var totalLength = 0
+    var imageCount = 0
 
     fun flush() {
         val block = WHITESPACE.replace(text.toString(), " ").trim()
@@ -189,6 +190,13 @@ private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
         override fun head(node: Node, depth: Int) {
             when {
                 node is TextNode -> text.append(node.wholeText)
+                node is Element && node.normalName() == "img" && imageCount < MAX_ARTICLE_IMAGES -> {
+                    readArticleImage(node)?.let { image ->
+                        flush()
+                        output.add(ArticleBlock("", image = image))
+                        imageCount++
+                    }
+                }
                 node is Element && node.normalName() in HEADINGS -> {
                     flush()
                     heading = true
@@ -206,6 +214,53 @@ private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
     }, content)
     flush()
     return output
+}
+
+internal fun readArticleImage(element: Element): ArticleImage? {
+    val width = element.attr("width").toIntOrNull()?.takeIf { it > 0 }
+    val height = element.attr("height").toIntOrNull()?.takeIf { it > 0 }
+    if (width == 1 && height == 1) return null
+    val base = element.baseUri().toHttpUrlOrNull()
+    val sources = sequence {
+        for (attribute in IMAGE_SOURCE_ATTRIBUTES) yield(element.attr(attribute))
+        yieldAll(srcsetUrls(element.attr("data-srcset")))
+        yield(element.attr("src"))
+        yieldAll(srcsetUrls(element.attr("srcset")))
+        val picture = element.parent()?.takeIf { it.normalName() == "picture" }
+        for (source in picture?.children().orEmpty()) {
+            if (source.normalName() == "source") {
+                yieldAll(srcsetUrls(source.attr("data-srcset")))
+                yieldAll(srcsetUrls(source.attr("srcset")))
+            }
+        }
+    }
+    val url = sources.firstNotNullOfOrNull { source ->
+        val value = source.trim()
+        if (value.isEmpty() || value.startsWith('#') || value.length > 4096) return@firstNotNullOfOrNull null
+        val resolved = base?.resolve(value) ?: value.toHttpUrlOrNull() ?: return@firstNotNullOfOrNull null
+        runCatching { publicArticleUrl(resolved.toString()).toString() }.getOrNull()
+    } ?: return null
+    return ArticleImage(
+        url = url,
+        alt = element.attr("alt").trim().take(500).trimEnd { it.isHighSurrogate() },
+        aspectRatio = if (width != null && height != null) width.toFloat() / height else null,
+    )
+}
+
+private fun srcsetUrls(srcset: String): Sequence<String> = sequence {
+    var index = 0
+    while (index < srcset.length) {
+        while (index < srcset.length && (srcset[index].isWhitespace() || srcset[index] == ',')) index++
+        val start = index
+        while (index < srcset.length && !srcset[index].isWhitespace()) index++
+        val token = srcset.substring(start, index)
+        val url = token.trimEnd(',')
+        if (url.isNotEmpty()) yield(url)
+        // A comma can occur inside the URL itself. Find the delimiter after its descriptor.
+        if (url == token) {
+            while (index < srcset.length && srcset[index] != ',') index++
+        }
+    }
 }
 
 private fun splitArticleBlock(text: String): List<String> {
@@ -272,6 +327,7 @@ private const val MAX_PAGE_BYTES = 4 * 1024 * 1024L
 private val MARKDOWN_ARTICLE_URL = Regex("""\[[^\]\r\n]*\]\((https://[^\s]+)\)""", RegexOption.IGNORE_CASE)
 private const val MAX_SHARED_LINK_TEXT = 8_192
 private const val MAX_ARTICLE_TEXT = 240_000
+private const val MAX_ARTICLE_IMAGES = 100
 private const val MAX_BLOCK_LENGTH = 3_000
 private const val MAX_TITLE_LENGTH = 200
 private const val MIN_READABLE_TEXT = 40
@@ -281,7 +337,8 @@ private val LOCAL_HOST_SUFFIXES = listOf(".localhost", ".local", ".internal", ".
 private val SHARED_LINK = Regex("""https://[^\s<>"\u0000-\u001F]+""", RegexOption.IGNORE_CASE)
 private val WHITESPACE = Regex("""[\s\u00a0]+""")
 private val HEADINGS = setOf("h1", "h2", "h3", "h4", "h5", "h6")
-private val BLOCK_ELEMENTS = setOf("address", "article", "blockquote", "caption", "dd", "div", "dl", "dt", "figcaption",
+private val IMAGE_SOURCE_ATTRIBUTES = listOf("data-src", "data-original", "data-lazy-src")
+private val BLOCK_ELEMENTS = setOf("address", "article", "blockquote", "caption", "dd", "div", "dl", "dt", "figcaption", "figure",
     "li", "main", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul")
 private const val UNREADABLE_ELEMENTS = """
     script,style,noscript,svg,math,nav,aside,footer,form,dialog,iframe,template,canvas,

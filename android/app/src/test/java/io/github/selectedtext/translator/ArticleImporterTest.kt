@@ -58,6 +58,53 @@ class ArticleImporterTest {
     }
 
     @Test
+    fun `keeps public article images and captions in reading order`() {
+        val url = "https://news.example.org/essays/story.html"
+        val article = extractArticle(Jsoup.parse("""
+            <article>
+              <p>The opening paragraph introduces the subject of this article.</p>
+              <figure>
+                <img src="data:image/gif;base64,placeholder" data-src="../photos/ridge.jpg"
+                     alt="North ridge" width="900" height="600">
+                <figcaption>The ridge at sunrise.</figcaption>
+              </figure>
+              <picture>
+                <source srcset="https://assets.example.org/w=640,q=80/trail.webp 640w, /large.webp 1280w">
+                <img alt="Mountain trail">
+              </picture>
+              <p>Before <img srcset="http://assets.example.org/map.jpg 1x, //assets.example.org/map.webp 2x"> after.</p>
+              <img src="https://assets.example.org/hidden.jpg" hidden>
+              <img src="https://assets.example.org/pixel.gif" width="1" height="1">
+              <img src="https://127.0.0.1/private.jpg">
+            </article>
+        """.trimIndent(), url), "news.example.org")
+
+        assertEquals(listOf(
+            ArticleBlock("The opening paragraph introduces the subject of this article."),
+            ArticleBlock("", image = ArticleImage("https://news.example.org/photos/ridge.jpg", "North ridge", 1.5f)),
+            ArticleBlock("The ridge at sunrise."),
+            ArticleBlock("", image = ArticleImage("https://assets.example.org/w=640,q=80/trail.webp", "Mountain trail")),
+            ArticleBlock("Before"),
+            ArticleBlock("", image = ArticleImage("https://assets.example.org/map.webp")),
+            ArticleBlock("after."),
+        ), article.blocks)
+    }
+
+    @Test
+    fun `restores the reading position after adding images to a saved article`() {
+        val opening = ArticleBlock("Opening paragraph.")
+        val current = ArticleBlock("The reader stopped at this paragraph.")
+        val closing = ArticleBlock("Closing paragraph.")
+        val image = ArticleBlock("", image = ArticleImage("https://news.example.org/figure.jpg"))
+        val previous = ReadingArticle("saved", "Saved article", "https://news.example.org/story",
+            listOf(opening, current, closing), position = ArticlePosition(2, 27))
+
+        assertEquals(ArticlePosition(3, 27), positionWithImages(previous, listOf(opening, image, current, closing)))
+        val edited = ArticleBlock("This paragraph changed on the original page.")
+        assertEquals(ArticlePosition(3, 0), positionWithImages(previous, listOf(opening, image, edited, closing)))
+    }
+
+    @Test
     fun `reads older table layouts and paragraph breaks`() {
         val article = extractArticle(Jsoup.parse("""
             <html>

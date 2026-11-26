@@ -37,6 +37,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import org.jsoup.safety.Cleaner
 import org.jsoup.safety.Safelist
 
 internal data class FeedSource(
@@ -274,7 +275,7 @@ internal fun parseFeed(document: Element, url: HttpUrl, source: FeedSource): Fee
             val summary = (item.field("description") ?: item.field("summary"))?.markup().orEmpty()
             val body = (item.field("encoded") ?: item.field("content"))?.markup().orEmpty()
                 .ifBlank { if (source.summaryContainsBody) summary else "" }
-            val html = body.takeIf { it.length <= 500_000 }?.let { Jsoup.clean(it, safe, Safelist.relaxed()) }
+            val html = body.takeIf { it.length <= 500_000 }?.let { cleanFeedBody(it, safe) }
                 ?.takeIf { Jsoup.parse(it).text().length >= 80 }
             val excerpt = Jsoup.parse(summary.ifBlank { html.orEmpty() }).text().take(360)
             val date = sequenceOf("published", "pubdate", "updated", "date").mapNotNull { item.field(it)?.text() }
@@ -282,6 +283,16 @@ internal fun parseFeed(document: Element, url: HttpUrl, source: FeedSource): Fee
             FeedArticle(source.id, safe, title, excerpt, date, html)
         }.sortedByDescending { it.publishedAt ?: Long.MIN_VALUE }.take(8).toList()
     return FeedContent(name, items)
+}
+
+private fun cleanFeedBody(html: String, baseUrl: String): String {
+    val document = Jsoup.parseBodyFragment(html, baseUrl)
+    document.select("[hidden],[aria-hidden=true]").remove()
+    for (element in document.select("img")) {
+        val image = readArticleImage(element)
+        if (image == null) element.remove() else element.attr("src", image.url)
+    }
+    return Cleaner(Safelist.relaxed().addTags("figure", "figcaption")).clean(document).body().html()
 }
 
 private fun Element.field(name: String): Element? = children().firstOrNull { it.normalName().substringAfterLast(':') == name }
