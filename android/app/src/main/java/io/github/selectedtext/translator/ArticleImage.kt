@@ -33,10 +33,19 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.File
 import java.io.IOException
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
@@ -54,7 +63,7 @@ internal fun articleImageHeight(widthPx: Int, aspectRatio: Float?): Int {
 
 @Composable
 internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
-    val network = (LocalContext.current.applicationContext as TranslatorApplication).articleNetwork
+    val loader = (LocalContext.current.applicationContext as TranslatorApplication).articleImages
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val width = with(density) { maxWidth.roundToPx() }
@@ -64,11 +73,11 @@ internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
             ImageRequest(image.url, articleOrigin(sourceUrl), maxOf(width, height).coerceIn(1, MAX_DECODED_EDGE))
         }
         var retry by remember(request) { mutableIntStateOf(0) }
-        var bitmap by remember(request, retry) { mutableStateOf(ArticleImageLoader.cached(request)) }
+        var bitmap by remember(request, retry) { mutableStateOf(loader.cached(request)) }
         var failed by remember(request, retry) { mutableStateOf(false) }
         LaunchedEffect(request, retry) {
             if (bitmap == null) {
-                bitmap = ArticleImageLoader.load(request, network)
+                bitmap = loader.load(request)
                 failed = bitmap == null
             }
         }
@@ -120,9 +129,11 @@ private fun articleOrigin(sourceUrl: String?): String? = sourceUrl?.let {
     }
 }
 
-private data class ImageRequest(val url: String, val referrer: String?, val targetEdge: Int)
+internal data class ImageRequest(val url: String, val referrer: String?, val targetEdge: Int) {
+    val diskKey: String get() = "$url\n${referrer.orEmpty()}"
+}
 
-private object ArticleImageLoader {
+internal class ArticleImageLoader(cacheDirectory: File, private val network: ArticleNetwork) {
     private val http = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
         .dns(publicArticleDns)
@@ -132,33 +143,67 @@ private object ArticleImageLoader {
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
-    private val cache = object : LruCache<ImageRequest, Bitmap>(16 * 1024 * 1024) {
+    private val cache = object : LruCache<ImageRequest, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 4).coerceIn(8L * 1024 * 1024, 64L * 1024 * 1024).toInt(),
+    ) {
         override fun sizeOf(key: ImageRequest, value: Bitmap): Int = value.allocationByteCount
     }
+    private val disk = ArticleImageDiskCache(File(cacheDirectory, "article-images"))
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loadSlots = Semaphore(2)
+    private val inFlight = mutableMapOf<ImageRequest, Deferred<Bitmap?>>()
 
     fun cached(image: ImageRequest): Bitmap? = cache.get(image)
 
-    suspend fun load(image: ImageRequest, network: ArticleNetwork): Bitmap? = withTimeoutOrNull(20_000L) {
-        try {
-            var url = publicArticleUrl(image.url)
-            repeat(MAX_IMAGE_REDIRECTS + 1) {
-                when (val response = request(url, image, network)) {
-                    is ImageResponse.Content -> {
-                        cache.put(image, response.bitmap)
-                        return@withTimeoutOrNull response.bitmap
-                    }
-                    is ImageResponse.Redirect -> {
-                        url = publicArticleUrl(url.resolve(response.location)?.toString().orEmpty())
+    suspend fun load(image: ImageRequest): Bitmap? {
+        cached(image)?.let { return it }
+        // A lazy list can dispose an image while it is loading. Keep the bounded request
+        // alive so returning to the item shares the work and can use its cached result.
+        val pending = synchronized(inFlight) {
+            cached(image)?.let { return it }
+            inFlight[image] ?: scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    loadUncached(image)?.also { cache.put(image, it) }
+                } finally {
+                    synchronized(inFlight) { inFlight.remove(image) }
+                }
+            }.also { inFlight[image] = it }
+        }
+        pending.start()
+        return pending.await()
+    }
+
+    private suspend fun loadUncached(image: ImageRequest): Bitmap? = withTimeoutOrNull(20_000L) {
+        // Limit disk reads and decoding too, including work retained during fast scrolling.
+        loadSlots.withPermit {
+            try {
+                disk.read(image.diskKey)?.let { bytes ->
+                    try {
+                        return@withPermit decode(bytes, image.targetEdge)
+                    } catch (_: IOException) {
+                        disk.remove(image.diskKey)
                     }
                 }
+                var url = publicArticleUrl(image.url)
+                repeat(MAX_IMAGE_REDIRECTS + 1) {
+                    when (val response = request(url, image)) {
+                        is ImageResponse.Content -> {
+                            disk.write(image.diskKey, response.bytes)
+                            return@withPermit response.bitmap
+                        }
+                        is ImageResponse.Redirect -> {
+                            url = publicArticleUrl(url.resolve(response.location)?.toString().orEmpty())
+                        }
+                    }
+                }
+                null
+            } catch (_: IOException) {
+                null
             }
-            null
-        } catch (_: IOException) {
-            null
         }
     }
 
-    private suspend fun request(url: HttpUrl, image: ImageRequest, network: ArticleNetwork): ImageResponse = suspendCancellableCoroutine { continuation ->
+    private suspend fun request(url: HttpUrl, image: ImageRequest): ImageResponse = suspendCancellableCoroutine { continuation ->
         val request = Request.Builder().url(url)
             .header("Accept", "image/*")
             .header("User-Agent", "Selected Article Reader (Android)")
@@ -197,7 +242,8 @@ private object ArticleImageLoader {
         if (body.contentLength() > MAX_IMAGE_BYTES || source.request(MAX_IMAGE_BYTES + 1L)) {
             throw IOException("Image response is too large.")
         }
-        return ImageResponse.Content(decode(source.readByteArray(), targetEdge))
+        val bytes = source.readByteArray()
+        return ImageResponse.Content(decode(bytes, targetEdge), bytes)
     }
 
     private fun decode(bytes: ByteArray, targetEdge: Int): Bitmap {
@@ -214,12 +260,22 @@ private object ArticleImageLoader {
             sampleSize *= 2
         }
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("Couldn't decode image.")
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("Couldn't decode image.")
+        val edge = maxOf(bitmap.width, bitmap.height)
+        if (edge <= targetEdge) return bitmap
+        val scaled = Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width.toLong() * targetEdge / edge).toInt().coerceAtLeast(1),
+            (bitmap.height.toLong() * targetEdge / edge).toInt().coerceAtLeast(1),
+            true,
+        )
+        bitmap.recycle()
+        return scaled
     }
 
     private sealed interface ImageResponse {
         data class Redirect(val location: String) : ImageResponse
-        data class Content(val bitmap: Bitmap) : ImageResponse
+        data class Content(val bitmap: Bitmap, val bytes: ByteArray) : ImageResponse
     }
 }
 

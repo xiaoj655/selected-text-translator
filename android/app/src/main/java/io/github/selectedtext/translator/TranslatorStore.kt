@@ -24,6 +24,7 @@ import org.json.JSONObject
 class TranslatorApplication : Application() {
     internal val store by lazy { TranslatorStore(this) }
     internal val articleNetwork by lazy { ArticleNetwork(this) }
+    internal val articleImages by lazy { ArticleImageLoader(cacheDir, articleNetwork) }
     internal val articles by lazy { ArticleRepository(this, articleNetwork) }
 }
 

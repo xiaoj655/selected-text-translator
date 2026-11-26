@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.11
+
+- Reuse article images when scrolling back, with a bounded local image cache and memory usage sized to the device. Size decoded images to their display area to keep more photos in memory.
+- Keep image loads running when they briefly leave the screen, so scrolling back shares the existing request instead of restarting it.
+
 ## 0.2.10
 
 - Use the active Android VPN for reading requests, including VPNs that return temporary DNS addresses.
