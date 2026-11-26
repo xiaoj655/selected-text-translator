@@ -23,7 +23,8 @@ import org.json.JSONObject
 
 class TranslatorApplication : Application() {
     internal val store by lazy { TranslatorStore(this) }
-    internal val articles by lazy { ArticleRepository(this) }
+    internal val articleNetwork by lazy { ArticleNetwork(this) }
+    internal val articles by lazy { ArticleRepository(this, articleNetwork) }
 }
 
 internal class TranslatorStore(context: Context) {

@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.10
+
+- Use the active Android VPN for reading requests, including VPNs that return temporary DNS addresses.
+- Reload images from saved feed content when available. If direct import fails or returns no images, try a configured IQS connection. Keep saved text when recovering images from either fallback.
+
 ## 0.2.9
 
 - Import the selected Psyche story with its paragraphs and inline images. Use **Aa → Reimport article** to replace an incomplete saved copy from the original page.

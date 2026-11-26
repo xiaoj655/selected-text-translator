@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +54,7 @@ internal fun articleImageHeight(widthPx: Int, aspectRatio: Float?): Int {
 
 @Composable
 internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
+    val network = (LocalContext.current.applicationContext as TranslatorApplication).articleNetwork
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val width = with(density) { maxWidth.roundToPx() }
@@ -66,7 +68,7 @@ internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
         var failed by remember(request, retry) { mutableStateOf(false) }
         LaunchedEffect(request, retry) {
             if (bitmap == null) {
-                bitmap = ArticleImageLoader.load(request)
+                bitmap = ArticleImageLoader.load(request, network)
                 failed = bitmap == null
             }
         }
@@ -136,11 +138,11 @@ private object ArticleImageLoader {
 
     fun cached(image: ImageRequest): Bitmap? = cache.get(image)
 
-    suspend fun load(image: ImageRequest): Bitmap? = withTimeoutOrNull(20_000L) {
+    suspend fun load(image: ImageRequest, network: ArticleNetwork): Bitmap? = withTimeoutOrNull(20_000L) {
         try {
             var url = publicArticleUrl(image.url)
             repeat(MAX_IMAGE_REDIRECTS + 1) {
-                when (val response = request(url, image)) {
+                when (val response = request(url, image, network)) {
                     is ImageResponse.Content -> {
                         cache.put(image, response.bitmap)
                         return@withTimeoutOrNull response.bitmap
@@ -156,13 +158,13 @@ private object ArticleImageLoader {
         }
     }
 
-    private suspend fun request(url: HttpUrl, image: ImageRequest): ImageResponse = suspendCancellableCoroutine { continuation ->
+    private suspend fun request(url: HttpUrl, image: ImageRequest, network: ArticleNetwork): ImageResponse = suspendCancellableCoroutine { continuation ->
         val request = Request.Builder().url(url)
             .header("Accept", "image/*")
             .header("User-Agent", "Selected Article Reader (Android)")
             .apply { image.referrer?.let { header("Referer", it) } }
             .build()
-        val call = http.newCall(request)
+        val call = network.client(http).newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

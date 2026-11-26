@@ -75,7 +75,7 @@ internal class ReaderViewModel(
 ) : AndroidViewModel(application) {
     private val app = application as TranslatorApplication
     private val library = app.articles
-    private val feedRepository = FeedRepository(app)
+    private val feedRepository = FeedRepository(app, app.articleNetwork)
     private val store = app.store
     val iqsApiKey = store.iqsApiKey
     private val client = TranslationClient(application)
@@ -182,8 +182,13 @@ internal class ReaderViewModel(
     }
 
     fun reloadArticle(article: ReadingArticle) {
-        if (article.sourceUrl == null || article.hasImages || state.value.importing) return
-        importArticle(null, reloadFailureMessage = "Couldn't reload images. Try again.") { library.reloadImages(article) }
+        val url = article.sourceUrl ?: return
+        if (article.hasImages || state.value.importing) return
+        importArticle(null, reloadFailureMessage = "Couldn't reload images. Try again.") {
+            val feedBodies = feedRepository.cachedArticleBodies(url)
+            store.load()
+            library.reloadImages(article, feedBodies, iqsApiKey.value)
+        }
     }
 
     fun reimportArticle(article: ReadingArticle) {

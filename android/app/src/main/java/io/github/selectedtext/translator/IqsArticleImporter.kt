@@ -29,6 +29,7 @@ internal class IqsArticleImporter(
         .callTimeout(60, TimeUnit.SECONDS)
         .build(),
     private val endpoint: HttpUrl = "https://cloud-iqs.aliyuncs.com/readpage/scrape".toHttpUrl(),
+    private val network: ArticleNetwork? = null,
 ) {
     suspend fun fetch(url: HttpUrl, apiKey: String): ReadingArticle = suspendCancellableCoroutine { continuation ->
         val payload = JSONObject().put("url", url.toString()).put("maxAge", 0)
@@ -38,7 +39,7 @@ internal class IqsArticleImporter(
             .header("X-API-Key", apiKey)
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
-        val call = http.newCall(request)
+        val call = (network?.client(http) ?: http).newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

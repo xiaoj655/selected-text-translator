@@ -17,11 +17,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 
-internal class ArticleRepository(context: Context) {
+internal class ArticleRepository(context: Context, network: ArticleNetwork) {
     private val directory = File(context.filesDir, "articles")
     private val positions = context.getSharedPreferences("article-positions", Context.MODE_PRIVATE)
-    private val importer = ArticleImporter()
-    private val iqsImporter = IqsArticleImporter()
+    private val importer = ArticleImporter(network = network)
+    private val iqsImporter = IqsArticleImporter(network = network)
     private val mutations = Mutex()
     private val entries = MutableStateFlow<List<ReadingArticle>>(emptyList())
     val articles = entries.asStateFlow()
@@ -72,22 +72,40 @@ internal class ArticleRepository(context: Context) {
         val original = source.toString()
         load()
         entries.value.firstOrNull { it.sourceUrl == original }?.let { return it }
-        val article = withContext(Dispatchers.Default) {
-            extractArticle(Jsoup.parseBodyFragment(html, original), source.host)
-        }
+        val article = readFeedArticle(source, html)
         return insert(article.copy(title = title.ifBlank { article.title }, sourceUrl = original))
     }
 
     suspend fun importText(text: String, title: String = "") = insert(pastedArticle(text, title))
 
-    suspend fun reloadImages(article: ReadingArticle): ReadingArticle {
-        val url = article.sourceUrl ?: throw ArticleImportException("This article has no original page.")
-        val refreshed = importer.fetch(url)
-        if (!refreshed.hasImages) throw ArticleImportException("Couldn't find images on the original page.")
+    suspend fun reloadImages(article: ReadingArticle, feedBodies: List<String>, iqsApiKey: String): ReadingArticle {
+        val source = publicArticleUrl(article.sourceUrl ?: throw ArticleImportException("This article has no original page."))
+        val readIqs = if (iqsApiKey.isBlank()) null else suspend { iqsImporter.fetch(source, iqsApiKey) }
+        val recovery = findArticleWithImages(
+            cached = {
+                feedBodies.firstNotNullOfOrNull { html ->
+                    try {
+                        readFeedArticle(source, html).takeIf { it.hasImages }
+                    } catch (_: ArticleImportException) {
+                        null
+                    }
+                }
+            },
+            direct = {
+                val refreshed = importer.fetch(source.toString())
+                if (refreshed.hasImages) refreshed else throw ArticleImportException("The original page returned no images.")
+            },
+            iqs = readIqs,
+        )
         return replaceArticle(article.id) { current ->
             if (current.hasImages) return@replaceArticle current
-            current.copy(blocks = refreshed.blocks, position = positionWithImages(current, refreshed.blocks))
+            val blocks = restoreArticleImageBlocks(current.blocks, recovery.blocks)
+            current.copy(blocks = blocks, position = positionWithImages(current, blocks))
         }
+    }
+
+    private suspend fun readFeedArticle(source: HttpUrl, html: String) = withContext(Dispatchers.Default) {
+        extractArticle(Jsoup.parseBodyFragment(html, source.toString()), source.host)
     }
 
     private suspend fun replaceArticle(id: String, replace: (ReadingArticle) -> ReadingArticle): ReadingArticle =

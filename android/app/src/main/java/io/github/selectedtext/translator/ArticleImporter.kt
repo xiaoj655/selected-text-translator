@@ -40,6 +40,7 @@ internal class ArticleImporter(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .build(),
+    private val network: ArticleNetwork? = null,
 ) {
     suspend fun fetch(value: String): ReadingArticle = withTimeoutOrNull(25_000L) {
         val original = publicArticleUrl(value)
@@ -58,7 +59,7 @@ internal class ArticleImporter(
             .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9")
             .header("User-Agent", "Selected Article Reader (Android)")
             .build()
-        val call = http.newCall(request)
+        val call = (network?.client(http) ?: http).newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

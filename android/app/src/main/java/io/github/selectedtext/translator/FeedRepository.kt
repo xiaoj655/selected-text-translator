@@ -72,14 +72,14 @@ internal data class FeedSnapshot(
 
 internal class FeedException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
-internal class FeedRepository(context: Context) {
+internal class FeedRepository(context: Context, network: ArticleNetwork) {
     private val assets = context.assets
     private val directory = File(context.filesDir, "reading-feeds")
     private val subscriptions = AtomicFile(File(directory, "subscriptions.json"))
     private val lock = Mutex()
     private val snapshot = MutableStateFlow(FeedSnapshot())
     val state = snapshot.asStateFlow()
-    private val client = FeedClient()
+    private val client = FeedClient(network = network)
     private var loaded = false
 
     suspend fun load() = withContext(Dispatchers.IO) {
@@ -95,6 +95,12 @@ internal class FeedRepository(context: Context) {
             snapshot.value = FeedSnapshot(sources, optional, articles)
             loaded = true
         }
+    }
+
+    suspend fun cachedArticleBodies(url: String): List<String> {
+        load()
+        return snapshot.value.articles.values.asSequence().flatten()
+            .filter { it.url == url }.mapNotNull { it.html }.distinct().toList()
     }
 
     suspend fun refresh(ids: Set<String>? = null) = coroutineScope {
@@ -202,6 +208,7 @@ internal class FeedClient(
         .connectTimeout(7, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build(),
+    private val network: ArticleNetwork? = null,
 ) {
     suspend fun fetch(source: FeedSource): FeedContent = withTimeoutOrNull(12_000L) {
         var url = feedUrl(source.url)
@@ -218,7 +225,7 @@ internal class FeedClient(
             .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml")
             .header("User-Agent", "Selected Article Reader (Android)")
             .build()
-        val call = http.newCall(request)
+        val call = (network?.client(http) ?: http).newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

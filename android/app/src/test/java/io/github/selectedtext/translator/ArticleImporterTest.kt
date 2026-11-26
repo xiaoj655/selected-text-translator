@@ -193,6 +193,10 @@ class ArticleImporterTest {
 
         assertTrue(check("8.8.8.8"))
         assertTrue(check("2606:4700:4700::1111"))
+        assertTrue(isVpnFakeIp(InetAddress.getByName("198.18.0.1")))
+        assertTrue(isVpnFakeIp(InetAddress.getByName("198.19.255.254")))
+        assertFalse(isVpnFakeIp(InetAddress.getByName("198.20.0.1")))
+        assertFalse(isVpnFakeIp(InetAddress.getByName("192.168.1.1")))
         for (address in listOf("127.0.0.1", "100.64.0.8", "169.254.0.1", "192.168.1.1",
             "198.18.0.1", "::1", "::ffff:192.168.0.1", "fc00::1", "fe80::1", "2001:db8::1")) {
             assertFalse(address, check(address))
