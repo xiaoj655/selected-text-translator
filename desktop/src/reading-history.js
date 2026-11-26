@@ -6,10 +6,10 @@ const MAX_ENTRIES = 100
 const MAX_ARTICLE_BYTES = 8 * 1024 * 1024
 const MAX_HISTORY_BYTES = 50 * 1024 * 1024
 
-function canonicalUrl(value) {
+function canonicalUrl(value, allowHttp = false) {
   try {
     const url = new URL(value)
-    if (url.protocol !== 'https:' || url.username || url.password) return ''
+    if ((url.protocol !== 'https:' && !(allowHttp && url.protocol === 'http:')) || url.username || url.password) return ''
     url.hash = ''
     return url.href
   } catch { return '' }
@@ -23,11 +23,12 @@ function position(value) {
 
 function cleanArticle(value) {
   if (!value || typeof value.text !== 'string' || !value.text.trim()) return null
-  const url = canonicalUrl(value.url)
-  if (value.kind !== 'pasted_text' && !url) return null
+  const kind = ['pasted_text', 'feed_article'].includes(value.kind) ? value.kind : 'web_article'
+  const url = canonicalUrl(value.url, kind === 'feed_article')
+  if (kind !== 'pasted_text' && !url) return null
   const article = {
     id: String(value.id || '').slice(0, 200),
-    kind: value.kind === 'pasted_text' ? 'pasted_text' : 'web_article',
+    kind,
     title: String(value.title || 'Pasted text').slice(0, 300),
     source: String(value.source || '').slice(0, 300),
     text: value.text,
@@ -95,6 +96,32 @@ export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
     return { ...entry.article, historyId: entry.id, readingPosition: positions[entry.id] || null }
   }
 
+  function save(value) {
+    const article = cleanArticle(value)
+    if (!article) throw new Error('This article is too large to save. Try a shorter passage.')
+    const key = article.url || `text:${article.text}`
+    const id = createHash('sha256').update(key).digest('hex')
+    if (article.kind === 'pasted_text') article.id = `paste-${id}`
+    if (article.kind === 'feed_article') article.id = `feed-history-${id}`
+    const current = load().find((entry) => entry.id === id)
+    const entry = { id, article, importedAt: current?.importedAt || now(), lastOpenedAt: now() }
+    const next = [entry, ...load().filter((item) => item.id !== id)].slice(0, MAX_ENTRIES)
+    let bytes = next.reduce((total, item) => total + Buffer.byteLength(JSON.stringify(item)), 0)
+    while (bytes > MAX_HISTORY_BYTES && next.length > 1) bytes -= Buffer.byteLength(JSON.stringify(next.pop()))
+    const savedPositions = { ...positions }
+    if (current?.article.text !== article.text) delete savedPositions[id]
+    persist(next, savedPositions)
+    return articleFor(entry)
+  }
+
+  function restore(id) {
+    const entry = load().find((item) => item.id === id)
+    if (!entry) return null
+    const opened = { ...entry, lastOpenedAt: now() }
+    persist([opened, ...load().filter((item) => item.id !== id)])
+    return articleFor(opened)
+  }
+
   return {
     list() {
       return load().map(({ id, article, importedAt, lastOpenedAt }) => ({
@@ -102,32 +129,20 @@ export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
         excerpt: article.text.slice(0, 180), importedAt, lastOpenedAt, progress: positions[id]?.progress || 0,
       }))
     },
-    save(value) {
-      const article = cleanArticle(value)
-      if (!article) throw new Error('This article is too large to save. Try a shorter passage.')
-      const key = article.url || `text:${article.text}`
-      const id = createHash('sha256').update(key).digest('hex')
-      if (article.kind === 'pasted_text') article.id = `paste-${id}`
-      const current = load().find((entry) => entry.id === id)
-      const entry = { id, article, importedAt: current?.importedAt || now(), lastOpenedAt: now() }
-      const next = [entry, ...load().filter((item) => item.id !== id)].slice(0, MAX_ENTRIES)
-      let bytes = next.reduce((total, item) => total + Buffer.byteLength(JSON.stringify(item)), 0)
-      while (bytes > MAX_HISTORY_BYTES && next.length > 1) bytes -= Buffer.byteLength(JSON.stringify(next.pop()))
-      const savedPositions = { ...positions }
-      if (current?.article.text !== article.text) delete savedPositions[id]
-      persist(next, savedPositions)
-      return articleFor(entry)
+    save,
+    restore,
+    openFeed(value) {
+      const url = canonicalUrl(value?.url, true)
+      if (!url) return null
+      const existing = load().find((entry) => entry.article.url === url)
+      if (existing) return restore(existing.id)
+      if (value.feedHasBody !== true || typeof value.text !== 'string' || !value.text.trim()) return null
+      return save({ ...value, url, kind: 'feed_article' })
     },
-    restore(id) {
-      const entry = load().find((item) => item.id === id)
-      if (!entry) return null
-      const opened = { ...entry, lastOpenedAt: now() }
-      persist([opened, ...load().filter((item) => item.id !== id)])
-      return articleFor(opened)
-    },
-    savePosition(id, value) {
+    savePosition(id, value, articleId) {
       const savedPosition = position(value)
-      if (!savedPosition || !load().some((entry) => entry.id === id)) return false
+      const entry = load().find((item) => item.id === id)
+      if (!savedPosition || !entry || (articleId !== undefined && entry.article.id !== articleId)) return false
       if (JSON.stringify(positions[id]) === JSON.stringify(savedPosition)) return true
       const next = { ...positions, [id]: savedPosition }
       write(positionsFile, next)

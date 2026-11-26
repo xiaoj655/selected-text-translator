@@ -109,7 +109,7 @@ export async function verifyReadingHistory({ page, check, shot }) {
     await enterReading(page)
     await page.locator('#reading-history').click()
     assert.equal(await page.locator('.reading-history-open').count(), 0)
-    await page.getByText('No imported articles yet. Open a link or paste text to start reading.', { exact: true }).waitFor()
+    await page.getByText('No articles in your reading history yet.', { exact: true }).waitFor()
     await page.locator('#reading-category-news').click()
     await page.locator('#reading-articles').waitFor({ state: 'visible' })
     await page.locator('#btn-translate-workspace').click()

@@ -7,6 +7,9 @@ const ARTICLE_URL = 'https://fieldnotes.example.org/articles/night-count'
 const ARTICLE_TITLE = 'What we heard while counting birds at night'
 const ARTICLE_SUMMARY = 'A team of volunteers counted migrating birds by listening for their calls after dark.'
 const ARTICLE_BODY = 'Two observers compared notes at the end of each shift. They marked uncertain calls separately so the final count would reflect what they could actually identify.'
+const ARTICLE_NOTES = Array.from({ length: 28 }, (_value, index) =>
+  `Field note ${index + 1}. The observers wrote down the time and direction of every call before checking their notes together.`)
+const RESUME_PARAGRAPH = ARTICLE_NOTES[19]
 const IMPORTED_BODY = 'The volunteers repeated the count the following night to check whether wind and rain had affected their observations. Both teams recorded what they heard before sharing their notes.'
 const SECOND_TITLE = 'Preparing a notebook for the spring migration'
 const CLAUDE = catalog.optional.find(({ id }) => id === 'claude')
@@ -18,7 +21,7 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?>
       <item><title>${ARTICLE_TITLE}</title><link>${ARTICLE_URL}</link>
         <pubDate>Mon, 16 Nov 2026 09:00:00 GMT</pubDate>
         <description><![CDATA[<p>${ARTICLE_SUMMARY}</p>]]></description>
-        <content:encoded><![CDATA[<p>${ARTICLE_SUMMARY}</p><p>${ARTICLE_BODY}</p>]]></content:encoded>
+        <content:encoded><![CDATA[${[ARTICLE_SUMMARY, ARTICLE_BODY, ...ARTICLE_NOTES].map((paragraph) => `<p>${paragraph}</p>`).join('')}]]></content:encoded>
       </item>
       <item><title>${SECOND_TITLE}</title><link>https://fieldnotes.example.org/articles/spring-notebook</link>
         <pubDate>Fri, 13 Nov 2026 09:00:00 GMT</pubDate>
@@ -32,6 +35,7 @@ async function installCustomFeed(app) {
     const feeds = globalThis.__sttE2EReadingFeedResponses
     globalThis.__sttE2ECustomFeedResponses = feeds
     globalThis.__sttE2ECustomFeedUnavailable = false
+    globalThis.__sttE2ECustomArticleUnavailable = false
     feeds[`${feedUrl}/`] = { redirectTo: feedUrl }
     feeds[feedUrl] = {
       body: rss,
@@ -53,8 +57,9 @@ async function installCustomFeed(app) {
       if (target.href !== articleUrl) {
         return originalGet(target, options, callback)
       }
-      const response = Object.assign(Readable.from([Buffer.from(articleHtml)]), {
-        statusCode: 200,
+      const unavailable = globalThis.__sttE2ECustomArticleUnavailable
+      const response = Object.assign(Readable.from(unavailable ? [] : [Buffer.from(articleHtml)]), {
+        statusCode: unavailable ? 503 : 200,
         headers: { 'content-type': 'text/html; charset=utf-8' },
       })
       queueMicrotask(() => callback(response))
@@ -116,6 +121,12 @@ export async function verifyCustomReadingFeeds({ app, page, check, shot, restart
     await page.locator('#reading-back').click()
     assert.equal(await feedArticle(page).count(), 1)
 
+    await feedArticle(page, SECOND_TITLE).click()
+    await page.locator('#reading-detail').getByRole('heading', { name: SECOND_TITLE }).waitFor()
+    assert.equal(await page.evaluate(async (title) => (await window.sttDesktop.reading.history())
+      .some((article) => article.title === title), SECOND_TITLE), false, 'opening a summary should not save it as a full article')
+    await page.locator('#reading-back').click()
+
     await app.evaluate(() => { globalThis.__sttE2ECustomFeedUnavailable = true })
     await page.locator('#reading-refresh').click()
     await page.getByText(`Showing previous results from ${FEED_NAME}.`, { exact: false }).waitFor()
@@ -123,14 +134,33 @@ export async function verifyCustomReadingFeeds({ app, page, check, shot, restart
     const detail = page.locator('#reading-detail')
     await detail.getByText(ARTICLE_BODY, { exact: true }).waitFor()
     assert.equal(await detail.locator('#reading-original').getAttribute('href'), ARTICLE_URL)
-    await detail.locator('#reading-import-full').click()
-    await detail.getByText(IMPORTED_BODY, { exact: true }).waitFor()
+    const previousTop = await detail.getByText(RESUME_PARAGRAPH, { exact: true }).evaluate(async (paragraph) => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const scroller = document.getElementById('tutor-workspace')
+      scroller.scrollTop += paragraph.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 120
+      return scroller.scrollTop
+    })
+    assert.ok(previousTop > 0, 'the RSS article should scroll past its opening paragraphs')
+    const progressSaved = await page.evaluate(async (url) => {
+      const deadline = performance.now() + 8000
+      while (performance.now() < deadline) {
+        const entry = (await window.sttDesktop.reading.history()).find((article) => article.url === url)
+        if (entry?.progress > 0.4) return true
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      return false
+    }, ARTICLE_URL)
+    assert.ok(progressSaved, 'the RSS position should reach reading history before restart')
 
     const restarted = await restart()
     await installCustomFeed(restarted.app)
+    await restarted.app.evaluate(() => {
+      globalThis.__sttE2ECustomFeedUnavailable = true
+      globalThis.__sttE2ECustomArticleUnavailable = true
+    })
     const current = restarted.page
     await showMyFeeds(current)
-    await feedArticle(current).waitFor()
+    await current.getByText(`Couldn’t load ${FEED_NAME}.`, { exact: false }).waitFor()
     await current.locator('#reading-feed-manage').click()
     const sources = current.locator('#reading-feed-sources')
     await sources.getByText(FEED_URL, { exact: true }).waitFor()
@@ -141,7 +171,27 @@ export async function verifyCustomReadingFeeds({ app, page, check, shot, restart
     assert.equal(await feedArticle(current).count(), 0)
 
     await current.locator('#reading-history').click()
-    await current.locator('.reading-history-open').getByText(ARTICLE_TITLE, { exact: true }).waitFor()
+    const historyRow = current.locator('.reading-history-item').filter({ hasText: ARTICLE_TITLE })
+    await historyRow.getByText(/\d+% read/u).waitFor()
+    await historyRow.getByRole('button', { name: ARTICLE_TITLE, exact: true }).click()
+    const reopened = current.locator('#reading-detail')
+    await reopened.getByText(ARTICLE_BODY, { exact: true }).waitFor()
+    await reopened.getByText(RESUME_PARAGRAPH, { exact: true }).waitFor()
+    const resumedTop = await reopened.getByText(RESUME_PARAGRAPH, { exact: true }).evaluate(async (paragraph) => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      return paragraph.getBoundingClientRect().top - document.getElementById('tutor-workspace').getBoundingClientRect().top
+    })
+    await shot?.(current, 'main-tutor-feed-resumed')
+    assert.ok(Math.abs(resumedTop - 120) < 50, `History should restore the saved RSS paragraph near the top, got ${resumedTop}px`)
+
+    await restarted.app.evaluate(() => { globalThis.__sttE2ECustomArticleUnavailable = false })
+    await reopened.locator('#reading-import-full').click()
+    await reopened.getByText(IMPORTED_BODY, { exact: true }).waitFor()
+    const matching = await current.evaluate(async (url) => (await window.sttDesktop.reading.history())
+      .filter((article) => article.url === url), ARTICLE_URL)
+    assert.equal(matching.length, 1, 'the import should replace the RSS snapshot in history')
+    assert.equal(matching[0].progress, 0, 'the new body should start at the beginning')
+    await current.locator('#reading-back').click()
 
     await current.locator('#reading-category-custom').click()
     assert.equal(await feedArticle(current, CLAUDE_TITLE).count(), 0)

@@ -145,6 +145,12 @@ function installReadingIpc(storage, fetcher) {
         throw coachError('Could not remove this feed. Try again.')
       }
     },
+    'stt:reading-feed-open'(id) {
+      const entry = readingDiscovery.getArticle(id) ?? articles.get(id)
+      const article = entry && readingHistory.openFeed(entry)
+      if (article) rememberArticle(article)
+      return article ?? null
+    },
     async 'stt:reading-import'(url) {
       const saved = await storage.sync.get('desktop_iqs_api_key')
       const imported = await importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch })
@@ -169,7 +175,9 @@ function installReadingIpc(storage, fetcher) {
     },
     'stt:reading-history-remove'(id) { return readingHistory.remove(id) },
     'stt:reading-history-clear'() { return readingHistory.clear() },
-    'stt:reading-position'({ id, position } = {}) { return readingHistory.savePosition(id, position) },
+    'stt:reading-position'({ id, position, articleId } = {}) {
+      return readingHistory.savePosition(id, position, articleId)
+    },
     'stt:reading-console'() {
       return shell.openExternal(IQS_CONSOLE_URL)
     },

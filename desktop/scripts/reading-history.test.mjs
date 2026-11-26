@@ -13,6 +13,8 @@ function fixture(run) {
 const ARTICLE = { id: 'content-version-1', kind: 'web_article', title: 'A complete article', source: 'publisher.example',
   url: 'https://publisher.example/story', text: 'The team reviewed the complete report. '.repeat(500),
   html: '<p>The team reviewed the complete report.</p>' }
+const FEED_ARTICLE = { id: 'feed-story', title: 'A report in the feed', source: 'Example RSS', url: ARTICLE.url,
+  feedHasBody: true, text: 'The committee published an update.', html: '<p>The committee published an update.</p>' }
 
 test('reading history restores full snapshots and text anchors after a restart', () => fixture((directory) => {
   const history = createReadingHistory(directory)
@@ -49,6 +51,48 @@ test('URL duplicates update the saved snapshot and preserve positions only for i
   assert.equal(history.list().length, 1)
   assert.equal(history.list()[0].importedAt, 10)
   assert.ok(history.list()[0].lastOpenedAt > 10)
+}))
+
+test('opening a feed article preserves its original snapshot and position across refreshes and restarts', () => fixture((directory) => {
+  let clock = 100
+  const history = createReadingHistory(directory, { now: () => clock++ })
+  const url = 'http://publisher.example/story'
+  const saved = history.openFeed({ ...FEED_ARTICLE, url })
+  assert.equal(saved.kind, 'feed_article')
+  assert.equal(saved.id, `feed-history-${saved.historyId}`)
+  assert.equal(saved.html, FEED_ARTICLE.html)
+  const position = { offset: 28, top: 12, progress: 0.5 }
+  assert.equal(history.savePosition(saved.historyId, position, saved.id), true)
+  history.save(ARTICLE)
+  assert.notEqual(history.list()[0].id, saved.historyId)
+  const refreshed = history.openFeed({ ...FEED_ARTICLE, url: `${url}#section`, text: 'Updated feed text.' })
+  assert.deepEqual(refreshed, { ...saved, readingPosition: position })
+  assert.equal(history.list()[0].id, saved.historyId)
+  assert.equal(history.list().length, 2)
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), refreshed)
+}))
+
+test('feed summaries only reopen an existing snapshot and never create a history entry', () => fixture((directory) => {
+  const history = createReadingHistory(directory)
+  const summary = { ...FEED_ARTICLE, feedHasBody: false, text: 'A short summary.' }
+  assert.equal(history.openFeed(summary), null)
+  assert.deepEqual(history.list(), [])
+  const fromWeb = history.save(ARTICLE)
+  assert.deepEqual(history.openFeed(summary), fromWeb)
+  assert.equal(history.list().length, 1)
+}))
+
+test('importing a full web article upgrades the feed snapshot and rejects writes from the old snapshot', () => fixture((directory) => {
+  const history = createReadingHistory(directory)
+  const feed = history.openFeed(FEED_ARTICLE)
+  const position = { offset: 28, top: 12, progress: 0.5 }
+  assert.equal(history.savePosition(feed.historyId, position, feed.id), true)
+  const fromWeb = history.save(ARTICLE)
+  assert.equal(fromWeb.historyId, feed.historyId)
+  assert.equal(fromWeb.readingPosition, null)
+  assert.equal(history.savePosition(feed.historyId, position, feed.id), false)
+  assert.equal(history.list().length, 1)
+  assert.deepEqual(history.openFeed(FEED_ARTICLE), fromWeb)
 }))
 
 test('pasted text is saved and repeated visits sort by most recently opened', () => fixture((directory) => {

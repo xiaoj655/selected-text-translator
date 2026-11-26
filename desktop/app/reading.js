@@ -214,7 +214,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     clearTimeout(positionTimer)
     const state = panelStates.get(activePanel)
     if (!state?.article.historyId || !state.position) return
-    void api.savePosition({ id: state.article.historyId, position: state.position }).catch(() => {})
+    void api.savePosition({ id: state.article.historyId, articleId: state.article.id, position: state.position }).catch(() => {})
   }
 
   function restorePosition(panel) {
@@ -256,6 +256,19 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     } finally { origin.disabled = false }
   }
 
+  async function openFeedArticle(article, origin) {
+    origin.disabled = true
+    let saved
+    let saveError = ''
+    try {
+      saved = await api.openFeed(article.id)
+    } catch {
+      saveError = 'Couldn’t save this article to reading history.'
+    } finally { origin.disabled = false }
+    if (!origin.isConnected || origin.closest('[hidden]')) return
+    openArticle(saved || article, origin, saveError)
+  }
+
   async function openHistory() {
     showPanel(null)
     showingHistory = true
@@ -278,7 +291,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       const history = await api.history()
       if (!showingHistory) return
       clearHistory.disabled = !history.length
-      listStatus.textContent = history.length ? 'Saved on this device. Open an article to continue reading.' : 'No imported articles yet. Open a link or paste text to start reading.'
+      listStatus.textContent = history.length ? 'Saved on this device. Open an article to continue reading.' : 'No articles in your reading history yet.'
       historyList.replaceChildren(...history.map((article) => {
         const item = el('li', 'reading-history-item')
         const content = el('div', 'reading-history-content')
@@ -370,7 +383,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     }
     list.replaceChildren(...(feed?.articles || []).map((article) => {
       const item = el('li')
-      const open = button(article.title, '', () => openArticle(article, open), 'reading-article-title')
+      const open = button(article.title, '', () => void openFeedArticle(article, open), 'reading-article-title')
       open.lang = 'en'
       const meta = attribution(article)
       if (article.feedHasBody) {
@@ -647,7 +660,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     input.focus()
   }
 
-  function openArticle(article, origin, pastedText) {
+  function openArticle(article, origin, saveError = '') {
     const existing = sessions.get(article.id)
     if (existing) {
       showPanel(existing)
@@ -674,10 +687,11 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       meta.append(' · ', original)
       panel.append(meta)
     }
+    if (saveError) panel.append(el('p', 'reading-meta', saveError))
     const excerpt = article.excerpt || article.text
     const materialOptions = { openLink: (url) => api.openLink(url),
       onError: () => { status.textContent = 'Couldn’t open the link. Try the original article.' } }
-    if (article.kind === 'web_article' || article.kind === 'pasted_text' || article.html || pastedText) {
+    if (article.kind === 'web_article' || article.kind === 'pasted_text' || article.kind === 'feed_article' || article.html) {
       const material = createReadingMaterial(article, materialOptions)
       lookup.bindMaterial(material, article)
       panel.append(material)
@@ -692,8 +706,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
         const details = el('details', 'reading-material')
         const material = englishText('p', 'reading-preview', moreText)
         lookup.bindMaterial(material, article)
-        details.append(el('summary', '', pastedText ? 'Read the full text' : 'Read more from the feed'),
-          material)
+        details.append(el('summary', '', 'Read more from the feed'), material)
         details.addEventListener('toggle', () => { if (!details.open) lookup.close() })
         panel.append(details)
       }
@@ -780,7 +793,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       try {
         const history = state.turns.slice(-8).map(({ role, text, quote }) =>
           ({ role, text: quote ? `${text}\n${quote}` : text }))
-        const result = await api.discuss({ articleId: article.id, pastedText, question, history,
+        const result = await api.discuss({ articleId: article.id, question, history,
           focusText: question ? readingFocusText(panel, scroller) || readingPositions.get(panel) || '' : '' })
         if (question) {
           const userTurn = { role: 'user', text: question }
