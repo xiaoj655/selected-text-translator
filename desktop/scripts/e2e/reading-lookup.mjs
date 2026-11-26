@@ -229,8 +229,9 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
       if (isArticleExplanation(body)) return reply(res, {
         paraphrase: 'The team will save a copy of the interview.', structure: guide(data).structure,
       })
+      const asksForPhonetic = body.messages[0].content.includes('Always include a non-empty "phonetic" field')
       reply(res, {
-        translation: translation(data), phonetic: '/rɪˈkɔːrd/',
+        translation: translation(data), ...(asksForPhonetic && { phonetic: '/rɪˈkɔːrd/' }),
         definitions: [{ pos: 'v.', meaning: 'to save sound for later' }],
       })
     })
@@ -248,6 +249,7 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
           await panel.focus()
           await page.keyboard.press('Space')
           assert.equal(await dictionary.getAttribute('open'), '')
+          await dictionary.getByText('/rɪˈkɔːrd/', { exact: true }).waitFor()
           assert.equal(await sentence.getAttribute('open'), null)
           await page.keyboard.press('Space')
           await grammar.locator('.sentence-legend').waitFor()

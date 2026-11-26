@@ -199,7 +199,8 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
     }
     if (controller.signal.aborted) return
     let isQwenMtRequest = kind === 'translate' && !usesStructuredOutputForModel(model)
-    if (!IS_EXTENSION_SERVICE_WORKER && isQwenMtRequest && isSingleWordInput(text)) {
+    const isDesktopWordTranslation = !IS_EXTENSION_SERVICE_WORKER && kind === 'translate' && isSingleWordInput(text)
+    if (isDesktopWordTranslation && isQwenMtRequest) {
       const reading = await readReadingSettings()
       const enrichmentModel = getLearningModel('', reading.learningModel)
       if (enrichmentModel) {
@@ -226,7 +227,7 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
       contextStart: payload?.contextStart, contextEnd: payload?.contextEnd }) : null
     const endpoint = normalizeEndpoint(settings.baseUrl)
     const streamStructured = !IS_EXTENSION_SERVICE_WORKER
-      && (kind === 'guide' || (kind === 'translate' && !isQwenMtRequest && isSingleWordInput(text)))
+      && (kind === 'guide' || (isDesktopWordTranslation && !isQwenMtRequest))
       && supportsDashScopeStructuredStream(endpoint, model)
     const requestBody = kind !== 'translate'
       ? buildReadingRequest({ model, ...readingOptions, context: payload?.context,
@@ -237,7 +238,8 @@ async function handleStartTranslation({ tabId, frameId, key, payload }) {
             sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary })
         : buildGenericRequest({ model, text, context: payload?.context,
             contextStart: payload?.contextStart, contextEnd: payload?.contextEnd, targetLanguage: payload?.targetLanguage,
-            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary, stream: streamStructured })
+            sourceLanguage: payload?.sourceLanguage, glossary: payload?.glossary, stream: streamStructured,
+            requireWordPronunciation: isDesktopWordTranslation && payload?.requestScope === 'reading' })
     try {
       cacheKey = await createResultCacheKey({ kind, endpoint, apiKey: settings.apiKey, requestBody,
         context: payload?.context, contextStart: payload?.contextStart, contextEnd: payload?.contextEnd })

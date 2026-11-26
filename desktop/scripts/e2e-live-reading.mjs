@@ -40,6 +40,7 @@ mkdirSync(screenshotDir, { recursive: true })
 const userDataDir = mkdtempSync(join(tmpdir(), 'stt-live-reading-'))
 const results = []
 const recoveryOnly = process.argv.includes('--recovery')
+const filter = process.env.STT_E2E_FILTER ? new RegExp(process.env.STT_E2E_FILTER, 'u') : null
 let app
 let page
 let savedWidth
@@ -49,6 +50,7 @@ let importedHistoryId
 
 async function check(name, run) {
   if (recoveryOnly && !/history stores|restart restores/u.test(name)) return
+  if (filter && !filter.test(name)) return
   const started = Date.now()
   try {
     const detail = await run()
@@ -128,6 +130,15 @@ async function waitForAnalysis() {
   const paraphrase = await page.locator('.reading-sentence-paraphrase').textContent()
   assert.ok(paraphrase.trim(), 'The article should show its full-sentence meaning.')
   return paraphrase.trim()
+}
+
+async function showPronunciation() {
+  const lookup = page.locator('#reading-lookup-meaning[data-status="done"]')
+  await lookup.waitFor()
+  await lookup.getByText('Dictionary details', { exact: true }).click()
+  const phonetic = await lookup.locator('.phonetic-badge').textContent()
+  assert.ok(phonetic.trim(), 'Direct word translation should supply a pronunciation.')
+  return phonetic.trim()
 }
 
 async function roles() {
@@ -227,7 +238,8 @@ try {
     await page.locator('#reading-detail .reading-preview').waitFor()
     const before = await page.evaluate(() => window.__readingLiveRequests.length)
     await clickWord(page, 'costs')
-    await page.locator('#reading-lookup-result .translation-text').waitFor()
+    const costsPhonetic = await showPronunciation()
+    await screenshot('point-word-pronunciation')
     const paraphrase = await waitForAnalysis()
     assert.equal(await page.locator('#reading-sentence-toggle').getAttribute('open'), '')
     assert.deepEqual(await page.locator('.reading-sentence-source').allTextContents(), [first])
@@ -236,12 +248,12 @@ try {
     assert.ok(main.subject.includes('The changes'), JSON.stringify(main))
     await screenshot('point-word')
     await clickWord(page, 'proposed', 0, { keepOpen: true })
-    await page.locator('#reading-lookup-result .translation-text').waitFor()
+    const proposedPhonetic = await showPronunciation()
     assert.equal(await waitForAnalysis(), paraphrase)
     const requests = await page.evaluate((start) => window.__readingLiveRequests.slice(start), before)
     assert.deepEqual(requests.filter(({ kind }) => kind === 'article-explanation').map(({ text }) => text), [first])
     assert.deepEqual(requests.filter(({ kind }) => kind === 'translate').map(({ text }) => text), ['costs', 'proposed'])
-    return { paraphrase, roles: main, sentenceRequests: 1 }
+    return { paraphrase, roles: main, sentenceRequests: 1, pronunciations: [costsPhonetic, proposedPhonetic] }
   })
 
   await check('partial clause translates selection and analyzes the full sentence', async () => {
@@ -338,6 +350,7 @@ try {
     assert.ok(Math.abs(width - savedWidth) < 3, `Saved sidebar width changed: ${savedWidth} -> ${width}`)
     return { savedScrollTop: savedPosition, restoredScrollTop: restored, sidebarWidth: width }
   })
+  if (!results.length) throw new Error('No live reading checks matched the requested filters.')
 } catch (error) {
   results.push({ name: 'harness', ok: false, error: scrub(error) })
   console.error(`[e2e:live-reading] FAIL harness: ${scrub(error)}`)
