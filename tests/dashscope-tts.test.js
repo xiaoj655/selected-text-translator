@@ -5,6 +5,7 @@ import { dashScopeSpeechKey, synthesizeDashScopeSpeech } from '../desktop/src/da
 
 const API_KEY = 'mock-speech-key'
 const TTS_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+const WORD_TTS_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer'
 
 function speechEvent(data, finishReason) {
   return `id: 1\r\nevent: result\r\ndata: ${JSON.stringify({
@@ -85,6 +86,36 @@ test('DashScope English synthesis sends a single fixed-host request and assemble
   assert.equal(wav.toString('ascii', 36, 40), 'data')
   assert.equal(wav.readUInt32LE(40), 8)
   assert.deepEqual(wav.subarray(44), Buffer.from([1, 0, 2, 0, 3, 0, 4, 0]))
+})
+
+test('word synthesis puts only validated phonemes and escaped text into SSML', async () => {
+  const cases = [
+    { text: 'comfortable', pronunciation: '', expected: { text: 'comfortable' } },
+    { text: 'record', pronunciation: 'R EH1 "K" ER0 D', expected: { text: 'record' } },
+    {
+      text: '<record & repeat>', pronunciation: 'R EH1  K ER0 D', expected: {
+        text: '<speak><phoneme alphabet="cmu" ph="R EH1 K ER0 D">&lt;record &amp; repeat&gt;</phoneme></speak>',
+        enable_ssml: true,
+      },
+    },
+  ]
+  const requests = []
+  for (const { text, pronunciation } of cases) {
+    await synthesizeDashScopeSpeech(text, {
+      apiKey: API_KEY, isEnglishWord: true, pronunciation,
+      fetchImpl: async (url, { body }) => {
+        requests.push({ url, body: JSON.parse(body) })
+        return speechResponse(speechEvent('AQACAA==', 'stop'))
+      },
+    })
+  }
+  assert.deepEqual(requests, cases.map(({ expected }) => ({
+    url: WORD_TTS_ENDPOINT,
+    body: {
+      model: 'qwen-audio-3.1-tts-flash',
+      input: { voice: 'Abby_v3.1', format: 'pcm', sample_rate: 24000, rate: 1, ...expected },
+    },
+  })))
 })
 
 test('DashScope synthesis rejects incomplete, empty, malformed, and failed responses without leaking upstream data',

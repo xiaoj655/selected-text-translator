@@ -3,8 +3,8 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 
-const PREVIEW = 'Could you record the meeting? I need a record of what we decided.'
-const ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+const ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer'
+const PREVIEW_SSML = '<speak><phoneme alphabet="cmu" ph="R EH1 K ER0 D">record</phoneme></speak>'
 
 export async function withSpeechCommands(page, run) {
   await page.evaluate(() => {
@@ -96,7 +96,7 @@ async function waitForSpeechStatus(page, expected) {
 }
 
 export async function verifyCloudSpeech({ app, page, check }) {
-  await check('cloud speech: opt in, cancel synthesis and play a mocked preview', async () => {
+  await check('cloud speech: opt in, cancel synthesis and play a mocked single-word preview', async () => {
     const key = `sk-e2e-${randomUUID()}`
     const toggle = page.locator('#opt-cloud-speech')
     const keyInput = page.locator('#cfg-cloud-speech-key')
@@ -128,7 +128,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
       await page.evaluate(() => {
         window.cloudSpeechEvents = []
         window.captureCloudSpeech = (message) => {
-          if (message.type === 'SPEECH_EVENT') window.cloudSpeechEvents.push(message.payload.status)
+          if (message.type === 'SPEECH_EVENT') window.cloudSpeechEvents.push(message.payload)
         }
         chrome.runtime.onMessage.addListener(window.captureCloudSpeech)
       })
@@ -137,20 +137,25 @@ export async function verifyCloudSpeech({ app, page, check }) {
       const pending = await waitForSpeechMock(app, ({ requests }) => requests.length >= 1, 'a speech request')
       assert.deepEqual(pending.requests, [{
         method: 'POST', hasExpectedAuthorization: true, sse: 'enable',
-        body: { model: 'qwen3-tts-flash', input: { text: PREVIEW, voice: 'Jennifer', language_type: 'English' } },
+        body: {
+          model: 'qwen-audio-3.1-tts-flash',
+          input: { text: PREVIEW_SSML, voice: 'Abby_v3.1', format: 'pcm', sample_rate: 24000, rate: 0.9, enable_ssml: true },
+        },
       }])
       assert.equal(await preview.getAttribute('aria-pressed'), 'true')
       await preview.click()
       await waitForSpeechMock(app, ({ abortCount }) => abortCount === 1, 'the request to abort')
       await waitForSpeechStatus(page, 'Playback stopped.')
       assert.equal(await preview.getAttribute('aria-pressed'), 'false')
-      await page.waitForFunction(() => window.cloudSpeechEvents.includes('cancelled'))
-      assert.deepEqual(await page.evaluate(() => window.cloudSpeechEvents.splice(0)), ['cancelled'])
+      await page.waitForFunction(() => window.cloudSpeechEvents.some(({ status }) => status === 'cancelled'))
+      assert.deepEqual(await page.evaluate(() => window.cloudSpeechEvents.splice(0).map(({ status }) => status)), ['cancelled'])
 
       await app.evaluate(() => { globalThis.cloudSpeechProbe.hold = false })
       await preview.click()
       await waitForSpeechStatus(page, 'Playback finished.')
-      assert.deepEqual(await page.evaluate(() => window.cloudSpeechEvents), ['start', 'end'])
+      const events = await page.evaluate(() => window.cloudSpeechEvents)
+      assert.deepEqual(events.map(({ status }) => status), ['start', 'end'])
+      assert.match(events[0].message, /Abby/u)
       assert.equal(await preview.getAttribute('aria-pressed'), 'false')
       const { entries } = await page.evaluate(() => window.sttDesktop.requestDebug.getState())
       assert.deepEqual(entries.map(({ kind, outcome, status }) => ({ kind, outcome, status })), [

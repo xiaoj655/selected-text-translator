@@ -22,8 +22,8 @@ function setup(overrides = {}) {
     },
     ...overrides,
   })
-  const speak = (text, lang = 'en-US') => {
-    tts.speak(text, { lang, rate: 0.8, onEvent: (event) => events.push([text, event.type]) })
+  const speak = (text, lang = 'en-US', pronunciation) => {
+    tts.speak(text, { lang, pronunciation, rate: 0.8, onEvent: (event) => events.push([text, event.type]) })
   }
   return { tts, speak, children, events }
 }
@@ -46,6 +46,48 @@ test('English cloud speech preserves the selected rate through playback', async 
   await setImmediate()
   assert.equal(children.length, 0)
   assert.deepEqual(events, [['Preview.', 'start'], ['Preview.', 'end']])
+})
+
+test('cloud word speech applies the selected rate during synthesis and passes the contextual pronunciation', async () => {
+  const { speak, children, events } = setup({
+    synthesize: async (text, { isEnglishWord, pronunciation, rate }) => {
+      assert.equal(text, 'record')
+      assert.equal(isEnglishWord, true)
+      assert.equal(pronunciation, 'R EH1 K ER0 D')
+      assert.equal(rate, 0.8)
+      return Buffer.from('mock word audio')
+    },
+    play: async (_wav, { rate, onStart }) => {
+      assert.equal(rate, 1)
+      onStart()
+    },
+  })
+  speak('record', 'en-US', 'R EH1 K ER0 D')
+  await setImmediate()
+  assert.equal(children.length, 0)
+  assert.deepEqual(events, [['record', 'start'], ['record', 'end']])
+})
+
+test('a cloud error retries ordinary words with Jennifer and avoids substituting a different contextual pronunciation', async () => {
+  const calls = []
+  const { speak, children, events } = setup({
+    synthesize: async (text, { isEnglishWord }) => {
+      calls.push([text, isEnglishWord])
+      if (isEnglishWord) throw new Error('Word voice unavailable')
+      return Buffer.from('mock fallback audio')
+    },
+    play: async (_wav, { rate, onStart }) => {
+      assert.equal(rate, 0.8)
+      onStart()
+    },
+  })
+  speak('hello')
+  await setImmediate()
+  speak('read', 'en-US', 'R EH1 D')
+  await setImmediate()
+  assert.deepEqual(calls, [['hello', true], ['hello', false], ['read', true]])
+  assert.deepEqual(events, [['hello', 'fallback'], ['hello', 'start'], ['hello', 'end'], ['read', 'error']])
+  assert.equal(children.length, 0)
 })
 
 test('stopping cloud synthesis aborts it and ignores any late audio', async () => {

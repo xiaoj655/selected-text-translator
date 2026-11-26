@@ -3,6 +3,9 @@ import { dashScopeSpeechKey, synthesizeDashScopeSpeech } from './dashscope-tts.j
 
 const CLOUD_SPEECH_TIMEOUT_MS = 10000
 const CLOUD_SPEECH_MAX_LENGTH = 600
+const CLOUD_WORD_TIMEOUT_MS = 5000
+const ENGLISH_WORD = /^[A-Za-z]+(?:[-'’][A-Za-z]+)*$/u
+const CONTEXTUAL_SPEECH_ERROR = 'Could not play this pronunciation with the cloud voice. Try again.'
 
 const VOICE_BY_LANG = Object.freeze({
   'zh-CN': { darwin: 'Ting-Ting', win32: 'Microsoft Huihui Desktop' },
@@ -80,10 +83,10 @@ export function createTts({
     })
   }
 
-  function finish(task, type) {
+  function finish(task, type, message) {
     if (current !== task) return
     current = null
-    task.onEvent({ type })
+    task.onEvent(message ? { type, message } : { type })
   }
 
   function stop(type = 'cancelled') {
@@ -132,24 +135,46 @@ export function createTts({
     }
 
     const apiKey = dashScopeSpeechKey(settings)
+    const isEnglishWord = text.length <= 64 && ENGLISH_WORD.test(text)
+    const pronunciation = isEnglishWord ? options.pronunciation : undefined
     let fallbackMessage = ''
+    if (!apiKey && pronunciation) {
+      finish(task, 'error', 'Add a Model Studio API key in Speech settings to play this pronunciation.')
+      return
+    }
     if (!apiKey) fallbackMessage = 'Add a DashScope API key in Speech settings. Using a system voice for now.'
     else if (text.length > CLOUD_SPEECH_MAX_LENGTH) fallbackMessage = 'Using a system voice for text over 600 characters.'
     else {
       const signal = task.controller.signal
       let hasStarted = false
       try {
-        const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(CLOUD_SPEECH_TIMEOUT_MS)])
-        const audio = await synthesize(text, { apiKey, signal: requestSignal })
+        const synthesizeWith = async (wordVoice, timeout) => {
+          const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(timeout)])
+          const audio = await synthesize(text, {
+            apiKey, signal: requestSignal, isEnglishWord: wordVoice, pronunciation, rate: options.rate,
+          })
+          requestSignal.throwIfAborted()
+          return audio
+        }
+        let wordVoice = isEnglishWord
+        let audio
+        try {
+          audio = await synthesizeWith(wordVoice, wordVoice ? CLOUD_WORD_TIMEOUT_MS : CLOUD_SPEECH_TIMEOUT_MS)
+        } catch (error) {
+          if (!wordVoice || pronunciation || signal.aborted) throw error
+          wordVoice = false
+          audio = await synthesizeWith(false, CLOUD_SPEECH_TIMEOUT_MS - CLOUD_WORD_TIMEOUT_MS)
+          if (current !== task) return
+          task.onEvent({ type: 'fallback', message: 'Using the Jennifer cloud voice for this word.' })
+        }
         if (current !== task) return
-        requestSignal.throwIfAborted()
         await play(audio, {
-          rate: options.rate,
+          rate: wordVoice ? 1 : options.rate,
           signal,
           onStart() {
             if (current !== task) return
             hasStarted = true
-            task.onEvent({ type: 'start' })
+            task.onEvent({ type: 'start', message: `Playing with ${wordVoice ? 'Abby' : 'Jennifer'} (Alibaba Cloud).` })
           },
         })
         finish(task, 'end')
@@ -157,8 +182,8 @@ export function createTts({
       } catch {
         if (current !== task) return
         logger('cloud speech unavailable')
-        if (hasStarted) {
-          finish(task, 'error')
+        if (hasStarted || pronunciation) {
+          finish(task, 'error', pronunciation ? CONTEXTUAL_SPEECH_ERROR : undefined)
           return
         }
         fallbackMessage = 'Cloud speech is unavailable. Using a system voice for now.'

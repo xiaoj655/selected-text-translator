@@ -7,10 +7,12 @@ import { classifyReadingSelection } from '../vendor/src/reading-support.js'
 import { installReadingSelection, rangeForOffsets, readingSentenceStructureRanges } from './reading-selection.js'
 import { createReadingLookupLayout } from './reading-lookup-layout.js'
 import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.js'
+import { hasContextualPronunciations, resolveContextualPronunciation } from './contextual-pronunciation.js'
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const EXPLANATION_KIND = 'article-explanation'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
+const PRONUNCIATION_WAIT_MS = 4500
 const SELECTION_HIGHLIGHT = 'reading-lookup-selection'
 const STRUCTURE_HIGHLIGHTS = {
   subject: 'reading-lookup-subject',
@@ -95,6 +97,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   let counter = 0
   let lastMode
   let speechId = null
+  let pendingSpeechTimer = null
   const id = () => `reading-${Date.now()}-${++counter}`
   const modeReady = chrome.storage.sync.get(MODE_KEY).then(
     (values) => { lastMode ??= values?.[MODE_KEY] === 'guide' ? 'guide' : 'translate' },
@@ -117,6 +120,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const previous = speechId
     speechId = null
     speak.textContent = 'Read aloud'
+    if (pendingSpeechTimer !== null) {
+      clearTimeout(pendingSpeechTimer)
+      pendingSpeechTimer = null
+      feedback.textContent = ''
+      return
+    }
     void chrome.runtime.sendMessage({ type: 'STOP_SPEECH', payload: { speechId: previous } }).catch(() => {})
   }
 
@@ -228,6 +237,12 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     } else {
       body.scrollTop = scrollTop
     }
+    if (pendingSpeechTimer !== null && !ACTIVE.has(entry.status)) {
+      clearTimeout(pendingSpeechTimer)
+      pendingSpeechTimer = null
+      feedback.textContent = ''
+      void playSpeech(entry, speechId)
+    }
   }
 
   function renderActions() {
@@ -297,6 +312,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   async function request(mode, forceRefresh = false) {
     if (!entry || !['translate', 'guide'].includes(mode)) return
     if (!forceRefresh && entry.mode === mode && (ACTIVE.has(entry.status) || entry.status === 'done')) return
+    if (pendingSpeechTimer !== null) stopSpeech()
     cancel()
     const current = entry
     const modeChanged = current.mode !== mode
@@ -368,6 +384,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   }
 
   function stopRequest() {
+    if (pendingSpeechTimer !== null) stopSpeech()
     cancel()
     if (!entry) return
     entry.status = 'cancelled'
@@ -412,15 +429,31 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     }
   }
 
-  async function toggleSpeech() {
+  function toggleSpeech() {
     if (speechId) { stopSpeech(); return }
     if (!entry) return
-    const current = entry
-    const nextId = id()
-    speechId = nextId
+    speechId = id()
     speak.textContent = 'Stop reading'
+    if (hasContextualPronunciations(entry.text) && ACTIVE.has(entry.status)) {
+      feedback.textContent = 'Checking pronunciation…'
+      pendingSpeechTimer = setTimeout(() => {
+        stopSpeech()
+        feedback.textContent = 'Pronunciation is still loading. Try reading aloud again when it’s ready.'
+      }, PRONUNCIATION_WAIT_MS)
+      return
+    }
+    feedback.textContent = ''
+    void playSpeech(entry, speechId)
+  }
+
+  async function playSpeech(current, nextId) {
+    const pronunciation = resolveContextualPronunciation(current.text, current.lexical?.phonetic || current.guide?.phonetic)
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId: nextId, text: current.text } })
+      const response = await chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: {
+        speechId: nextId,
+        text: current.text,
+        ...(pronunciation && { pronunciation: pronunciation.phonemes, language: 'en-US' }),
+      } })
       if (speechId === nextId && !response?.ok) {
         speechId = null
         speak.textContent = 'Read aloud'
@@ -456,7 +489,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         speechId = null
         speak.textContent = 'Read aloud'
       }
-      if (payload.status === 'error') feedback.textContent = 'Speech unavailable. Check speech settings and system voices.'
+      if (payload.status === 'error') feedback.textContent = payload.message || 'Speech unavailable. Check speech settings and system voices.'
       if (payload.status === 'fallback') feedback.textContent = payload.message
       return
     }
@@ -484,10 +517,16 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         if (entry.mode === 'guide') entry.previewHint = String(payload.previewHint || '')
         else entry.translatedText = String(payload.translatedText || '')
         break
-      case 'success':
+      case 'success': {
         entry.translatedText = String(payload.translatedText || entry.translatedText || '').trim()
         entry.lexical = payload.lexicalDetails || null
         entry.guide = payload.result || null
+        const details = entry.lexical?.phonetic ? entry.lexical : entry.guide
+        const pronunciation = resolveContextualPronunciation(entry.text, details?.phonetic)
+        if (pronunciation) {
+          if (details === entry.lexical) entry.lexical = { ...details, phonetic: pronunciation.ipa }
+          else entry.guide = { ...details, phonetic: pronunciation.ipa }
+        }
         entry.structure = payload.structure || null
         entry.sentenceAnalysis = payload.sentenceAnalysis || null
         entry.status = (entry.mode === 'guide' ? entry.guide : entry.translatedText) ? 'done' : 'error'
@@ -497,6 +536,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
             guideType: entry.guide?.guideType, createdAt: entry.createdAt })).catch(() => {})
         }
         break
+      }
       case 'error':
       case 'missing-configuration': entry.status = 'error'; entry.error = localizeErrorMessage(payload); break
       default: return

@@ -104,7 +104,8 @@ async function startSpeech({ message, tabId, frameId, speechId, clientId, docume
     }
     const voiceName = isPreview ? String(message.payload?.voiceName || '') : settings.voiceName
     const voice = voices.find((item) => item?.voiceName === voiceName)
-    const lang = speechLanguageCode(text)
+    const desktopEnglish = chrome.desktopUI && message.payload?.language === 'en-US'
+    const lang = desktopEnglish ? 'en-US' : speechLanguageCode(text)
     const canUseVoice = voice && (isPreview || voice.lang?.split('-')[0] === lang.split('-')[0])
     const rate = isPreview ? Number(message.payload?.rate) : settings.rate
     pendingSpeech = null
@@ -113,6 +114,8 @@ async function startSpeech({ message, tabId, frameId, speechId, clientId, docume
     chrome.tts.speak(text, {
       lang: canUseVoice ? voice.lang : lang,
       ...(canUseVoice ? { voiceName: voice.voiceName } : {}),
+      ...(desktopEnglish && typeof message.payload?.pronunciation === 'string'
+        ? { pronunciation: message.payload.pronunciation } : {}),
       rate: Number.isFinite(rate) && rate >= 0.5 && rate <= 1.5 ? rate : 0.9,
       enqueue: false,
       onEvent(event) {
@@ -126,8 +129,7 @@ async function startSpeech({ message, tabId, frameId, speechId, clientId, docume
             speechId,
             ...(clientId ? { clientId } : {}),
             status: event.type,
-            message: event.type === 'error' ? 'Unable to speak. Check the installed system voices.'
-              : event.type === 'fallback' ? String(event.message || '') : '',
+            message: String(event.message || (event.type === 'error' ? 'Unable to speak. Check the installed system voices.' : '')),
           },
         }
         if (clientId) {

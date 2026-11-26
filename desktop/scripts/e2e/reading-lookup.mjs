@@ -222,7 +222,8 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
     }
   })
 
-  await check('direct shortcuts: article opens dictionary then sentence details and toggles source speech', async () => {
+  await check('direct shortcuts: article opens details and reads the contextual pronunciation', async () => {
+    const verbLookup = deferred()
     mock.setHandler(async ({ body, res, defaultResponse }) => {
       const data = sourceData(body)
       if (!data) return defaultResponse({ body, res })
@@ -230,9 +231,11 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
         paraphrase: 'The team will save a copy of the interview.', structure: guide(data).structure,
       })
       const asksForPhonetic = body.messages[0].content.includes('Always include a non-empty "phonetic" field')
+      const verb = data.selectedOccurrence?.before.endsWith('will ')
+      if (verb) await verbLookup.promise
       reply(res, {
-        translation: translation(data), ...(asksForPhonetic && { phonetic: '/rɪˈkɔːrd/' }),
-        definitions: [{ pos: 'v.', meaning: 'to save sound for later' }],
+        translation: translation(data), ...(asksForPhonetic && { phonetic: verb ? '/rɪˈkɔːrd/' : '[ˈɹɛkɚd]' }),
+        definitions: [verb ? { pos: 'v.', meaning: 'to save sound for later' } : { pos: 'n.', meaning: 'a saved copy' }],
       })
     })
     try {
@@ -244,12 +247,20 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
           const dictionary = panel.locator('.lexical-details')
           const sentence = panel.locator('#reading-sentence-explanation')
           const grammar = panel.locator('#reading-sentence-toggle')
+          await panel.focus()
+          await page.keyboard.press('r')
+          await panel.getByText('Checking pronunciation…', { exact: true }).waitFor()
+          assert.deepEqual(await commands(), [], 'speech must wait for the contextual reading')
+          await page.keyboard.press('r')
+          assert.deepEqual(await commands(), [], 'cancelling queued speech does not send a stop command')
+          await page.keyboard.press('r')
+          verbLookup.resolve()
           await dictionary.waitFor()
           await page.waitForFunction(() => CSS.highlights.has('reading-lookup-verb'))
           await panel.focus()
           await page.keyboard.press('Space')
           assert.equal(await dictionary.getAttribute('open'), '')
-          await dictionary.getByText('/rɪˈkɔːrd/', { exact: true }).waitFor()
+          await dictionary.getByText('/rɪˈkɔrd/', { exact: true }).waitFor()
           assert.equal(await sentence.getAttribute('open'), null)
           await page.keyboard.press('Space')
           await grammar.locator('.sentence-legend').waitFor()
@@ -264,15 +275,29 @@ export async function verifyReadingLookup({ app, page, mock, check, shot, readin
             key: ' ', cancelable: true, bubbles: true,
           }))), true, 'Space remains available for scrolling once all details are open')
 
-          await page.keyboard.press('r')
           const [speech] = await commands()
           assert.equal(speech.type, 'SPEAK_TEXT')
-          assert.equal(speech.payload.text, 'record')
+          assert.deepEqual(speech.payload, {
+            speechId: speech.payload.speechId, text: 'record', pronunciation: 'R IH0 K AO1 R D', language: 'en-US',
+          })
           await page.keyboard.press('r')
           assert.deepEqual((await commands()).at(-1), { type: 'STOP_SPEECH', payload: { speechId: speech.payload.speechId } })
+
+          await clickWord(page, 'record', 1)
+          await dictionary.waitFor()
+          await panel.focus()
+          await page.keyboard.press('r')
+          const nounSpeech = (await commands()).at(-1)
+          assert.equal(nounSpeech.type, 'SPEAK_TEXT')
+          assert.deepEqual(nounSpeech.payload, {
+            speechId: nounSpeech.payload.speechId, text: 'record', pronunciation: 'R EH1 K ER0 D', language: 'en-US',
+          })
         })
       })
-    } finally { mock.resetHandler() }
+    } finally {
+      verbLookup.resolve()
+      mock.resetHandler()
+    }
   })
 
   await check('article lookup: backward cross-line word snap and persistent sentence lookup', async () => {

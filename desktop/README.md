@@ -34,7 +34,7 @@ English Coach使用已配置的通用学习模型。翻译模型为通用模型�
 
 右上角「Settings」按用途分为四组，每次只显示一组。Models 配置翻译和学习模型，Reading 配置网页导入、朗读和文章排版，Preferences 管理语言、输入、窗口和外观，Data 管理术语表和学习档案。模型和朗读配置均提供 [百炼北京 API Key 获取链接](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key)。新安装默认由粘贴或手动提交触发翻译。
 
-在「Settings → Reading → Speech」勾选「Read English aloud with Alibaba Cloud」，保存后点「Preview voice」。百炼北京的翻译密钥可以直接复用，其他翻译服务请填单独的百炼北京 API Key。点击朗读时，英文文本会发给百炼，按输入字符计费。其他语言、超过 600 字符的内容和云服务不可用时使用系统语音。[百炼音色试听](https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list) · [计费说明](https://help.aliyun.com/zh/model-studio/model-pricing)
+在「Settings → Reading → Speech」勾选「Read English aloud with Alibaba Cloud」，保存后点「Preview voice」试听单词。百炼北京的翻译密钥可以直接复用，其他翻译服务请填单独的百炼北京 API Key。点击朗读时，英文文本会发给百炼，并按模型计费。单词优先用美式 Abby 音色，句子用 Jennifer。文章点词支持依据语境指定 `record`、`read` 等词的读音。指定读音合成失败会提示重试。其他语言、超过 600 字符的内容和普通云朗读不可用时可以使用系统语音。[Abby 音色试听](https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list) · [计费说明](https://help.aliyun.com/zh/model-studio/model-pricing)
 
 在右上角「More actions」可以看当前软件版本并打开 GitHub 发布页，也可打开表达本或日志。
 

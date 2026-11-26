@@ -8,6 +8,7 @@ import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { createTutorWorkspace } from './reading.js'
 import { bindUpdateMenu } from './update-menu.js'
 import { bindRequestDebug } from './request-debug.js'
+import { resolveContextualPronunciation } from './contextual-pronunciation.js'
 import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, shouldShowReviewReminder } from '../vendor/src/vocabulary-progress.js'
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
@@ -28,7 +29,7 @@ const DETECTED_LANGUAGE_TAGS = {
 }
 const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
 const SPEECH_PREVIEW_ID = 'speech-preview'
-const SPEECH_PREVIEW_TEXT = 'Could you record the meeting? I need a record of what we decided.'
+const SPEECH_PREVIEW_TEXT = 'record'
 const DEFAULT_ARTICLE_APPEARANCE = { font: 18, width: 840, fit: false, lookupFont: 18 }
 const ARTICLE_FONT_SIZES = [18, 20, 22, 24]
 const LOOKUP_FONT_SIZES = [16, 18, 20, 22]
@@ -1464,8 +1465,12 @@ function handleSpeechEvent(payload) {
     setSpeechStatus(payload.message)
     return
   }
+  if (payload.status === 'start' && payload.message && state.speechEntryId === SPEECH_PREVIEW_ID) {
+    setSpeechStatus(payload.message)
+    return
+  }
   if (!['end', 'error', 'interrupted', 'cancelled'].includes(payload.status)) return
-  if (payload.status === 'error') setSpeechStatus('Speech unavailable. Check speech settings and system voices.')
+  if (payload.status === 'error') setSpeechStatus(payload.message || 'Speech unavailable. Check speech settings and system voices.')
   if (payload.status === 'end') setSpeechStatus('Playback finished.')
   if (payload.status === 'interrupted' || payload.status === 'cancelled') setSpeechStatus('Playback stopped.')
   state.speechId = null
@@ -2005,7 +2010,10 @@ function toggleSpeech(entry, text = entry.text) {
   setSpeechStatus('Reading aloud…')
   patchSpeechButtons()
   try {
-    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text } }, (response) => {
+    const reading = text === entry.text && isEnglishSource(entry)
+      ? resolveContextualPronunciation(text, entry.lexical?.phonetic || entry.guide?.phonetic) : null
+    const pronunciation = reading ? { language: 'en-US', pronunciation: reading.phonemes } : {}
+    chrome.runtime.sendMessage({ type: 'SPEAK_TEXT', payload: { speechId, text, ...pronunciation } }, (response) => {
       if (!response?.ok && state.speechId === speechId) {
         setSpeechStatus(response?.message || 'Speech unavailable')
         state.speechId = null
@@ -2253,7 +2261,7 @@ function bind() {
     })
   }
   $('btn-preview-speech').addEventListener('click', () => {
-    toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT })
+    toggleSpeech({ id: SPEECH_PREVIEW_ID, text: SPEECH_PREVIEW_TEXT, lexical: { phonetic: '/ˈrek.ɚd/' } })
   })
   $('opt-theme').addEventListener('change', (event) => {
     state.prefs.theme = event.target.value
