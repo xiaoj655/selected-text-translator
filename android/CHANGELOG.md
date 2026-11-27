@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.12
+
+- Enable Alibaba Cloud read-aloud in **Settings → Speech**. Choose a preset or enter a custom voice ID, then preview it in Settings. The app uses Android speech if cloud audio is unavailable.
+
 ## 0.2.11
 
 - Reuse article images when scrolling back, with a bounded local image cache and memory usage sized to the device. Size decoded images to their display area to keep more photos in memory.

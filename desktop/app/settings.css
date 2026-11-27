@@ -74,7 +74,7 @@
 .settings-field .drawer-tip { margin: 0; }
 .settings-field > a { width: fit-content; color: var(--text-2); font-size: 12px; text-underline-offset: 3px; }
 
-.settings-field input, .settings-row select {
+.settings-field :is(input, select), .settings-row select {
   display: block;
   width: 100%;
   min-height: 38px;
@@ -85,6 +85,7 @@
 }
 
 .settings-field input::placeholder { color: var(--text-3); }
+.custom-voice-field:not([hidden]) { display: grid; gap: 6px; }
 .settings-key { position: relative; }
 .settings-key input { padding-inline-end: 42px; }
 .settings-key .field-toggle {

@@ -15,6 +15,14 @@ data class ProviderConfig(
     override fun toString(): String = "ProviderConfig(baseUrl=$baseUrl, translationModel=$translationModel, learningModel=$learningModel)"
 }
 
+data class SpeechConfig(
+    val cloudEnabled: Boolean = false,
+    val voice: String = DEFAULT_CLOUD_SPEECH_VOICE,
+    val apiKey: String = "",
+) {
+    override fun toString(): String = "SpeechConfig(cloudEnabled=$cloudEnabled, voice=$voice)"
+}
+
 enum class LookupMode { TRANSLATE, GUIDE }
 
 data class LookupResult(
@@ -45,6 +53,9 @@ data class LookupUiState(
     val config: ProviderConfig = ProviderConfig(),
     val settingsError: String? = null,
     val connectionTest: ModelConnectionTest? = null,
+    val speechConfig: SpeechConfig = SpeechConfig(),
+    val speechSaving: Boolean = false,
+    val speechSettingsError: String? = null,
     val page: LookupPage = LookupPage.LOOKUP,
     val saved: List<SavedExpression> = emptyList(),
     val isSaved: Boolean = false,
@@ -60,10 +71,14 @@ interface LookupActions {
     fun stopLookup()
     fun copy(text: String)
     fun speak(text: String)
+    fun previewSpeech(config: SpeechConfig)
+    fun stopSpeech()
     fun saveExpression()
     fun open(page: LookupPage)
     fun back()
     fun saveSettings(config: ProviderConfig)
+    fun saveSpeechSettings(config: SpeechConfig)
+    fun clearSpeechSettingsError()
     fun testConnection(config: ProviderConfig)
     fun clearConnectionTest()
     fun removeExpression(id: String)

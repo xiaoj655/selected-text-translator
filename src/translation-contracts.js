@@ -153,8 +153,9 @@ export function buildGenericRequest({ model, text, context, contextStart, contex
   glossary, stream = false, requireWordPronunciation = false }) {
   const sourceData = createContextualSourceData({ text, context, contextStart, contextEnd, targetLanguage })
   const basePrompt = buildTranslationSystemPrompt(targetLanguage, sourceLanguage, requireWordPronunciation)
-  const glossaryInstruction = buildGlossaryInstruction(glossary)
-  const systemPrompt = [basePrompt, glossaryInstruction, sourceData && CONTEXTUAL_SOURCE_INSTRUCTIONS(targetLanguage === ENGLISH_EXPLANATION_TARGET),
+  const explainInEnglish = targetLanguage === ENGLISH_EXPLANATION_TARGET
+  const glossaryInstruction = explainInEnglish ? '' : buildGlossaryInstruction(glossary)
+  const systemPrompt = [basePrompt, glossaryInstruction, sourceData && CONTEXTUAL_SOURCE_INSTRUCTIONS(explainInEnglish),
     stream && 'Write "translation" as the first field in the JSON object.'].filter(Boolean).join(' ')
   const payload = {
     model,

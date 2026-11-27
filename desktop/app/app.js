@@ -13,7 +13,7 @@ import { buildReviewReminder, formatStudyProgress, getDayKey, getStudyProgress, 
 import { makeMemoryKey, readMemoryEntry, writeMemoryEntry } from '../vendor/src/translation-memory.js'
 import { detectSourceLanguage, planLanguageSwap } from '../vendor/src/source-language.js'
 import { supportsSentenceStructure, supportsTranslationStructure } from '../vendor/src/reading-support.js'
-import { ENGLISH_EXPLANATION_TARGET } from '../vendor/src/translation-contracts.js'
+import { ENGLISH_EXPLANATION_TARGET, isSingleWordInput } from '../vendor/src/translation-contracts.js'
 import { sanitizeGlossary } from '../vendor/src/glossary.js'
 import {
   buildLearningArchive,
@@ -29,13 +29,27 @@ const DETECTED_LANGUAGE_TAGS = {
   chinese: 'zh', english: 'en', japanese: 'ja', korean: 'ko', french: 'fr', german: 'de', spanish: 'es',
 }
 const MODE_LABELS = { translate: 'Translate', guide: 'Guided Reading' }
-const ENGLISH_EXPLANATION_LABEL = 'Explain in English'
 const SPEECH_PREVIEW_ID = 'speech-preview-word'
 const SPEECH_TEXT_PREVIEW_ID = 'speech-preview-text'
 const SPEECH_PREVIEW_TEXT = 'record'
 const SPEECH_TEXT_PREVIEW = 'This is a preview of your English reading voice.'
 const DEFAULT_TEXT_TTS_MODEL = 'qwen3-tts-flash'
 const QWEN_AUDIO_TTS_MODEL = 'qwen-audio-3.1-tts-flash'
+const CLOUD_VOICE_PRESETS = {
+  [QWEN_AUDIO_TTS_MODEL]: [
+    ['Abby_v3.1', 'Abby · American female'],
+    ['Andy_v3.1', 'Andy · American male'],
+    ['Emily_v3.1', 'Emily · British female'],
+    ['Eric_v3.1', 'Eric · British male'],
+  ],
+  [DEFAULT_TEXT_TTS_MODEL]: [
+    ['Jennifer', 'Jennifer · American female'],
+    ['Aiden', 'Aiden · American male'],
+    ['Katerina', 'Katerina · Female'],
+    ['Ryan', 'Ryan · Male'],
+  ],
+}
+const textVoiceDrafts = new Map()
 const DEFAULT_ARTICLE_APPEARANCE = { font: 18, width: 840, fit: false, lookupFont: 18 }
 const ARTICLE_FONT_SIZES = [18, 20, 22, 24]
 const LOOKUP_FONT_SIZES = [16, 18, 20, 22]
@@ -993,25 +1007,28 @@ async function loadFlags() {
   }
 }
 
-function defaultTextVoice(model) {
-  return model === QWEN_AUDIO_TTS_MODEL ? 'Abby_v3.1' : 'Jennifer'
+function updateCustomCloudVoiceField(kind) {
+  const custom = $(`cfg-cloud-${kind}-voice`).value === ''
+  $(`cloud-${kind}-voice-custom`).hidden = !custom
+  $(`cfg-cloud-${kind}-voice-custom`).disabled = !custom
 }
 
-function updateTextVoiceOptions() {
-  const model = $('cfg-cloud-text-model').value
-  const voiceList = $('cloud-text-voice-list')
-  const suggestions = model === QWEN_AUDIO_TTS_MODEL
-    ? ['Abby_v3.1', 'Annie_v3.1', 'Ava_v3.1', 'Beth_v3.1', 'Andy_v3.1', 'Brian_v3.1', 'David_v3.1']
-    : ['Jennifer', 'Cherry', 'Serena', 'Ethan', 'Chelsie', 'Ryan', 'Aiden', 'Bella']
-  voiceList.replaceChildren(...suggestions.map((voice) => {
-    const option = document.createElement('option')
-    option.value = voice
-    return option
-  }))
-  $('cfg-cloud-text-voice').placeholder = defaultTextVoice(model)
-  $('cloud-text-voice-tip').textContent = model === QWEN_AUDIO_TTS_MODEL
-    ? 'Use a Qwen Audio 3.1 voice ID. Custom voices must be created for qwen-audio-3.1-tts-flash.'
-    : 'Use a Qwen3 TTS voice ID. Switch to Qwen Audio 3.1 TTS for a custom voice created for that model.'
+function renderCloudVoiceOptions(kind, model, selectedVoice) {
+  const select = $(`cfg-cloud-${kind}-voice`)
+  const presets = CLOUD_VOICE_PRESETS[model]
+  const voice = String(selectedVoice || '').trim() || presets[0][0]
+  const usePreset = presets.some(([id]) => id === voice)
+  select.replaceChildren(...presets.map(([id, label]) => new Option(label, id)), new Option('Custom voice ID…', ''))
+  select.dataset.model = model
+  select.value = usePreset ? voice : ''
+  $(`cfg-cloud-${kind}-voice-custom`).value = usePreset ? '' : voice
+  updateCustomCloudVoiceField(kind)
+}
+
+function selectedCloudVoice(kind) {
+  const select = $(`cfg-cloud-${kind}-voice`)
+  const custom = $(`cfg-cloud-${kind}-voice-custom`).value.trim()
+  return select.value || custom || CLOUD_VOICE_PRESETS[select.dataset.model][0][0]
 }
 
 async function loadSettings() {
@@ -1027,11 +1044,11 @@ async function loadSettings() {
     $('speech-rate-value').textContent = `${safeRate.toFixed(1)}×`
     $('opt-cloud-speech').checked = values?.desktop_tts_cloud === true
     $('cfg-cloud-speech-key').value = String(values?.desktop_tts_api_key || '')
-    $('cfg-cloud-word-voice').value = String(values?.desktop_tts_word_voice || 'Abby_v3.1')
-    $('cfg-cloud-text-model').value = values?.desktop_tts_text_model || DEFAULT_TEXT_TTS_MODEL
-    updateTextVoiceOptions()
-    $('cfg-cloud-text-voice').value = String(values?.desktop_tts_text_voice || defaultTextVoice($('cfg-cloud-text-model').value))
-    $('cfg-cloud-text-voice').dataset.model = $('cfg-cloud-text-model').value
+    const textModel = values?.desktop_tts_text_model === QWEN_AUDIO_TTS_MODEL ? QWEN_AUDIO_TTS_MODEL : DEFAULT_TEXT_TTS_MODEL
+    $('cfg-cloud-text-model').value = textModel
+    textVoiceDrafts.clear()
+    renderCloudVoiceOptions('word', QWEN_AUDIO_TTS_MODEL, values?.desktop_tts_word_voice)
+    renderCloudVoiceOptions('text', textModel, values?.desktop_tts_text_voice)
     $('cfg-iqs-key').value = String(values?.desktop_iqs_api_key || '')
     $('cfg-base-url').value = String(values?.base_url || '')
     $('cfg-api-key').value = String(values?.api_key || '')
@@ -1055,8 +1072,8 @@ async function saveSpeechSettings(event) {
     await chrome.storage.sync.set({
       desktop_tts_cloud: $('opt-cloud-speech').checked,
       desktop_tts_api_key: $('cfg-cloud-speech-key').value.trim(),
-      desktop_tts_word_voice: $('cfg-cloud-word-voice').value.trim() || 'Abby_v3.1',
-      desktop_tts_text_voice: $('cfg-cloud-text-voice').value.trim() || 'Jennifer',
+      desktop_tts_word_voice: selectedCloudVoice('word'),
+      desktop_tts_text_voice: selectedCloudVoice('text'),
       desktop_tts_text_model: $('cfg-cloud-text-model').value,
     })
     statusEl.textContent = 'Speech settings saved.'
@@ -1215,7 +1232,7 @@ function renderModes() {
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode))
   }
   $('send-label').textContent = state.mode === 'guide' ? 'Start guided reading'
-    : state.targetLanguage === ENGLISH_EXPLANATION_TARGET ? ENGLISH_EXPLANATION_LABEL : MODE_LABELS.translate
+    : state.targetLanguage === ENGLISH_EXPLANATION_TARGET ? ACTION_LABELS.explainInEnglish : MODE_LABELS.translate
 }
 
 async function setMode(mode) {
@@ -1659,10 +1676,8 @@ function renderResult(entry) {
   return result
 }
 
-function startCompanionEntry(entry, mode) {
+function startCompanionEntry(entry, mode, { targetLanguage = workbenchTargetLanguage(mode), sourceLanguage = state.sourceLanguage } = {}) {
   if (!entry?.text || !['translate', 'guide'].includes(mode)) return
-  const targetLanguage = workbenchTargetLanguage(mode)
-  const sourceLanguage = state.sourceLanguage
   const companion = {
     id: makeId('s'),
     requestId: makeId('r'),
@@ -1781,6 +1796,17 @@ function renderActions(entry) {
     save.dataset.saveButton = 'true'
     save.addEventListener('click', (event) => void saveVocabulary(entry, event.currentTarget))
     bar.append(save)
+    if (isSingleWordInput(entry.text) && isEnglishSource(entry)) {
+      const explaining = entry.mode === 'translate' && entry.targetLanguage === ENGLISH_EXPLANATION_TARGET
+      const language = state.targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'auto' : state.targetLanguage
+      const alternate = el('button', '', explaining ? MODE_LABELS.translate : ACTION_LABELS.explainInEnglish)
+      alternate.type = 'button'
+      alternate.addEventListener('click', () => startCompanionEntry(entry, 'translate', {
+        targetLanguage: explaining ? language : ENGLISH_EXPLANATION_TARGET,
+        sourceLanguage: entry.sourceLanguage || state.sourceLanguage,
+      }))
+      bar.append(alternate)
+    }
   }
 
   const more = el('button', 'action-more', '⋯')
@@ -2299,12 +2325,13 @@ function bind() {
     void chrome.storage.sync.set({ speech_rate: rate })
   })
   $('speech-settings-form').addEventListener('submit', (event) => void saveSpeechSettings(event))
-  $('cfg-cloud-text-model').addEventListener('change', () => {
-    const voice = $('cfg-cloud-text-voice')
-    const previousDefault = defaultTextVoice(voice.dataset.model || DEFAULT_TEXT_TTS_MODEL)
-    if (!voice.value || voice.value === previousDefault) voice.value = defaultTextVoice($('cfg-cloud-text-model').value)
-    voice.dataset.model = $('cfg-cloud-text-model').value
-    updateTextVoiceOptions()
+  $('cfg-cloud-word-voice').addEventListener('change', () => updateCustomCloudVoiceField('word'))
+  $('cfg-cloud-text-voice').addEventListener('change', () => updateCustomCloudVoiceField('text'))
+  $('cfg-cloud-text-model').addEventListener('change', (event) => {
+    const model = event.currentTarget.value
+    const previousModel = $('cfg-cloud-text-voice').dataset.model
+    if (previousModel) textVoiceDrafts.set(previousModel, selectedCloudVoice('text'))
+    renderCloudVoiceOptions('text', model, textVoiceDrafts.get(model))
   })
   $('web-import-settings-form').addEventListener('submit', (event) => void saveWebImportSettings(event))
   $('iqs-console-link').addEventListener('click', async (event) => {

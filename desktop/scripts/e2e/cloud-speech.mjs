@@ -96,14 +96,15 @@ async function waitForSpeechStatus(page, expected) {
     expected, { timeout: 8000 })
 }
 
-export async function verifyCloudSpeech({ app, page, check }) {
-  await check('cloud speech: opt in, cancel synthesis and play a mocked single-word preview', async () => {
+export async function verifyCloudSpeech({ app, page, check, shot }) {
+  await check('cloud speech: choose preset and custom voices, cancel and preview playback', async () => {
     const key = `sk-e2e-${randomUUID()}`
     const toggle = page.locator('#opt-cloud-speech')
     const keyInput = page.locator('#cfg-cloud-speech-key')
     const wordVoice = page.locator('#cfg-cloud-word-voice')
     const textModel = page.locator('#cfg-cloud-text-model')
     const textVoice = page.locator('#cfg-cloud-text-voice')
+    const customTextVoice = page.locator('#cfg-cloud-text-voice-custom')
     const preview = page.locator('#btn-preview-speech')
     const textPreview = page.locator('#btn-preview-speech-text')
     const save = page.locator('#btn-save-speech')
@@ -118,10 +119,22 @@ export async function verifyCloudSpeech({ app, page, check }) {
       assert.equal(await textVoice.inputValue(), 'Jennifer')
       assert.equal(await textModel.inputValue(), 'qwen3-tts-flash')
       await toggle.check()
+      await wordVoice.selectOption('Andy_v3.1')
+      await textVoice.selectOption('Aiden')
+      assert.equal(await customTextVoice.isVisible(), false)
+      await page.locator('#speech-settings-heading').evaluate((heading) => heading.scrollIntoView({ block: 'start' }))
+      await shot(page, 'main-settings-speech')
+
       await keyInput.fill(key)
-      await wordVoice.fill('custom-word-voice')
       await textModel.selectOption('qwen-audio-3.1-tts-flash')
-      await textVoice.fill('custom-text-voice')
+      assert.equal(await textVoice.inputValue(), 'Abby_v3.1')
+      await textVoice.selectOption('Eric_v3.1')
+      await textModel.selectOption('qwen3-tts-flash')
+      assert.equal(await textVoice.inputValue(), 'Aiden')
+      await textModel.selectOption('qwen-audio-3.1-tts-flash')
+      assert.equal(await textVoice.inputValue(), 'Eric_v3.1')
+      await textVoice.selectOption({ label: 'Custom voice ID…' })
+      await customTextVoice.fill('custom-text-voice')
       assert.equal((await page.evaluate(() => chrome.storage.sync.get({ desktop_tts_cloud: false }))).desktop_tts_cloud,
         false, 'editing the form must not enable cloud speech before saving')
       assert.equal((await readSpeechMock(app)).requests.length, 0)
@@ -135,6 +148,9 @@ export async function verifyCloudSpeech({ app, page, check }) {
       await page.locator('.settings-nav').getByRole('link', { name: 'Reading', exact: true }).click()
       await page.waitForFunction(() => document.getElementById('opt-cloud-speech').checked)
       assert.ok((await keyInput.inputValue()) === key, 'the cloud credential must persist in the settings form')
+      assert.equal(await wordVoice.inputValue(), 'Andy_v3.1')
+      assert.equal(await textVoice.inputValue(), '')
+      assert.equal(await customTextVoice.inputValue(), 'custom-text-voice')
 
       await page.evaluate(() => {
         window.cloudSpeechEvents = []
@@ -150,7 +166,7 @@ export async function verifyCloudSpeech({ app, page, check }) {
         method: 'POST', hasExpectedAuthorization: true, sse: 'enable',
         body: {
           model: 'qwen-audio-3.1-tts-flash',
-          input: { text: PREVIEW_SSML, voice: 'custom-word-voice', format: 'pcm', sample_rate: 24000, rate: 0.9, enable_ssml: true },
+          input: { text: PREVIEW_SSML, voice: 'Andy_v3.1', format: 'pcm', sample_rate: 24000, rate: 0.9, enable_ssml: true },
         },
       }])
       assert.equal(await preview.getAttribute('aria-pressed'), 'true')
@@ -186,9 +202,9 @@ export async function verifyCloudSpeech({ app, page, check }) {
 
       await toggle.uncheck()
       await keyInput.clear()
-      await wordVoice.fill('Abby_v3.1')
+      await wordVoice.selectOption('Abby_v3.1')
       await textModel.selectOption('qwen3-tts-flash')
-      await textVoice.fill('Jennifer')
+      await textVoice.selectOption('Jennifer')
       await save.click()
       await waitForSpeechStatus(page, 'Speech settings saved.')
       assert.deepEqual(await page.evaluate(() => chrome.storage.sync.get([

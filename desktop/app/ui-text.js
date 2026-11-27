@@ -1,6 +1,7 @@
 export const ACTION_LABELS = Object.freeze({
   copyResult: 'Copy result',
   copySource: 'Copy source text',
+  explainInEnglish: 'Explain in English',
   speak: '▷ Read aloud',
   stopSpeak: '■ Stop reading',
   cancel: 'Cancel request',

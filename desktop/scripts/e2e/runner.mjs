@@ -332,7 +332,7 @@ export async function runE2E(mode = 'core') {
     if (mode === 'core' || mode === 'all') {
       await verifySettings({ app, page: mainPage, check, shot })
       await verifyEnglishExplanation({ page: mainPage, mock, check, shot, openSettings })
-      await verifyCloudSpeech({ app, page: mainPage, check })
+      await verifyCloudSpeech({ app, page: mainPage, check, shot })
       await verifyReadingWorkflow({ page: mainPage, mock, check, shot, readingFeeds })
       await verifyDesktopWorkflow({ app, page: mainPage, mock, check, shot })
       await verifyReadingLookup({ app, page: mainPage, mock, check, shot, readingFeeds })

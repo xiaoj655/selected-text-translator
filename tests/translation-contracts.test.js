@@ -84,11 +84,13 @@ test('English explanation targets request an English word definition with its ex
     contextStart: 14,
     contextEnd: 21,
     targetLanguage: ENGLISH_EXPLANATION_TARGET,
+    glossary: [{ source: 'shelved', target: '搁置' }],
     requireWordPronunciation: true,
   });
   assert.match(request.messages[0].content, /Explain only selectedText in plain, natural English\./u);
   assert.match(request.messages[0].content, /concise definition of the relevant sense/u);
   assert.match(request.messages[0].content, /non-empty "phonetic" field/u);
+  assert.doesNotMatch(request.messages[0].content, /搁置/u);
   const source = JSON.parse(request.messages[1].content);
   assert.equal(source.targetLanguage, 'English');
   assert.equal(source.selectedOccurrence.text, 'shelved');

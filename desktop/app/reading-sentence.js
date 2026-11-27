@@ -16,7 +16,6 @@ export function renderReadingSentence(entry, { onRetry }) {
   section.id = 'reading-sentence-structure'
   section.dataset.status = scope.unavailable ? 'unavailable' : analysis.status
   const multiple = scope.sentences.length > 1
-  section.append(el('h4', 'reading-sentence-heading', multiple ? 'Understand these sentences' : 'Understand this sentence'))
   if (scope.unavailable) {
     section.append(el('p', 'reading-sentence-status', scope.unavailable))
     return section

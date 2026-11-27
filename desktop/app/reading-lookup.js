@@ -2,8 +2,10 @@ import { button, el } from './tutor.js'
 import { localizeErrorMessage } from './messages.js'
 import { expandNextResultDetail, renderGuide, renderGuidePreview, renderTranslation, scrollToLatestHint, sentenceStructure } from './translation-result.js'
 import { resultPlainText, resultText } from './result-text.js'
-import { showCopyDone } from './ui-text.js'
+import { ACTION_LABELS, showCopyDone } from './ui-text.js'
 import { classifyReadingSelection } from '../vendor/src/reading-support.js'
+import { detectSourceLanguage } from '../vendor/src/source-language.js'
+import { ENGLISH_EXPLANATION_TARGET, isSingleWordInput } from '../vendor/src/translation-contracts.js'
 import { installReadingSelection, rangeForOffsets, readingSentenceStructureRanges } from './reading-selection.js'
 import { createReadingLookupLayout } from './reading-lookup-layout.js'
 import { readingAnalysisEntry, renderReadingSentence } from './reading-sentence.js'
@@ -11,7 +13,6 @@ import { hasContextualPronunciations, resolveContextualPronunciation } from './c
 
 const MODE_KEY = 'desktop_reading_lookup_mode'
 const TARGET_LANGUAGE_KEY = 'desktop_target_language'
-const ENGLISH_EXPLANATION_TARGET = 'english-explanation'
 const EXPLANATION_KIND = 'article-explanation'
 const ACTIVE = new Set(['pending', 'loading', 'streaming'])
 const PRONUNCIATION_WAIT_MS = 4500
@@ -34,6 +35,14 @@ function sameSentenceScope(a, b) {
     && a.sentences.at(-1).end === b.sentences.at(-1).end
 }
 
+function lookupHeaderButton(label, id, iconPath, onClick) {
+  const control = button('', id, onClick, 'icon-btn')
+  control.title = label
+  control.setAttribute('aria-label', label)
+  control.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${iconPath}"/></svg>`
+  return control
+}
+
 export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup }) {
   const popover = el('section', 'reading-lookup')
   popover.id = 'reading-lookup'
@@ -44,10 +53,9 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   const title = el('strong', 'reading-lookup-text')
   title.id = 'reading-lookup-text'
   title.lang = 'en'
-  const dismiss = button('×', 'reading-lookup-close', () => close(), 'reading-lookup-close')
-  dismiss.setAttribute('aria-label', 'Close lookup')
-  const collapse = button('Minimize', 'reading-lookup-minimize', () => layout.collapse())
-  const jump = button('Back to source', 'reading-lookup-original', () => {
+  const dismiss = lookupHeaderButton('Close lookup', 'reading-lookup-close', 'M6 6l12 12M18 6 6 18', close)
+  const collapse = lookupHeaderButton('Minimize', 'reading-lookup-minimize', 'M5 12h14', () => layout.collapse())
+  const jump = lookupHeaderButton('Back to source', 'reading-lookup-original', 'M9 4H5v4m10-4h4v4M5 16v4h4m10-4v4h-4M9 12h6', () => {
     const rect = entry?.range.getClientRects()[0]
     if (!rect) return
     const back = entry.material.closest('.reading-detail')?.querySelector(':scope > .reading-back')
@@ -59,8 +67,13 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   header.append(title, headerActions)
   const modes = el('div', 'reading-lookup-modes')
   const translate = button('Translate', 'reading-lookup-translate', () => selectMode('translate'))
-  const guide = button('Guided Reading', 'reading-lookup-guide', () => selectMode('guide'))
-  modes.append(translate, guide)
+  const explain = button(ACTION_LABELS.explainInEnglish, 'reading-lookup-explain',
+    () => void request('translate', false, ENGLISH_EXPLANATION_TARGET))
+  explain.hidden = true
+  const guide = button('Guided', 'reading-lookup-guide', () => selectMode('guide'))
+  guide.title = 'Guided Reading'
+  guide.setAttribute('aria-label', guide.title)
+  modes.append(translate, explain, guide)
   const body = el('div', 'reading-lookup-body')
   const result = el('div', 'result')
   result.id = 'reading-lookup-result'
@@ -86,9 +99,9 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   speak.setAttribute('aria-keyshortcuts', 'R')
   const save = button('Save', 'reading-lookup-save', () => void saveResult())
   const stop = button('Stop', 'reading-lookup-stop', stopRequest)
-  const retry = button('Retry lookup', 'reading-lookup-retry', () => void request(entry?.mode || lastMode, true))
+  const retry = button('Retry lookup', 'reading-lookup-retry', () => void request(entry?.mode, true, entry?.targetLanguage))
   const settings = button('Open settings', 'reading-lookup-settings', () => { close(); onOpenSettings?.() })
-  actions.append(copy, speak, save, stop, retry, settings)
+  actions.append(speak, copy, save, stop, retry, settings)
   footer.append(guideActions, actions)
   popover.append(header, modes, body, footer)
   dock.append(popover)
@@ -98,26 +111,33 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
   let entry = null
   let counter = 0
   let lastMode
-  let targetLanguage = 'auto'
+  let defaultTargetLanguage = 'auto'
   let speechId = null
   let pendingSpeechTimer = null
   const id = () => `reading-${Date.now()}-${++counter}`
-  function updateTranslateLabel() {
-    translate.textContent = targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'Explain in English' : 'Translate'
+  function renderModes() {
+    if (!entry) return
+    const explaining = entry.mode === 'translate' && entry.targetLanguage === ENGLISH_EXPLANATION_TARGET
+    explain.hidden = !entry.canExplainWord
+    translate.textContent = explain.hidden && defaultTargetLanguage === ENGLISH_EXPLANATION_TARGET
+      ? ACTION_LABELS.explainInEnglish : 'Translate'
+    translate.setAttribute('aria-pressed', String(entry.mode === 'translate' && (explain.hidden || !explaining)))
+    explain.setAttribute('aria-pressed', String(explaining))
+    guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
   }
 
   const modeReady = chrome.storage.sync.get([MODE_KEY, TARGET_LANGUAGE_KEY]).then(
     (values) => {
       lastMode ??= values?.[MODE_KEY] === 'guide' ? 'guide' : 'translate'
-      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
-      updateTranslateLabel()
+      defaultTargetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
+      renderModes()
     },
     () => { lastMode ??= 'translate' },
   )
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'sync' || !changes[TARGET_LANGUAGE_KEY]) return
-    targetLanguage = changes[TARGET_LANGUAGE_KEY].newValue || 'auto'
-    updateTranslateLabel()
+    defaultTargetLanguage = changes[TARGET_LANGUAGE_KEY].newValue || 'auto'
+    renderModes()
   })
 
   const selection = installReadingSelection(rootEl, open, scroller)
@@ -205,8 +225,7 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const structurePanel = scrollTop > 0 && sentenceDisclosure.open ? structure.firstElementChild : null
     const structureTop = structurePanel?.getBoundingClientRect().top
     const viewingStructure = structurePanel && structureTop <= body.getBoundingClientRect().top
-    translate.setAttribute('aria-pressed', String(entry.mode === 'translate'))
-    guide.setAttribute('aria-pressed', String(entry.mode === 'guide'))
+    renderModes()
     const focusedControl = document.activeElement
     const guideFocus = guideActions.contains(focusedControl) && (focusedControl.matches('[data-hint-more]')
       ? '[data-hint-more]' : '[data-guide-answer-toggle]')
@@ -292,7 +311,8 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     const grammarDetails = preserveAnalysis && structure.querySelector('#reading-sentence-toggle')
     if (grammarDetails) analysis.detailExpanded = grammarDetails.open
     clearLookup({ preserveAnalysis })
-    const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', analysis }
+    const canExplainWord = isSingleWordInput(selected.text) && detectSourceLanguage(selected.text) === 'english'
+    const current = { ...selected, id: id(), createdAt: Date.now(), requestId: null, mode: null, status: 'pending', analysis, canExplainWord }
     entry = current
     title.textContent = selected.text
     title.title = selected.text
@@ -304,12 +324,11 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     structure.replaceChildren()
     body.scrollTop = 0
     layout.open(current)
-    if (singleWord) void request('translate')
-    else if (lastMode) void request(lastMode)
+    if (lastMode) void request(singleWord ? 'translate' : lastMode)
     else {
       renderMeaning()
       void modeReady.then(() => {
-        if (entry === current && !current.mode) void request(lastMode)
+        if (entry === current && !current.mode) void request(singleWord ? 'translate' : lastMode)
       })
     }
     void requestAnalysis()
@@ -321,19 +340,22 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
       lastMode = mode
       void chrome.storage.sync.set({ [MODE_KEY]: mode }).catch(() => {})
     }
-    void request(mode)
+    const targetLanguage = mode === 'translate' && entry.canExplainWord && defaultTargetLanguage === ENGLISH_EXPLANATION_TARGET
+      ? 'auto' : defaultTargetLanguage
+    void request(mode, false, targetLanguage)
     if (mode === 'guide') popover.focus({ preventScroll: true })
   }
 
-  async function request(mode, forceRefresh = false) {
+  async function request(mode, forceRefresh = false, targetLanguage = defaultTargetLanguage) {
     if (!entry || !['translate', 'guide'].includes(mode)) return
-    if (!forceRefresh && entry.mode === mode && (ACTIVE.has(entry.status) || entry.status === 'done')) return
+    const modeChanged = entry.mode !== mode
+    if (!forceRefresh && !modeChanged && entry.targetLanguage === targetLanguage
+      && (ACTIVE.has(entry.status) || entry.status === 'done')) return
     if (pendingSpeechTimer !== null) stopSpeech()
     cancel()
     const current = entry
-    const modeChanged = current.mode !== mode
     const requestId = id()
-    Object.assign(current, { requestId, mode, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null,
+    Object.assign(current, { requestId, mode, targetLanguage, status: 'pending', translatedText: '', lexical: null, guide: null, structure: null,
       sentenceAnalysis: null, analysisExpanded: false, previewHint: '',
       hintCount: 1, answerRevealed: false, error: '' })
     if (modeChanged) sentenceDisclosure.open = false
@@ -341,17 +363,15 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     save.textContent = 'Save'
     renderMeaning()
     try {
-      const values = await chrome.storage.sync.get([TARGET_LANGUAGE_KEY, 'desktop_glossary'])
+      const values = await chrome.storage.sync.get('desktop_glossary')
       if (entry !== current || current.requestId !== requestId) return
-      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
-      updateTranslateLabel()
       const response = await chrome.runtime.sendMessage({
         type: 'START_TRANSLATION',
         payload: {
           selectionId: current.id, requestId, requestScope: 'reading', kind: mode, forceRefresh,
           includeSentenceStructure: false,
           text: current.text, context: current.context, contextStart: current.contextStart, contextEnd: current.contextEnd,
-          sourceLanguage: 'english', targetLanguage: values[TARGET_LANGUAGE_KEY] || 'auto', glossary: values.desktop_glossary || [],
+          sourceLanguage: 'english', targetLanguage, glossary: values.desktop_glossary || [],
         },
       })
       if (entry === current && current.requestId === requestId && !response?.accepted) {
@@ -381,12 +401,10 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
     try {
       const values = await chrome.storage.sync.get(TARGET_LANGUAGE_KEY)
       if (entry?.analysis !== analysis || analysis.requestId !== requestId) return
-      targetLanguage = values?.[TARGET_LANGUAGE_KEY] || 'auto'
-      updateTranslateLabel()
       const { text, context, contextStart, contextEnd } = current.sentenceScope
       const response = await chrome.runtime.sendMessage({ type: 'START_TRANSLATION', payload: {
         selectionId: current.id, requestId, requestScope: 'reading', kind: EXPLANATION_KIND, forceRefresh,
-        text, sourceLanguage: 'english', targetLanguage: targetLanguage || 'auto', context, contextStart, contextEnd,
+        text, sourceLanguage: 'english', targetLanguage: values?.[TARGET_LANGUAGE_KEY] || 'auto', context, contextStart, contextEnd,
       } })
       if (entry?.analysis === analysis && analysis.requestId === requestId && !response?.accepted) {
         analysis.status = 'error'

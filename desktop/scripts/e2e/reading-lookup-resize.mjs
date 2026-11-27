@@ -138,6 +138,10 @@ export async function verifyReadingLookupResize({ app, page, mock, check, shot }
       assert.equal((await geometry(page)).sidebar, 720, 'the sidebar should have a useful maximum width')
       await dragDivider(page, -1000)
       assert.equal((await geometry(page)).sidebar, 280, 'the sidebar should not shrink below its minimum width')
+      const modeRows = await page.locator('.reading-lookup-modes button:visible').evaluateAll((buttons) =>
+        buttons.map((button) => button.getBoundingClientRect().top))
+      assert.equal(modeRows.length, 3, 'the single-word lookup has three modes')
+      assert.equal(new Set(modeRows).size, 1, 'all lookup modes fit on one row at the minimum sidebar width')
       await dragDivider(page, 260)
       const persisted = (await geometry(page)).sidebar
       await page.waitForFunction(async ({ key, width }) =>

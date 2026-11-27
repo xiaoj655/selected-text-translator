@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { isArticleExplanation } from './mock-api.mjs'
-import { clickWord, openPastedText } from './reading-lookup.mjs'
+import { clickWord, openPastedText, selectText } from './reading-lookup.mjs'
 
 const TARGET = 'english-explanation'
 const INPUT = 'The committee shelved the proposal.'
@@ -84,6 +84,68 @@ export async function verifyEnglishExplanation({ page, mock, check, shot, openSe
       mock.resetHandler()
       if (await page.locator('#settings-panel').isVisible()) await page.locator('#btn-close-settings').click()
       if (await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
+      await page.locator('#btn-translate-workspace').click()
+      await input.clear()
+      await target.selectOption(originalTarget)
+    }
+  })
+
+  await check('Single-word English explanation: switches the result without changing the default language', async () => {
+    const word = 'deferred'
+    const sentence = 'The committee deferred the vote.'
+    const translation = '推迟'
+    const definition = 'delayed until a later time'
+    const paraphrase = '委员会推迟了投票。'
+    const target = page.locator('#lang-target')
+    const input = page.locator('#input')
+    const entry = page.locator('.entry:last-child')
+    const lookup = page.locator('#reading-lookup')
+    const meaning = lookup.locator('#reading-lookup-meaning')
+    const originalTarget = await target.inputValue()
+    const received = []
+    mock.setHandler(async ({ body, res, defaultResponse }) => {
+      const data = userInput(body)
+      if (![word, sentence].includes(data.selectedText)) return defaultResponse({ body, res })
+      const analysis = isArticleExplanation(body)
+      const english = body.messages[0].content.includes('Explain only selectedText in plain, natural English.')
+      received.push({ data, analysis, english })
+      reply(res, body, analysis ? { paraphrase } : { translation: english ? definition : translation, phonetic: '/dɪˈfɜrd/' })
+    })
+    try {
+      await target.selectOption('auto')
+      await input.fill(word)
+      await page.locator('#btn-send').click()
+      await entry.getByText(translation, { exact: true }).waitFor()
+      await entry.getByRole('button', { name: 'Explain in English', exact: true }).click()
+      await entry.getByText(definition, { exact: true }).waitFor()
+      assert.equal(await target.inputValue(), 'auto')
+      await entry.getByRole('button', { name: 'Translate', exact: true }).click()
+      await entry.getByText(translation, { exact: true }).waitFor()
+
+      await openPastedText(page, sentence)
+      await clickWord(page, word)
+      await meaning.getByText(translation, { exact: true }).waitFor()
+      await lookup.locator('#reading-sentence-explanation > summary').click()
+      await lookup.getByText(paraphrase, { exact: true }).waitFor()
+      const english = lookup.getByRole('button', { name: 'Explain in English', exact: true })
+      await english.click()
+      await meaning.getByText(definition, { exact: true }).waitFor()
+      assert.equal(await english.getAttribute('aria-pressed'), 'true')
+      assert.equal(await lookup.getByText(paraphrase, { exact: true }).isVisible(), true)
+      assert.equal(received.filter((item) => item.analysis).length, 1)
+      const wordRequest = received.find((item) => item.english && item.data.selectedOccurrence)
+      assert.equal(wordRequest.data.targetLanguage, 'English')
+      assert.equal(wordRequest.data.selectedOccurrence.before, 'The committee ')
+      assert.equal(wordRequest.data.selectedOccurrence.after, ' the vote.')
+      await shot(page, 'main-article-single-word-english-explanation')
+      await lookup.getByRole('button', { name: 'Translate', exact: true }).click()
+      await meaning.getByText(translation, { exact: true }).waitFor()
+      await selectText(page, 'deferred the vote')
+      assert.equal(await english.isVisible(), false)
+      assert.equal((await page.evaluate(() => chrome.storage.sync.get('desktop_target_language'))).desktop_target_language, 'auto')
+    } finally {
+      mock.resetHandler()
+      if (await lookup.isVisible()) await page.locator('#reading-lookup-close').click()
       await page.locator('#btn-translate-workspace').click()
       await input.clear()
       await target.selectOption(originalTarget)

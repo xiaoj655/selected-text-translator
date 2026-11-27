@@ -284,18 +284,24 @@ private fun LookupPanel(
                     LookupContent(state, actions, external, dualPane, pageModifier) { updateControls(true) }
                 }
                 LookupPage.SETTINGS -> Column(pageModifier) {
-                    var models by rememberSaveable(preferReadingSettings) { mutableStateOf(!preferReadingSettings) }
-                    if (readingSettings != null) {
-                        Box(Modifier.padding(horizontal = 24.dp)) {
-                            ReadingChoices("Models", "Reading", models) { models = it }
+                    val sections = if (readingSettings == null) listOf("Models", "Speech")
+                        else listOf("Models", "Reading", "Speech")
+                    var section by rememberSaveable(preferReadingSettings) {
+                        mutableStateOf(if (preferReadingSettings) "Reading" else "Models")
+                    }
+                    Box(Modifier.padding(horizontal = 24.dp)) {
+                        ChoiceTabs(sections, sections.indexOf(section)) {
+                            if (section != sections[it]) actions.stopSpeech()
+                            section = sections[it]
                         }
                     }
-                    if (models || readingSettings == null) {
-                        ModelSettings(state.config, state.settingsError, state.connectionTest, actions, Modifier.weight(1f)) {
+                    val settingsModifier = Modifier.weight(1f)
+                    when (section) {
+                        "Speech" -> SpeechSettings(state, actions, settingsModifier)
+                        "Reading" -> readingSettings?.invoke(settingsModifier)
+                        else -> ModelSettings(state.config, state.settingsError, state.connectionTest, actions, settingsModifier) {
                             updateControls(false)
                         }
-                    } else {
-                        readingSettings(Modifier.weight(1f))
                     }
                 }
                 LookupPage.SAVED -> workspaceState.SaveableStateProvider(LookupPage.SAVED.name) {
@@ -702,7 +708,7 @@ private fun LookupResultActions(state: LookupUiState, actions: LookupActions, ca
 }
 
 @Composable
-private fun SelectedIcon(@DrawableRes icon: Int, label: String? = null, size: Int = 20) {
+internal fun SelectedIcon(@DrawableRes icon: Int, label: String? = null, size: Int = 20) {
     Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(size.dp))
 }
 

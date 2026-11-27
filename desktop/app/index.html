@@ -190,20 +190,14 @@
               <a class="bailian-console-link" href="https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key">Get a Model Studio (Beijing) API key ↗</a>
             </div>
             <div class="settings-field">
-              <label for="cfg-cloud-word-voice">Word voice ID</label>
-              <input id="cfg-cloud-word-voice" name="cloud_word_voice" list="cloud-word-voice-list"
-                spellcheck="false" autocapitalize="none" placeholder="Abby_v3.1"
-                aria-describedby="cloud-word-voice-tip">
-              <datalist id="cloud-word-voice-list">
-                <option value="Abby_v3.1"></option>
-                <option value="Annie_v3.1"></option>
-                <option value="Ava_v3.1"></option>
-                <option value="Beth_v3.1"></option>
-                <option value="Andy_v3.1"></option>
-                <option value="Brian_v3.1"></option>
-                <option value="David_v3.1"></option>
-              </datalist>
-              <p class="drawer-tip" id="cloud-word-voice-tip">Use a Qwen Audio 3.1 voice ID. Custom voices must be created for qwen-audio-3.1-tts-flash in Model Studio.</p>
+              <label for="cfg-cloud-word-voice">Word voice</label>
+              <select id="cfg-cloud-word-voice"></select>
+              <div class="custom-voice-field" id="cloud-word-voice-custom" hidden>
+                <label for="cfg-cloud-word-voice-custom">Custom word voice ID</label>
+                <input id="cfg-cloud-word-voice-custom" spellcheck="false" autocapitalize="none"
+                  maxlength="120" required disabled aria-describedby="cloud-word-voice-tip">
+                <p class="drawer-tip" id="cloud-word-voice-tip">Use a voice ID for Qwen Audio 3.1 TTS.</p>
+              </div>
             </div>
             <div class="settings-field">
               <label for="cfg-cloud-text-model">Sentence and article speech model</label>
@@ -214,12 +208,14 @@
               <p class="drawer-tip" id="cloud-text-model-tip">Qwen Audio 3.1 supports voice cloning and voice design. Its custom voice ID must be created for the selected model.</p>
             </div>
             <div class="settings-field">
-              <label for="cfg-cloud-text-voice">Sentence and article voice ID</label>
-              <input id="cfg-cloud-text-voice" name="cloud_text_voice" list="cloud-text-voice-list"
-                spellcheck="false" autocapitalize="none" placeholder="Jennifer"
-                aria-describedby="cloud-text-voice-tip">
-              <datalist id="cloud-text-voice-list"></datalist>
-              <p class="drawer-tip" id="cloud-text-voice-tip">Use a Qwen3 TTS voice ID. Switch to Qwen Audio 3.1 TTS for a custom voice created for that model.</p>
+              <label for="cfg-cloud-text-voice">Sentence and article voice</label>
+              <select id="cfg-cloud-text-voice"></select>
+              <div class="custom-voice-field" id="cloud-text-voice-custom" hidden>
+                <label for="cfg-cloud-text-voice-custom">Custom sentence and article voice ID</label>
+                <input id="cfg-cloud-text-voice-custom" spellcheck="false" autocapitalize="none"
+                  maxlength="120" required disabled aria-describedby="cloud-text-voice-tip">
+                <p class="drawer-tip" id="cloud-text-voice-tip">Use a voice ID for the speech model selected above.</p>
+              </div>
             </div>
             <label class="speech-rate-field settings-row" for="cfg-speech-rate">Playback speed
               <input id="cfg-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9">

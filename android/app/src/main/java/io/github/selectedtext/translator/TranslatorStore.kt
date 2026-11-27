@@ -23,6 +23,7 @@ import org.json.JSONObject
 
 class TranslatorApplication : Application() {
     internal val store by lazy { TranslatorStore(this) }
+    internal val cloudSpeech by lazy { CloudSpeechClient() }
     internal val articleNetwork by lazy { ArticleNetwork(this) }
     internal val articleImages by lazy { ArticleImageLoader(cacheDir, articleNetwork) }
     internal val articles by lazy { ArticleRepository(this, articleNetwork) }
@@ -32,10 +33,12 @@ internal class TranslatorStore(context: Context) {
     private val preferences = context.getSharedPreferences("selected", Context.MODE_PRIVATE)
     private val mutations = Mutex()
     private val _config = MutableStateFlow(ProviderConfig())
+    private val _speechConfig = MutableStateFlow(SpeechConfig())
     private val _iqsApiKey = MutableStateFlow("")
     private val _saved = MutableStateFlow(emptyList<SavedExpression>())
     private var loaded = false
     val config = _config.asStateFlow()
+    val speechConfig = _speechConfig.asStateFlow()
     val iqsApiKey = _iqsApiKey.asStateFlow()
     val saved = _saved.asStateFlow()
 
@@ -55,6 +58,13 @@ internal class TranslatorStore(context: Context) {
             learningModel = preferences.getString("learningModel", null) ?: defaults.learningModel,
         )
         _saved.value = readExpressions()
+        _speechConfig.value = SpeechConfig(
+            cloudEnabled = preferences.getBoolean("cloudSpeechEnabled", false),
+            voice = preferences.getString("cloudSpeechVoice", null)?.takeIf(::isCloudSpeechVoiceId)
+                ?: DEFAULT_CLOUD_SPEECH_VOICE,
+            apiKey = preferences.getString("encryptedCloudSpeechApiKey", null)
+                ?.let { encrypted -> runCatching { KeyVault.decrypt(encrypted) }.getOrDefault("") }.orEmpty(),
+        )
         _iqsApiKey.value = preferences.getString("encryptedIqsApiKey", null)
             ?.let { encrypted -> runCatching { KeyVault.decrypt(encrypted) }.getOrDefault("") }.orEmpty()
         loaded = true
@@ -68,6 +78,22 @@ internal class TranslatorStore(context: Context) {
             else editor.putString("encryptedIqsApiKey", KeyVault.encrypt(key))
             if (!editor.commit()) throw IOException("Unable to save the IQS key.")
             _iqsApiKey.value = key
+        }
+    }
+
+    suspend fun saveSpeechConfig(config: SpeechConfig) = withContext(Dispatchers.IO) {
+        mutations.withLock {
+            loadLocked()
+            val editor = preferences.edit()
+                .putBoolean("cloudSpeechEnabled", config.cloudEnabled)
+                .putString("cloudSpeechVoice", config.voice)
+            if (config.apiKey.isBlank()) {
+                editor.remove("encryptedCloudSpeechApiKey")
+            } else if (config.apiKey != _speechConfig.value.apiKey) {
+                editor.putString("encryptedCloudSpeechApiKey", KeyVault.encrypt(config.apiKey))
+            }
+            if (!editor.commit()) throw IOException("Unable to save speech settings.")
+            _speechConfig.value = config
         }
     }
 

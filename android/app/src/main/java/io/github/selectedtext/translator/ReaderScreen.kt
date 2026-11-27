@@ -339,17 +339,22 @@ private fun AddArticleSheet(
 
 @Composable
 internal fun ReadingChoices(first: String, second: String, firstSelected: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
+    ChoiceTabs(listOf(first, second), if (firstSelected) 0 else 1, enabled) { change(it == 0) }
+}
+
+@Composable
+internal fun ChoiceTabs(choices: List<String>, selectedIndex: Int, enabled: Boolean = true, change: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(Modifier.selectableGroup()) {
-        listOf(first, second).forEachIndexed { index, label ->
-            val selected = firstSelected == (index == 0)
+        choices.forEachIndexed { index, label ->
+            val selected = selectedIndex == index
             val color = if (selected) colors.onSurface else colors.onSurfaceVariant
             Box(
                 Modifier.heightIn(min = 48.dp).selectable(
                     selected = selected,
                     enabled = enabled,
                     role = Role.Tab,
-                    onClick = { change(index == 0) },
+                    onClick = { change(index) },
                 ),
                 contentAlignment = Alignment.Center,
             ) {

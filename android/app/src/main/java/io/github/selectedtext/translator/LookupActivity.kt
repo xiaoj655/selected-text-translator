@@ -28,7 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 private const val OPEN_ARTICLE = "io.github.selectedtext.translator.OPEN_ARTICLE"
 
@@ -136,6 +140,8 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     private var speech: TextToSpeech? = null
     private var speechReady = false
     private var speechRevision = 0
+    private var pendingSystemSpeech: Pair<String, Int>? = null
+    private var cloudSpeechJob: Job? = null
     private var preferReadingSettings by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -268,6 +274,17 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
         override fun speak(text: String) = speakOrStop(text)
 
+        override fun previewSpeech(config: SpeechConfig) {
+            if (model.state.value.speaking) {
+                stopSpeech()
+                return
+            }
+            val draft = model.speechDraft(config) ?: return
+            readSpeech("This is a sample of the voice you selected.", draft)
+        }
+
+        override fun stopSpeech() = this@LookupActivity.stopSpeech()
+
         override fun saveExpression() = model.saveExpression()
 
         override fun open(page: LookupPage) {
@@ -277,6 +294,10 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         override fun back() = backPage()
 
         override fun saveSettings(config: ProviderConfig) = model.saveSettings(config)
+
+        override fun saveSpeechSettings(config: SpeechConfig) = model.saveSpeechSettings(config)
+
+        override fun clearSpeechSettingsError() = model.clearSpeechSettingsError()
 
         override fun testConnection(config: ProviderConfig) = model.testConnection(config)
 
@@ -289,35 +310,81 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
         override fun clearNotice() = model.notice(null)
     }
 
-    protected fun speakOrStop(text: String) {
+    protected fun speakOrStop(text: String) = readSpeech(text)
+
+    private fun readSpeech(text: String, preview: SpeechConfig? = null) {
         if (model.state.value.speaking) {
             stopSpeech()
             return
         }
+        val content = text.trim()
+        if (content.isEmpty()) return
         val revision = ++speechRevision
-        if (speech == null) {
-            model.setSpeaking(true)
-            speech = TextToSpeech(this) { status ->
-                mainHandler.post {
-                    if (isDestroyed || speech == null) return@post
-                    speechReady = status == TextToSpeech.SUCCESS
-                    if (!speechReady) {
-                        speech?.shutdown()
-                        speech = null
-                    }
-                    if (revision != speechRevision) return@post
-                    if (speechReady) {
-                        startSpeech(text, revision)
-                    } else {
+        model.setSpeaking(true)
+        cloudSpeechJob = lifecycleScope.launch {
+            var playbackStarted = false
+            val fallback = try {
+                val app = application as TranslatorApplication
+                app.store.load()
+                val config = preview ?: app.store.speechConfig.value
+                val key = if (config.cloudEnabled) cloudSpeechApiKey(config, app.store.config.value) else null
+                when {
+                    !config.cloudEnabled -> null
+                    key == null -> "Add a Model Studio API key in Speech settings."
+                    content.length > MAX_CLOUD_SPEECH_LENGTH -> "Cloud speech supports up to 600 characters."
+                    else -> {
+                        val wave = app.cloudSpeech.synthesize(content, config.voice, key)
+                        playCloudSpeech(wave) { playbackStarted = true }
                         model.setSpeaking(false)
-                        model.notice("Text-to-speech is unavailable.")
+                        return@launch
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (playbackStarted) {
+                    model.setSpeaking(false)
+                    model.notice("Unable to read aloud. Try again.")
+                    return@launch
+                }
+                "Cloud speech is unavailable."
             }
-        } else if (speechReady) {
+            if (fallback != null) {
+                if (preview != null) {
+                    model.setSpeaking(false)
+                    model.notice(fallback)
+                    return@launch
+                }
+                model.notice("$fallback Using a system voice.")
+            }
+            startSystemSpeech(content, revision)
+        }
+    }
+
+    private fun startSystemSpeech(text: String, revision: Int) {
+        if (speechReady) {
             startSpeech(text, revision)
-        } else {
-            model.notice("Text-to-speech is starting. Try again shortly.")
+            return
+        }
+        pendingSystemSpeech = text to revision
+        if (speech != null) return
+        speech = TextToSpeech(this) { status ->
+            mainHandler.post {
+                if (isDestroyed || speech == null) return@post
+                speechReady = status == TextToSpeech.SUCCESS
+                if (!speechReady) {
+                    speech?.shutdown()
+                    speech = null
+                }
+                val (pendingText, pendingRevision) = pendingSystemSpeech ?: return@post
+                pendingSystemSpeech = null
+                if (speechReady) {
+                    startSpeech(pendingText, pendingRevision)
+                } else {
+                    model.setSpeaking(false)
+                    model.notice("Text-to-speech is unavailable.")
+                }
+            }
         }
     }
 
@@ -371,6 +438,9 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
     protected fun stopSpeech() {
         speechRevision += 1
+        cloudSpeechJob?.cancel()
+        cloudSpeechJob = null
+        pendingSystemSpeech = null
         speech?.stop()
         model.setSpeaking(false)
     }

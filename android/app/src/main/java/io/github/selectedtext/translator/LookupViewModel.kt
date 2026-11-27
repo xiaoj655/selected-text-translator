@@ -41,6 +41,11 @@ class LookupViewModel(application: Application, private val restored: SavedState
                 _state.update { current -> current.copy(saved = entries, isSaved = containsResult(entries, current.input, current.result)) }
             }
         }
+        viewModelScope.launch {
+            store.speechConfig.collect { config ->
+                _state.update { it.copy(speechConfig = config) }
+            }
+        }
     }
 
     fun edit(value: String) {
@@ -178,7 +183,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
             }
         }
         restored[PAGE_KEY] = page
-        _state.update { it.copy(page = page, settingsError = null, notice = null) }
+        _state.update { it.copy(page = page, settingsError = null, speechSettingsError = null, notice = null) }
     }
 
     fun back() = open(if (_state.value.page == LookupPage.SETTINGS) settingsParent else LookupPage.LOOKUP)
@@ -207,6 +212,39 @@ class LookupViewModel(application: Application, private val restored: SavedState
                 _state.update { it.copy(settingsError = "Unable to save settings. Try again.") }
             }
         }
+    }
+
+    fun saveSpeechSettings(config: SpeechConfig) {
+        if (_state.value.speechSaving) return
+        val clean = speechDraft(config) ?: return
+        _state.update { it.copy(speechSaving = true, speechSettingsError = null) }
+        viewModelScope.launch {
+            try {
+                store.saveSpeechConfig(clean)
+                _state.update { it.copy(speechConfig = clean, notice = "Speech settings saved") }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _state.update { it.copy(speechSettingsError = "Unable to save speech settings. Try again.") }
+            } finally {
+                _state.update { it.copy(speechSaving = false) }
+            }
+        }
+    }
+
+    internal fun speechDraft(config: SpeechConfig): SpeechConfig? {
+        val clean = config.copy(voice = config.voice.trim(), apiKey = config.apiKey.trim())
+        val problem = when {
+            !isCloudSpeechVoiceId(clean.voice) -> "Enter a voice ID of up to 120 characters."
+            clean.apiKey.isNotEmpty() && !isCloudSpeechApiKey(clean.apiKey) -> "Check the Model Studio API key format."
+            else -> null
+        }
+        _state.update { it.copy(speechSettingsError = problem) }
+        return clean.takeIf { problem == null }
+    }
+
+    fun clearSpeechSettingsError() {
+        _state.update { it.copy(speechSettingsError = null) }
     }
 
     fun testConnection(config: ProviderConfig) {
