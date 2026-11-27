@@ -1,0 +1,8 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Selected article reader",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

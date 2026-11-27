@@ -1,0 +1,12 @@
+{
+  "color": [
+    { "name": "reader_background", "value": "#171817" },
+    { "name": "reader_surface", "value": "#202220" },
+    { "name": "reader_text", "value": "#E7E8E3" },
+    { "name": "reader_secondary", "value": "#AFB6AE" },
+    { "name": "reader_border", "value": "#393D39" },
+    { "name": "reader_accent", "value": "#A1D7B6" },
+    { "name": "reader_selection", "value": "#314B3D" },
+    { "name": "reader_on_accent", "value": "#10291A" }
+  ]
+}

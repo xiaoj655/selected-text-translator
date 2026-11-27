@@ -1,0 +1,16 @@
+/.hvigor/
+/.idea/
+/.preview/
+/build/
+/entry/.preview/
+/entry/build/
+/entry/oh_modules/
+/local.properties
+/oh_modules/
+*.cer
+*.p12
+*.pfx
+*.p7b
+*.jks
+*.hap
+*.app

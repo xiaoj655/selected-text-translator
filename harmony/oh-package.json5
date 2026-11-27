@@ -1,0 +1,7 @@
+{
+  "modelVersion": "5.1.0",
+  "name": "selected-text-translator",
+  "version": "0.1.0",
+  "description": "Selected text translator and article reader",
+  "dependencies": {}
+}
