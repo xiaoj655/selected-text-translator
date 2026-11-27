@@ -11,6 +11,7 @@ const LONG_PASSAGE = 'A record keeps earlier decisions available. '
 const DRAG_SENTENCE = 'The editor’s well-known method for gradually moving the release back until the testing team is ready helps engineers avoid mistakes.'
 const LAYERED_SELECTION = "There are some kinds of work that you can't do well without thinking differently from your peers. To be a successful scientist"
 const MODE_KEY = 'desktop_reading_lookup_mode'
+const SETTINGS_KEYS = ['model', 'learning_model', 'desktop_live_translate', 'desktop_prefs', MODE_KEY, 'desktop_reading_word_lookup_mode']
 
 function deferred() {
   let resolve
@@ -137,12 +138,12 @@ export async function selectText(page, text, occurrence = 0, { keepOpen = false 
 }
 
 export async function withState(page, run) {
-  const snapshot = await page.evaluate(async () => ({
-    sync: await chrome.storage.sync.get(['model', 'learning_model', 'desktop_live_translate', 'desktop_prefs', 'desktop_reading_lookup_mode']),
+  const snapshot = await page.evaluate(async (keys) => ({
+    sync: await chrome.storage.sync.get(keys),
     local: await chrome.storage.local.get(['vocabulary_entries', 'desktop_tutor_v1']),
     live: document.getElementById('opt-live-translate').checked,
     theme: document.getElementById('opt-theme').value,
-  }))
+  }), SETTINGS_KEYS)
   await page.evaluate(async () => {
     await chrome.storage.sync.set({ model: 'mock-generic', learning_model: 'mock-generic' })
     const live = document.getElementById('opt-live-translate')
@@ -153,24 +154,20 @@ export async function withState(page, run) {
   try {
     await run()
   } finally {
-    if (await page.locator('#reading-lookup').isVisible()) {
-      // Set the module's session preference as well as restoring stored settings.
-      await page.locator('#reading-lookup-translate').click()
-      await page.locator('#reading-lookup-close').click()
-    }
+    if (await page.locator('#reading-lookup').isVisible()) await page.locator('#reading-lookup-close').click()
     await page.locator('#btn-translate-workspace').click()
-    await page.evaluate(async ({ sync, local, live, theme }) => {
+    await page.evaluate(async ({ keys, sync, local, live, theme }) => {
       const liveControl = document.getElementById('opt-live-translate')
       liveControl.checked = live
       liveControl.dispatchEvent(new Event('change', { bubbles: true }))
       const themeControl = document.getElementById('opt-theme')
       themeControl.value = theme
       themeControl.dispatchEvent(new Event('change', { bubbles: true }))
-      await chrome.storage.sync.remove(['model', 'learning_model', 'desktop_live_translate', 'desktop_prefs', 'desktop_reading_lookup_mode'].filter((key) => !Object.hasOwn(sync, key)))
+      await chrome.storage.sync.remove(keys.filter((key) => !Object.hasOwn(sync, key)))
       await chrome.storage.local.remove(['vocabulary_entries', 'desktop_tutor_v1'].filter((key) => !Object.hasOwn(local, key)))
       await chrome.storage.sync.set(sync)
       await chrome.storage.local.set(local)
-    }, snapshot)
+    }, { ...snapshot, keys: SETTINGS_KEYS })
   }
 }
 
