@@ -492,6 +492,12 @@ private fun ArticleContent(
                 }
             }
         }
+        if (eInkMode) {
+            val overlap = with(LocalDensity.current) { 2 * bodyStyle.lineHeight.toPx() }
+            ArticlePageKeys(list, overlap, setPageTurnHandler) {
+                reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
+            }
+        }
         val scrollMetrics = rememberArticleScrollMetrics(
             bodyWidthPx, article.title, source, article.blocks, titleStyle, sourceStyle, bodyStyle, headingStyle,
         )
@@ -627,12 +633,6 @@ private fun ArticleContent(
                             )
                         }
                     }
-                    if (eInkMode) {
-                        val overlap = with(LocalDensity.current) { 2 * bodyStyle.lineHeight.toPx() }
-                        ArticleScreenControls(list, overlap, setPageTurnHandler) {
-                            reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
-                        }
-                    }
                     phrase?.let { selection ->
                         Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
                             Row(
@@ -723,7 +723,7 @@ private object ArticleMenuPosition : PopupPositionProvider {
 }
 
 @Composable
-private fun ArticleScreenControls(
+private fun ArticlePageKeys(
     list: LazyListState,
     overlap: Float,
     setPageTurnHandler: (((Int) -> Unit)?) -> Unit,
@@ -741,19 +741,6 @@ private fun ArticleScreenControls(
     DisposableEffect(setPageTurnHandler) {
         setPageTurnHandler { currentTurnPage(it) }
         onDispose { setPageTurnHandler(null) }
-    }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        TextButton(
-            onClick = { turnPage(-1) },
-            modifier = Modifier.weight(1f),
-            enabled = list.canScrollBackward,
-        ) { Text("Previous screen") }
-        TextButton(
-            onClick = { turnPage(1) },
-            modifier = Modifier.weight(1f),
-            enabled = list.canScrollForward,
-        ) { Text("Next screen") }
     }
 }
 

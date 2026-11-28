@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.15
+
+- E Ink mode uses the bottom of the screen for more article text. Use physical page keys or swipe the article to keep reading.
+
 ## 0.2.14
 
 - In an article with E Ink mode enabled, use Page Up or Volume Up for the previous screen and Page Down or Volume Down for the next screen. This also supports e-reader side buttons that send these events.
