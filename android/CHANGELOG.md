@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.18
+
+- Vocabulary 学习卡片的单词发音遵循 **Settings → Speech** 的语音选择。选择 Alibaba Cloud 时使用云端语音，云端不可用时回退到系统语音。
+
 ## 0.2.17
 
 - Open **Vocabulary** to learn new English words and review them offline. The app starts with a mix of difficulty levels and adjusts new words based on what you already know.

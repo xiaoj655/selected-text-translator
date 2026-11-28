@@ -14,8 +14,8 @@ android {
         applicationId = 'io.github.selectedtext.translator'
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = '0.2.17'
+        versionCode = 24
+        versionName = '0.2.18'
     }
 
     buildTypes {

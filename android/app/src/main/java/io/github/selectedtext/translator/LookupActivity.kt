@@ -342,12 +342,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     protected fun speakOrStop(text: String) = readSpeech(text)
 
     protected fun readVocabularyWord(word: String) {
-        if (model.state.value.speaking) {
-            stopSpeech()
-            return
-        }
-        model.setSpeaking(true)
-        startSystemSpeech(word, ++speechRevision)
+        readSpeech(word)
     }
 
     private fun readSpeech(text: String, preview: SpeechConfig? = null) {
