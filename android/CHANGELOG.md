@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.19
+
+- Tap a sentence in **Sentence** mode to open English reading hints. Sentence structure is highlighted as soon as the analysis is ready, and **Grammar details** opens the English notes.
+- Tap **Translate to Chinese** in the same panel to show or retry a Simplified Chinese translation.
+
 ## 0.2.18
 
 - Vocabulary 学习卡片的单词发音遵循 **Settings → Speech** 的语音选择。选择 Alibaba Cloud 时使用云端语音，云端不可用时回退到系统语音。

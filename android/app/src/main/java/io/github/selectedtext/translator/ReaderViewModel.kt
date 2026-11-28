@@ -58,16 +58,15 @@ internal data class ReaderResult(
     val guideBusy: Boolean = false,
     val guideError: String? = null,
     val answerRevealed: Boolean = false,
+    val sentenceTranslation: String? = null,
+    val sentenceTranslationBusy: Boolean = false,
+    val sentenceTranslationError: String? = null,
     val isSaved: Boolean = false,
     val saveBusy: Boolean = false,
     val saveError: String? = null,
 ) {
     val saveText: String?
-        get() = when {
-            guided -> guide?.text?.takeIf { answerRevealed }
-            selection.kind == ArticleSelectionKind.SENTENCE -> grammar?.paraphrase
-            else -> meaning?.text
-        }
+        get() = if (guided) guide?.text?.takeIf { answerRevealed } else meaning?.text
 }
 
 internal class ReaderViewModel(
@@ -99,6 +98,7 @@ internal class ReaderViewModel(
     private var meaningJob: Job? = null
     private var grammarJob: Job? = null
     private var guideJob: Job? = null
+    private var sentenceTranslationJob: Job? = null
     private var feedJob: Job? = null
     private var loadedFeeds = false
     private var cachedMeaning: CachedMeaning? = null
@@ -384,10 +384,11 @@ internal class ReaderViewModel(
     fun select(blockIndex: Int, selection: ArticleSelection, guided: Boolean = false) {
         val current = state.value
         if (current.activeArticle == null) return
-        if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection && it.guided == guided } == true) return
+        val useGuide = guided || selection.kind == ArticleSelectionKind.SENTENCE
+        if (current.result?.let { it.blockIndex == blockIndex && it.selection == selection && it.guided == useGuide } == true) return
         dismissResult()
-        state.update { it.copy(result = ReaderResult(blockIndex, selection, guided = guided)) }
-        if (guided) retryGuide() else if (selection.kind != ArticleSelectionKind.SENTENCE) retryMeaning()
+        state.update { it.copy(result = ReaderResult(blockIndex, selection, guided = useGuide)) }
+        if (useGuide) retryGuide() else retryMeaning()
         analyzeSentence()
     }
 
@@ -396,6 +397,7 @@ internal class ReaderViewModel(
         meaningJob?.cancel()
         grammarJob?.cancel()
         guideJob?.cancel()
+        sentenceTranslationJob?.cancel()
         state.update { it.copy(result = null) }
     }
 
@@ -486,6 +488,31 @@ internal class ReaderViewModel(
     }
 
     fun retryGrammar() = analyzeSentence()
+
+    fun translateSentence() {
+        val result = state.value.result ?: return
+        if (result.selection.kind != ArticleSelectionKind.SENTENCE ||
+            result.sentenceTranslationBusy || result.sentenceTranslation != null
+        ) return
+        val revision = selectionRevision
+        updateResult(revision) { it.copy(sentenceTranslationBusy = true, sentenceTranslationError = null) }
+        sentenceTranslationJob = viewModelScope.launch {
+            try {
+                store.load()
+                val translation = client.translateArticleSentence(store.config.value, result.selection.sentence)
+                updateResult(revision) { it.copy(sentenceTranslation = translation, sentenceTranslationBusy = false) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                updateResult(revision) {
+                    it.copy(
+                        sentenceTranslationBusy = false,
+                        sentenceTranslationError = error.lookupMessage("Couldn't translate the sentence. Try again."),
+                    )
+                }
+            }
+        }
+    }
 
     fun saveExpression() {
         val result = state.value.result ?: return

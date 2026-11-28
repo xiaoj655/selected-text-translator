@@ -38,6 +38,14 @@ class TranslationClient internal constructor(
         text: String,
         mode: LookupMode,
         onPartial: (String) -> Unit,
+    ): LookupResult = lookup(config, text, mode, requestedTargetLanguage = null, onPartial = onPartial)
+
+    private suspend fun lookup(
+        config: ProviderConfig,
+        text: String,
+        mode: LookupMode,
+        requestedTargetLanguage: String?,
+        onPartial: (String) -> Unit,
     ): LookupResult {
         val selectedText = text.trim()
         if (text.length > MAX_INPUT_LENGTH || selectedText.isEmpty()) {
@@ -51,7 +59,7 @@ class TranslationClient internal constructor(
             else -> GENERAL_TRANSLATION_REQUEST_BYTES
         }
         val chunks = splitLookupText(selectedText, requestBudget)
-        val targetLanguage = translationTargetLanguage(selectedText)
+        val targetLanguage = requestedTargetLanguage ?: translationTargetLanguage(selectedText)
             .takeIf { mode == LookupMode.TRANSLATE && (isMt || chunks.size > 1) }
         if (chunks.size == 1) {
             return lookupChunk(config, model, selectedText, mode, targetLanguage, onPartial)
@@ -127,9 +135,15 @@ class TranslationClient internal constructor(
     internal suspend fun guideArticle(config: ProviderConfig, selection: ArticleSelection): LookupResult {
         validateArticleInput(selection.text)
         val model = selectLearningModel(config, "Choose a general-purpose learning model in Settings for Guided Reading.")
+        val articleSentence = selection.kind == ArticleSelectionKind.SENTENCE
         return complete(config, contracts.buildArticleGuideRequest(model, selection)) { content ->
-            parseResult(content, selection.text, LookupMode.GUIDE, isMt = false)
+            parseResult(content, selection.text, LookupMode.GUIDE, isMt = false, articleSentence = articleSentence)
         }
+    }
+
+    internal suspend fun translateArticleSentence(config: ProviderConfig, sentence: String): String {
+        validateArticleInput(sentence)
+        return lookup(config, sentence, LookupMode.TRANSLATE, requestedTargetLanguage = "Chinese", onPartial = {}).text
     }
 
     internal suspend fun analyzeArticleSentence(
@@ -255,8 +269,10 @@ internal class ModelContracts(json: String) {
     fun buildArticleMeaningRequest(model: String, selection: ArticleSelection): JSONObject =
         articleRequest("articleMeaning", model, articleMeaningInput(selection))
 
-    fun buildArticleGuideRequest(model: String, selection: ArticleSelection): JSONObject =
-        articleRequest("guide", model, articleMeaningInput(selection))
+    fun buildArticleGuideRequest(model: String, selection: ArticleSelection): JSONObject {
+        val template = if (selection.kind == ArticleSelectionKind.SENTENCE) "articleSentenceGuide" else "guide"
+        return articleRequest(template, model, articleMeaningInput(selection))
+    }
 
     fun buildArticleAnalysisRequest(model: String, sentence: String): JSONObject =
         articleRequest(
@@ -427,7 +443,13 @@ private fun checkFinishReason(choice: JSONObject?) {
     }
 }
 
-private fun parseResult(content: String, sourceText: String, mode: LookupMode, isMt: Boolean): LookupResult {
+private fun parseResult(
+    content: String,
+    sourceText: String,
+    mode: LookupMode,
+    isMt: Boolean,
+    articleSentence: Boolean = false,
+): LookupResult {
     if (content.isBlank()) throw ProviderException("The model returned no text. Try again.")
     if (isMt) return LookupResult(text = content)
     val result = JSONObject(content)
@@ -439,20 +461,21 @@ private fun parseResult(content: String, sourceText: String, mode: LookupMode, i
     }
 
     val selectionType = readingSelectionType(sourceText)
-    val isSentence = selectionType != "word" &&
-        (result.string("guideType") == "sentence" || !result.has("guideType") && selectionType == "passage")
+    val isSentence = articleSentence || (selectionType != "word" &&
+        (result.string("guideType") == "sentence" || !result.has("guideType") && selectionType == "passage"))
     val hints = result.optJSONArray("hints").strings().map { it.trim() }.filter { it.isNotEmpty() }
+        .let { if (articleSentence) it.take(2) else it }
     val answer = result.optJSONObject("answer")
     val meaning = answer?.string("meaning")?.trim().orEmpty()
     val explanation = answer?.string("explanation")?.trim().orEmpty()
-    val example = answer?.string("example")?.trim().orEmpty()
+    val example = if (articleSentence) "" else answer?.string("example")?.trim().orEmpty()
     val validHints = if (isSentence) hints.size in 1..3 else hints.size == 3
-    if (!validHints || meaning.isEmpty() || explanation.isEmpty() || !isSentence && example.isEmpty()) {
+    if (!validHints || meaning.isEmpty() || (!articleSentence && explanation.isEmpty()) || (!isSentence && example.isEmpty())) {
         throw ProviderException("The learning model returned incomplete guidance. Try again.")
     }
     return LookupResult(
         text = meaning,
-        phonetic = if (selectionType == "word") result.string("phonetic").trim() else "",
+        phonetic = if (!isSentence && selectionType == "word") result.string("phonetic").trim() else "",
         hints = hints,
         explanation = explanation,
         example = example,

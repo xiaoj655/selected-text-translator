@@ -440,7 +440,7 @@ private fun ArticleContent(
         if (phraseAnchor != null) cancelPhrase() else back()
     }
     val toggleGuide = {
-        result?.let {
+        result?.takeIf { it.selection.kind != ArticleSelectionKind.SENTENCE }?.let {
             guided = !it.guided
             stopSpeech()
             reader.select(it.blockIndex, it.selection, guided)
@@ -814,21 +814,26 @@ private fun ReaderResultPanel(
     side: Boolean,
 ) {
     val selection = result.selection
-    val directSentence = !result.guided && selection.kind == ArticleSelectionKind.SENTENCE
+    val wholeSentence = selection.kind == ArticleSelectionKind.SENTENCE
     val hasMeaning = result.meaning != null || result.meaningError != null
-    val canShowSentence = if (result.guided) result.answerRevealed else !directSentence && hasMeaning
-    val showSentence = directSentence || (canShowSentence && sentenceOpen)
+    val canShowSentence = !wholeSentence && (if (result.guided) result.answerRevealed else hasMeaning)
+    val showSentence = canShowSentence && sentenceOpen
     val guide = result.guide
+    var translationOpen by rememberSaveable(result.blockIndex, selection) { mutableStateOf(false) }
     val sentenceStart = remember { BringIntoViewRequester() }
     val latestHint = remember { BringIntoViewRequester() }
+    val translationStart = remember { BringIntoViewRequester() }
     LaunchedEffect(visibleHints) {
         if (result.guided && !result.answerRevealed && visibleHints > 1) latestHint.bringIntoView()
     }
     LaunchedEffect(result.answerRevealed, sentenceOpen) {
-        if (!sentenceOpen && !directSentence) scroll.scrollTo(0)
+        if (!sentenceOpen) scroll.scrollTo(0)
     }
     LaunchedEffect(showSentence, result.grammar, result.grammarError) {
-        if (showSentence && !directSentence) sentenceStart.bringIntoView()
+        if (showSentence) sentenceStart.bringIntoView()
+    }
+    LaunchedEffect(translationOpen, result.sentenceTranslation, result.sentenceTranslationError) {
+        if (translationOpen) translationStart.bringIntoView()
     }
     val inset = if (side) 20.dp else 14.dp
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -836,12 +841,14 @@ private fun ReaderResultPanel(
             if (!side) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.padding(start = inset, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (directSentence) "Sentence analysis" else selection.text,
+                    if (wholeSentence) "Sentence guide" else selection.text,
                     Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                TextButton(onClick = toggleGuide, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text(if (result.guided) "Direct" else "Guide", maxLines = 1)
+                if (!wholeSentence) {
+                    TextButton(onClick = toggleGuide, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text(if (result.guided) "Direct" else "Guide", maxLines = 1)
+                    }
                 }
                 IconAction(if (speaking) R.drawable.ic_stop else R.drawable.ic_volume,
                     if (speaking) "Stop reading" else "Read aloud", { speak(selection.text) })
@@ -867,9 +874,11 @@ private fun ReaderResultPanel(
                     if (guide != null) {
                         if (result.answerRevealed) {
                             Text(guide.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            if (guide.explanation.isNotBlank()) Text(guide.explanation, style = MaterialTheme.typography.bodyMedium)
-                            if (guide.example.isNotBlank()) Text(guide.example, style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (!wholeSentence) {
+                                if (guide.explanation.isNotBlank()) Text(guide.explanation, style = MaterialTheme.typography.bodyMedium)
+                                if (guide.example.isNotBlank()) Text(guide.example, style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         } else {
                             val hints = guide.hints.take(visibleHints)
                             hints.forEachIndexed { index, hint ->
@@ -877,9 +886,20 @@ private fun ReaderResultPanel(
                                     if (index == hints.lastIndex) Modifier.bringIntoViewRequester(latestHint) else Modifier,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text("${index + 1}", style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (!wholeSentence) {
+                                        Text("${index + 1}", style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                     Text(hint, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                            if (wholeSentence) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    GuideActions(visibleHints < guide.hints.size, nextHint, reader::revealAnswer)
                                 }
                             }
                         }
@@ -901,7 +921,7 @@ private fun ReaderResultPanel(
                 }
                 result.meaningError?.let { ReaderRetry(it, reader::retryMeaning, onSettings) }
                 if (showSentence) {
-                    if (!directSentence) HorizontalDivider()
+                    HorizontalDivider()
                     if (result.grammarBusy) {
                         Text("Analyzing the sentence…", Modifier.bringIntoViewRequester(sentenceStart),
                             style = MaterialTheme.typography.bodyMedium)
@@ -914,24 +934,71 @@ private fun ReaderResultPanel(
                             Modifier.bringIntoViewRequester(sentenceStart))
                     }
                 }
+                if (wholeSentence) {
+                    SentenceGrammarDetails(result, detailsOpen, toggleDetails, reader::retryGrammar, onSettings)
+                    if (translationOpen) {
+                        HorizontalDivider()
+                        Column(Modifier.bringIntoViewRequester(translationStart)) {
+                            if (result.sentenceTranslationBusy) {
+                                Text("Translating…", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            result.sentenceTranslationError?.let { ReaderRetry(it, reader::translateSentence, onSettings) }
+                            result.sentenceTranslation?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                        }
+                    }
+                }
                 result.saveError?.let { ReaderError(it) }
             }
-            if (canShowSentence || (guide != null && !result.answerRevealed)) {
+            if (wholeSentence || canShowSentence || (guide != null && !result.answerRevealed)) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = inset),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (canShowSentence) {
+                    if (wholeSentence) {
+                        TextButton(onClick = {
+                            translationOpen = !translationOpen
+                            if (translationOpen) reader.translateSentence()
+                        }) { Text(if (translationOpen) "Hide translation" else "Translate to Chinese") }
+                    } else if (canShowSentence) {
                         TextButton(onClick = toggleSentence) { Text(if (sentenceOpen) "Hide sentence" else "Show sentence") }
                     } else if (guide != null) {
-                        if (visibleHints < guide.hints.size) {
-                            TextButton(onClick = nextHint) { Text("Next hint") }
-                        }
-                        Button(onClick = reader::revealAnswer) { Text("Reveal answer") }
+                        GuideActions(visibleHints < guide.hints.size, nextHint, reader::revealAnswer)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideActions(hasNextHint: Boolean, nextHint: () -> Unit, revealAnswer: () -> Unit) {
+    if (hasNextHint) TextButton(onClick = nextHint) { Text("Next hint") }
+    Button(onClick = revealAnswer) { Text("Reveal answer") }
+}
+
+@Composable
+private fun SentenceGrammarDetails(
+    result: ReaderResult, detailsOpen: Boolean, toggleDetails: () -> Unit, retry: () -> Unit, onSettings: () -> Unit,
+) {
+    val details = result.grammar?.details.orEmpty()
+    if (!detailsOpen && details.isEmpty() && result.grammarError == null) return
+    val detailsStart = remember { BringIntoViewRequester() }
+    LaunchedEffect(detailsOpen, details, result.grammarError) {
+        if (detailsOpen) detailsStart.bringIntoView()
+    }
+    TextButton(onClick = toggleDetails, contentPadding = PaddingValues(horizontal = 2.dp)) {
+        Text(if (detailsOpen) "Hide grammar details" else "Grammar details")
+    }
+    if (detailsOpen) {
+        val error = result.grammarError
+        Column(Modifier.bringIntoViewRequester(detailsStart), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            when {
+                result.grammarBusy -> Text("Analyzing the sentence…", style = MaterialTheme.typography.bodyMedium)
+                error != null -> ReaderRetry(error, retry, onSettings)
+                details.isEmpty() -> Text("No additional grammar details.", style = MaterialTheme.typography.bodyMedium)
+                else -> GrammarNotes(result.selection.sentence, details)
             }
         }
     }
@@ -946,16 +1013,19 @@ private fun GrammarExplanation(
         TextButton(onClick = toggleDetails, contentPadding = PaddingValues(horizontal = 2.dp)) {
             Text(if (detailsOpen) "Hide grammar details" else "Grammar details")
         }
-        if (detailsOpen) {
-            analysis.details.forEach { detail ->
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (detail.text.trim() != sentence.trim()) {
-                        Text(detail.text, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Text(detail.explanation, style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+        if (detailsOpen) GrammarNotes(sentence, analysis.details)
+    }
+}
+
+@Composable
+private fun GrammarNotes(sentence: String, details: List<ArticleGrammarDetail>) {
+    details.forEach { detail ->
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (detail.text.trim() != sentence.trim()) {
+                Text(detail.text, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
             }
+            Text(detail.explanation, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

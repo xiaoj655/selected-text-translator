@@ -248,6 +248,87 @@ class TranslationClientTest {
     }
 
     @Test
+    fun guidesAWholeSentenceEvenWhenItLooksLikeASingleWord(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("""{
+                "guideType":"term", "phonetic":"/stɑp/",
+                "hints":["The speaker is telling someone to do something."],
+                "answer":{"meaning":"Do not keep going.","example":"Stop beside the door."}
+            }"""))
+            val config = config(server)
+            val selection = resolveArticleSelection("Stop", 0, ArticleSelectionKind.SENTENCE)!!
+
+            val guide = client().guideArticle(config, selection)
+
+            assertEquals(listOf("The speaker is telling someone to do something."), guide.hints)
+            assertEquals("Do not keep going.", guide.text)
+            assertEquals("", guide.explanation)
+            assertEquals("", guide.phonetic)
+            assertEquals("", guide.example)
+            val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+            val messages = payload.getJSONArray("messages")
+            val input = JSONObject(messages.getJSONObject(1).getString("content"))
+            assertEquals(config.learningModel, payload.getString("model"))
+            assertEquals("Guide a whole sentence.", messages.getJSONObject(0).getString("content"))
+            assertEquals("Stop", input.getString("selectedText"))
+            assertEquals("sentence", input.getString("selectionType"))
+            assertEquals("English", input.getString("targetLanguage"))
+        }
+    }
+
+    @Test
+    fun workbenchSentenceGuideStillRequiresAnExplanation(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("""{
+                "guideType":"sentence", "hints":["Notice who is speaking."],
+                "answer":{"meaning":"I know what you mean."}
+            }"""))
+
+            val error = runCatching { client().lookup(config(server), "I understand.", LookupMode.GUIDE) {} }.exceptionOrNull()
+
+            assertEquals("The learning model returned incomplete guidance. Try again.", error?.message)
+        }
+    }
+
+    @Test
+    fun translatesAnArticleSentenceToChineseEvenWhenTheSourceContainsHan(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("告示上写着‘出口’。"))
+            server.enqueue(jsonResponse("The sign read 'Exit'."))
+            val client = client()
+            val config = config(server)
+            val sentence = "The sign read '出口'."
+
+            assertEquals("告示上写着‘出口’。", client.translateArticleSentence(config, sentence))
+            assertEquals("The sign read 'Exit'.", client.lookup(config, sentence, LookupMode.TRANSLATE) {}.text)
+
+            for (target in listOf("Chinese", "English")) {
+                val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+                assertEquals(config.translationModel, payload.getString("model"))
+                assertEquals(sentence, payload.getJSONArray("messages").getJSONObject(0).getString("content"))
+                assertEquals(target, payload.getJSONObject("translation_options").getString("target_lang"))
+            }
+        }
+    }
+
+    @Test
+    fun translatesAnArticleSentenceToSimplifiedChineseWithAGeneralModel(): Unit = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(jsonResponse("""{"translation":"告示上写着‘出口’。"}"""))
+            val config = config(server).copy(translationModel = "general-model")
+            val sentence = "The sign read '出口'."
+
+            assertEquals("告示上写着‘出口’。", client().translateArticleSentence(config, sentence))
+
+            val payload = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+            val messages = payload.getJSONArray("messages")
+            assertEquals(config.translationModel, payload.getString("model"))
+            assertEquals("Translate to Simplified Chinese.", messages.getJSONObject(0).getString("content"))
+            assertEquals(sentence, messages.getJSONObject(1).getString("content"))
+        }
+    }
+
+    @Test
     fun articleLookupRequiresAGeneralPurposeLearningModel(): Unit = runBlocking {
         MockWebServer().use { server ->
             val config = config(server).copy(learningModel = "")
@@ -338,7 +419,7 @@ class TranslationClientTest {
             "messages": [{"role":"system","content":"Translate."},{"role":"user","content":""}]
           },
           "translationByLanguage": {
-            "Chinese": {"messages": [{"role":"system","content":"Translate to Chinese."},{"role":"user","content":""}]},
+            "Chinese": {"messages": [{"role":"system","content":"Translate to Simplified Chinese."},{"role":"user","content":""}]},
             "English": {"messages": [{"role":"system","content":"Translate to English."},{"role":"user","content":""}]}
           },
           "guide": {
@@ -350,6 +431,11 @@ class TranslationClientTest {
             "stream": false,
             "response_format": { "type": "json_object" },
             "messages": [{"role":"system","content":"Define the word."},{"role":"user","content":""}]
+          },
+          "articleSentenceGuide": {
+            "stream": false,
+            "response_format": { "type": "json_object" },
+            "messages": [{"role":"system","content":"Guide a whole sentence."},{"role":"user","content":""}]
           },
           "articleExplanation": {
             "stream": false,
