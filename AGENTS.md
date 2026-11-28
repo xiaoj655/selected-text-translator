@@ -13,7 +13,7 @@
 - 每轮用现有入口做必要的针对性验证。纯文档检查 diff 和链接。涉及共用代码、多个主流程或高风险改动时，按影响范围扩大验证。同一项检查只在相关改动后重跑。
 - 插件使用 `node --test tests/<file>.test.js` 或 `npm run test:browser`。CI 负责全量回归和打包。需要本地打包时用 `npm run package:extension`。
 - 桌面端使用 `npm run smoke --prefix desktop` 或 `npm run test:e2e --prefix desktop`，输入和布局可分别用 `-- --input`、`-- --layout` 单独检查。`npm run verify --prefix desktop` 已包含 smoke 和 Electron E2E，留给需要完整回归的改动。
-- Android 使用 `cd android && ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`，系统取词和分享入口在模拟器或真机验收。
+- Android 使用 `cd android && ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` 做针对性验证。只有改动影响系统取词、跨应用分享或其他依赖 Android 系统行为的设备交互时，才在模拟器或真机验收对应场景；未涉及这些路径的小改动无需模拟器验收。
 - 有视觉改动时检查一张代表性截图，按需补充受影响的状态。真实 API 测试须先获得授权，凭据只从环境变量或仓库外配置读取。提交、日志和截图须脱敏。
 
 ## 界面
