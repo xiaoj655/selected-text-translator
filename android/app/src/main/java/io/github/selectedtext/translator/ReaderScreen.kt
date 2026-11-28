@@ -596,7 +596,7 @@ private fun ArticleContent(
                         itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
                             val image = block.image
                             if (image != null) {
-                                ArticleImageContent(image, article.sourceUrl, eInkMode)
+                                ArticleImageContent(image, article.mediaSourceOrigin ?: article.sourceUrl, eInkMode)
                                 return@itemsIndexed
                             }
                             val paragraphResult = result?.takeIf { it.blockIndex == index }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { publicReadingUrl, readingReferrerPolicy } from './reading-network.js'
 
 const MAX_ENTRIES = 100
 const MAX_ARTICLE_BYTES = 8 * 1024 * 1024
@@ -48,6 +49,15 @@ function cleanArticle(value) {
   if (url) article.url = url
   if (typeof value.html === 'string') article.html = value.html
   if (typeof value.publishedAt === 'string') article.publishedAt = value.publishedAt.slice(0, 100)
+  if (kind !== 'pasted_text' && Object.hasOwn(value, 'mediaReferrer')) {
+    article.mediaReferrer = ''
+    if (value.mediaReferrer) {
+      try { article.mediaReferrer = `${publicReadingUrl(value.mediaReferrer, undefined, { allowHttp: true }).origin}/` }
+      catch { /* Preserve the opt-out for invalid stored provenance. */ }
+    }
+    const policy = readingReferrerPolicy(value.mediaReferrerPolicy)
+    if (policy) article.mediaReferrerPolicy = policy
+  }
   return Buffer.byteLength(JSON.stringify(article)) <= MAX_ARTICLE_BYTES ? article : null
 }
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import catalog from '../vendor/src/reading-source-catalog.json' with { type: 'json' }
 import desktopSources from './reading-source-catalog.json' with { type: 'json' }
 import { normalizeReadingContent } from './reading-content.js'
-import { openReadingResource, publicReadingUrl } from './reading-network.js'
+import { openReadingResource, publicReadingUrl, readingReferrerPolicy } from './reading-network.js'
 
 export const READING_SOURCES = Object.groupBy([...catalog.builtIn, ...desktopSources], ({ group }) => group)
 
@@ -151,6 +151,17 @@ function readArticleUrl(entry, source) {
   }
 }
 
+function feedOwnsArticle(source, url) {
+  return source.hosts?.includes(url.hostname) || new URL(source.url).origin === url.origin
+}
+
+export function legacyFeedMediaReferrer(article) {
+  let url
+  try { url = publicReadingUrl(article.url) } catch { return '' }
+  const source = Object.values(READING_SOURCES).flat().find((source) => source.name === article.source && feedOwnsArticle(source, url))
+  return source ? `${url.origin}/` : ''
+}
+
 function readArticle(entry, source, builtIn) {
   const url = readArticleUrl(entry, source)
   const title = htmlToText(entry.fields.get('title') ?? '').replace(/\s+/g, ' ').slice(0, 300)
@@ -173,12 +184,15 @@ function readArticle(entry, source, builtIn) {
   }
   const date = Date.parse(entry.fields.get('pubDate') ?? entry.fields.get('published') ?? entry.fields.get('updated'))
   const hash = createHash('sha256').update(url).digest('hex')
+  const articleUrl = new URL(url)
   return {
     id: builtIn ? hash : `custom-feed-${hash}`,
     title,
     source: source.name,
     publishedAt: Number.isFinite(date) ? new Date(date).toISOString() : '',
     url,
+    mediaReferrer: feedOwnsArticle(source, articleUrl) ? `${articleUrl.origin}/` : '',
+    ...(source.referrerPolicy && { mediaReferrerPolicy: source.referrerPolicy }),
     excerpt: excerpt.length > EXCERPT_LENGTH ? `${excerpt.slice(0, EXCERPT_LENGTH).trimEnd()}…` : excerpt,
     feedHasBody: Boolean(useBody || source.summaryContainsBody),
     ...material,
@@ -228,7 +242,8 @@ async function loadSource(source, fetchImpl) {
     await response.body?.cancel()
     throw new Error(`Feed HTTP ${response.status}`)
   }
-  const articles = readFeedArticles((await readFeedBytes(response.body)).toString('utf8'), source, { builtIn: true })
+  const referrerPolicy = readingReferrerPolicy(response.headers.get('referrer-policy'))
+  const articles = readFeedArticles((await readFeedBytes(response.body)).toString('utf8'), { ...source, referrerPolicy }, { builtIn: true })
   if (!articles.length) throw new Error('No readable articles')
   return articles
 }
@@ -290,7 +305,8 @@ async function loadCustomFeed(feedUrl, openResource, savedName) {
     const { title, hasEntries } = readFeedMetadata(xml)
     const url = resource.url.href
     const name = savedName || title || resource.url.hostname
-    const articles = readFeedArticles(xml, { url, name, allowHttp: true })
+    const referrerPolicy = readingReferrerPolicy(response.headers['referrer-policy'])
+    const articles = readFeedArticles(xml, { url, name, referrerPolicy, allowHttp: true })
     if (hasEntries && !articles.length) throw new Error('This feed has no readable article links. Try another feed URL.')
     return { url, name, articles }
   } catch (error) {

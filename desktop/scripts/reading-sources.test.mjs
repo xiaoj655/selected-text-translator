@@ -5,9 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { test } from 'node:test'
-import { createReadingDiscovery, discoverReadingArticles, READING_SOURCES } from '../src/reading-sources.js'
+import { createReadingDiscovery, discoverReadingArticles, legacyFeedMediaReferrer, READING_SOURCES } from '../src/reading-sources.js'
 import { createElectronReadingResource } from '../src/reading-network.js'
 import { createStorage } from '../src/storage.js'
+
+test('legacy feed media origins require a matching catalog publisher and article host', () => {
+  const [publisher] = READING_SOURCES.news
+  const url = `https://${publisher.hosts[0]}/article?draft=1`
+  assert.equal(legacyFeedMediaReferrer({ source: publisher.name, url }), `https://${publisher.hosts[0]}/`)
+  assert.equal(legacyFeedMediaReferrer({ source: 'Custom feed', url }), '')
+  assert.equal(legacyFeedMediaReferrer({ source: publisher.name, url: 'https://unrelated.com/article' }), '')
+})
 
 test('article discovery preserves full plain text and sanitized feed formatting', async () => {
   const [ars, verge] = READING_SOURCES.news
@@ -241,7 +249,9 @@ test('custom subscriptions use the redirected URL, reuse the initial response, a
   assert.deepEqual(added.articles.map(({ title }) => title), ['A full article', 'A headline'])
   assert.match(added.articles[0].html, /<em>readable<\/em>/)
   assert.doesNotMatch(added.articles[0].html, /ignore me/)
+  assert.equal(added.articles[0].mediaReferrer, '')
   assert.equal(added.articles[1].url, 'http://rss.reader-sample.com/blog/posts/one')
+  assert.equal(added.articles[1].mediaReferrer, 'http://rss.reader-sample.com/')
   assert.equal(added.articles[1].text, '')
   assert.match(added.articles[0].id, /^custom-feed-[a-f0-9]{64}$/)
   assert.equal(discovery.getArticle(added.articles[0].id)?.title, 'A full article')

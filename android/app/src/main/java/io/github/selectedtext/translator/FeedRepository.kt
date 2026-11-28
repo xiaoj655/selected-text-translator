@@ -214,7 +214,7 @@ internal class FeedClient(
         var url = feedUrl(source.url)
         repeat(6) {
             val response = request(url)
-            if (response is FeedResponse.Content) return@withTimeoutOrNull parseFeed(response.xml, url, source)
+            if (response is FeedResponse.Content) return@withTimeoutOrNull parseFeed(response.xml, url, source, response.policy)
             url = feedUrl(url.resolve((response as FeedResponse.Redirect).location)?.toString().orEmpty())
         }
         throw FeedException("This feed redirects too many times.")
@@ -246,19 +246,27 @@ internal class FeedClient(
         val body = response.body ?: throw FeedException("This feed is empty.")
         val bytes = body.source()
         if (bytes.request(2 * 1024 * 1024 + 1L)) throw FeedException("This feed is too large.")
-        return FeedResponse.Content(Jsoup.parse(bytes.readByteArray().inputStream(), body.contentType()?.charset()?.name(),
-            response.request.url.toString(), Parser.xmlParser()))
+        return FeedResponse.Content(
+            Jsoup.parse(bytes.readByteArray().inputStream(), body.contentType()?.charset()?.name(),
+                response.request.url.toString(), Parser.xmlParser()),
+            response.imageReferrerPolicy(),
+        )
     }
 
     private sealed interface FeedResponse {
-        data class Content(val xml: Element) : FeedResponse
+        data class Content(val xml: Element, val policy: ImageReferrerPolicy) : FeedResponse
         data class Redirect(val location: String) : FeedResponse
     }
 }
 
 internal data class FeedContent(val name: String, val articles: List<FeedArticle>)
 
-internal fun parseFeed(document: Element, url: HttpUrl, source: FeedSource): FeedContent {
+internal fun parseFeed(
+    document: Element,
+    url: HttpUrl,
+    source: FeedSource,
+    headerPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN,
+): FeedContent {
     val root = document.children().firstOrNull()
     val channel = when (root?.normalName()?.substringAfterLast(':')) {
         "rss" -> root.field("channel")
@@ -276,13 +284,15 @@ internal fun parseFeed(document: Element, url: HttpUrl, source: FeedSource): Fee
             val link = item.children().firstOrNull {
                 it.normalName().substringAfterLast(':') == "link" && it.attr("rel") in setOf("", "alternate")
             } ?: return@mapNotNull null
-            val address = url.resolve(link.attr("href").ifBlank { link.text() }) ?: return@mapNotNull null
-            val safe = runCatching { publicArticleUrl(address.toString()).toString() }.getOrNull() ?: return@mapNotNull null
+            val resolved = url.resolve(link.attr("href").ifBlank { link.text() }) ?: return@mapNotNull null
+            val address = runCatching { publicArticleUrl(resolved.toString()) }.getOrNull() ?: return@mapNotNull null
+            val safe = address.toString()
             if (!seen.add(safe)) return@mapNotNull null
             val summary = (item.field("description") ?: item.field("summary"))?.markup().orEmpty()
             val body = (item.field("encoded") ?: item.field("content"))?.markup().orEmpty()
                 .ifBlank { if (source.summaryContainsBody) summary else "" }
-            val html = body.takeIf { it.length <= 500_000 }?.let { cleanFeedBody(it, safe) }
+            val policy = if (url.hasSameOrigin(address)) headerPolicy else ImageReferrerPolicy.NONE
+            val html = body.takeIf { it.length <= 500_000 }?.let { cleanFeedBody(it, safe, policy) }
                 ?.takeIf { Jsoup.parse(it).text().length >= 80 }
             val excerpt = Jsoup.parse(summary.ifBlank { html.orEmpty() }).text().take(360)
             val date = sequenceOf("published", "pubdate", "updated", "date").mapNotNull { item.field(it)?.text() }
@@ -292,14 +302,22 @@ internal fun parseFeed(document: Element, url: HttpUrl, source: FeedSource): Fee
     return FeedContent(name, items)
 }
 
-private fun cleanFeedBody(html: String, baseUrl: String): String {
+private fun cleanFeedBody(html: String, baseUrl: String, headerPolicy: ImageReferrerPolicy): String {
     val document = Jsoup.parseBodyFragment(html, baseUrl)
     document.select("[hidden],[aria-hidden=true]").remove()
+    val policy = document.imageReferrerPolicy(headerPolicy)
     for (element in document.select("img")) {
-        val image = readArticleImage(element)
-        if (image == null) element.remove() else element.attr("src", image.url)
+        val image = readArticleImage(element, policy)
+        if (image == null) {
+            element.remove()
+        } else {
+            element.attr("src", image.url)
+            if (image.referrerPolicy == ImageReferrerPolicy.ORIGIN) element.removeAttr("referrerpolicy")
+            else element.attr("referrerpolicy", image.referrerPolicy.value)
+        }
     }
-    return Cleaner(Safelist.relaxed().addTags("figure", "figcaption")).clean(document).body().html()
+    val safe = Safelist.relaxed().addTags("figure", "figcaption").addAttributes("img", "referrerpolicy")
+    return Cleaner(safe).clean(document).body().html()
 }
 
 private fun Element.field(name: String): Element? = children().firstOrNull { it.normalName().substringAfterLast(':') == name }

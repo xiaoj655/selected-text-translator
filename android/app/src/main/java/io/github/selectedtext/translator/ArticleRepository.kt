@@ -44,13 +44,15 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
         val url = article.sourceUrl ?: throw ArticleImportException("This article has no original page.")
         val refreshed = fetchWebArticle(publicArticleUrl(url), iqsApiKey)
         return replaceArticle(article.id) { current ->
-            if (current.blocks == refreshed.blocks) {
-                return@replaceArticle if (current.title == refreshed.title) current else current.copy(title = refreshed.title)
+            val sameBlocks = current.blocks == refreshed.blocks
+            if (sameBlocks && current.title == refreshed.title && current.mediaSourceOrigin == refreshed.mediaSourceOrigin) {
+                return@replaceArticle current
             }
             current.copy(
                 title = refreshed.title,
-                blocks = refreshed.blocks,
-                position = reimportPosition(current, refreshed.blocks),
+                blocks = if (sameBlocks) current.blocks else refreshed.blocks,
+                position = if (sameBlocks) current.position else reimportPosition(current, refreshed.blocks),
+                mediaSourceOrigin = refreshed.mediaSourceOrigin,
             )
         }
     }
@@ -100,7 +102,7 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
         return replaceArticle(article.id) { current ->
             if (current.hasImages) return@replaceArticle current
             val blocks = restoreArticleImageBlocks(current.blocks, recovery.blocks)
-            current.copy(blocks = blocks, position = positionWithImages(current, blocks))
+            current.copy(blocks = blocks, position = positionWithImages(current, blocks), mediaSourceOrigin = recovery.mediaSourceOrigin)
         }
     }
 
@@ -128,8 +130,11 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
         if (position.index == 0) return position
         val index = position.index - 1
         val previous = current.blocks.getOrNull(index) ?: return ArticlePosition()
-        if (blocks.getOrNull(index) == previous) return position
-        val matches = blocks.indices.filter { blocks[it] == previous }
+        fun matchesPrevious(block: ArticleBlock?): Boolean = block == previous ||
+            previous.image != null && block?.image != null &&
+            block.copy(image = block.image.copy(referrerPolicy = previous.image.referrerPolicy)) == previous
+        if (matchesPrevious(blocks.getOrNull(index))) return position
+        val matches = blocks.indices.filter { matchesPrevious(blocks[it]) }
         return matches.singleOrNull()?.let { ArticlePosition(it + 1, position.offset) } ?: ArticlePosition()
     }
 
@@ -201,7 +206,8 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
                 val block = blocks.getJSONObject(index)
                 val image = block.optJSONObject("image")?.let {
                     ArticleImage(it.getString("url"), it.optString("alt"),
-                        it.optDouble("aspectRatio").toFloat().takeIf(Float::isFinite))
+                        it.optDouble("aspectRatio").toFloat().takeIf(Float::isFinite),
+                        imageReferrerPolicy(it.optString("referrerPolicy")))
                 }
                 ArticleBlock(block.getString("text"), block.optBoolean("heading"), image)
             },
@@ -210,6 +216,7 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
                 (position.getOrNull(1)?.toIntOrNull() ?: 0).coerceAtLeast(0),
             ),
             updatedAt = data.getLong("updatedAt"),
+            mediaSourceOrigin = articleOrigin(data.optString("mediaSourceOrigin")),
         )
     }
 
@@ -219,12 +226,12 @@ internal class ArticleRepository(context: Context, network: ArticleNetwork) {
             val data = JSONObject().put("text", block.text).put("heading", block.heading)
             block.image?.let { image ->
                 data.put("image", JSONObject().put("url", image.url).put("alt", image.alt)
-                    .put("aspectRatio", image.aspectRatio))
+                    .put("aspectRatio", image.aspectRatio).put("referrerPolicy", image.referrerPolicy.value))
             }
             data
         })
         val data = JSONObject().put("title", article.title).put("sourceUrl", article.sourceUrl)
-            .put("updatedAt", article.updatedAt).put("blocks", blocks)
+            .put("updatedAt", article.updatedAt).put("blocks", blocks).put("mediaSourceOrigin", article.mediaSourceOrigin)
         val file = fileFor(article.id)
         val stream = file.startWrite()
         try {

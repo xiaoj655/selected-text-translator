@@ -43,17 +43,11 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.Call
-import okhttp3.Callback
 import okhttp3.Dispatcher
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import kotlin.math.roundToInt
 
 internal fun articleImageHeight(widthPx: Int, aspectRatio: Float?): Int {
@@ -69,8 +63,8 @@ internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?, eInkMo
         val width = with(density) { maxWidth.roundToPx() }
         val height = articleImageHeight(width, image.aspectRatio)
         val heightDp = with(density) { height.toDp() }
-        val request = remember(image.url, sourceUrl, width, height) {
-            ImageRequest(image.url, articleOrigin(sourceUrl), maxOf(width, height).coerceIn(1, MAX_DECODED_EDGE))
+        val request = remember(image, sourceUrl, width, height) {
+            ImageRequest(image.url, articleOrigin(sourceUrl), maxOf(width, height).coerceIn(1, MAX_DECODED_EDGE), image.referrerPolicy)
         }
         var retry by remember(request) { mutableIntStateOf(0) }
         var bitmap by remember(request, retry) { mutableStateOf(loader.cached(request)) }
@@ -127,16 +121,16 @@ internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?, eInkMo
     }
 }
 
-private fun articleOrigin(sourceUrl: String?): String? = sourceUrl?.let {
-    try {
-        publicArticleUrl(it).newBuilder().encodedPath("/").query(null).build().toString()
-    } catch (_: ArticleImportException) {
-        null
+internal data class ImageRequest(
+    val url: String,
+    val referrer: String?,
+    val targetEdge: Int,
+    val referrerPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN,
+) {
+    val diskKey: String get() {
+        val key = "$url\n${referrer.orEmpty()}"
+        return if (referrerPolicy == ImageReferrerPolicy.ORIGIN) key else "$key\n${referrerPolicy.value}"
     }
-}
-
-internal data class ImageRequest(val url: String, val referrer: String?, val targetEdge: Int) {
-    val diskKey: String get() = "$url\n${referrer.orEmpty()}"
 }
 
 internal class ArticleImageLoader(cacheDirectory: File, private val network: ArticleNetwork) {
@@ -190,66 +184,12 @@ internal class ArticleImageLoader(cacheDirectory: File, private val network: Art
                         disk.remove(image.diskKey)
                     }
                 }
-                var url = publicArticleUrl(image.url)
-                repeat(MAX_IMAGE_REDIRECTS + 1) {
-                    when (val response = request(url, image)) {
-                        is ImageResponse.Content -> {
-                            disk.write(image.diskKey, response.bytes)
-                            return@withPermit response.bitmap
-                        }
-                        is ImageResponse.Redirect -> {
-                            url = publicArticleUrl(url.resolve(response.location)?.toString().orEmpty())
-                        }
-                    }
-                }
-                null
+                val bytes = downloadArticleImage(image.url, image.referrer, image.referrerPolicy) { network.client(http).newCall(it) }
+                decode(bytes, image.targetEdge).also { disk.write(image.diskKey, bytes) }
             } catch (_: IOException) {
                 null
             }
         }
-    }
-
-    private suspend fun request(url: HttpUrl, image: ImageRequest): ImageResponse = suspendCancellableCoroutine { continuation ->
-        val request = Request.Builder().url(url)
-            .header("Accept", "image/*")
-            .header("User-Agent", "Selected Article Reader (Android)")
-            .apply { image.referrer?.let { header("Referer", it) } }
-            .build()
-        val call = network.client(http).newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                continuation.resumeWith(Result.failure(e))
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (continuation.isActive) {
-                        continuation.resumeWith(runCatching { read(it, image.targetEdge) })
-                    }
-                }
-            }
-        })
-    }
-
-    private fun read(response: Response, targetEdge: Int): ImageResponse {
-        if (response.code in IMAGE_REDIRECTS) {
-            val location = response.header("Location") ?: throw IOException("Missing image redirect location.")
-            return ImageResponse.Redirect(location)
-        }
-        if (!response.isSuccessful) throw IOException("Image request returned HTTP ${response.code}.")
-        val body = response.body ?: throw IOException("Missing image data.")
-        val type = body.contentType()
-        val binary = type?.type == "application" && type.subtype == "octet-stream"
-        if (type != null && type.type != "image" && !binary) {
-            throw IOException("Response is not an image.")
-        }
-        val source = body.source()
-        if (body.contentLength() > MAX_IMAGE_BYTES || source.request(MAX_IMAGE_BYTES + 1L)) {
-            throw IOException("Image response is too large.")
-        }
-        val bytes = source.readByteArray()
-        return ImageResponse.Content(decode(bytes, targetEdge), bytes)
     }
 
     private fun decode(bytes: ByteArray, targetEdge: Int): Bitmap {
@@ -278,15 +218,7 @@ internal class ArticleImageLoader(cacheDirectory: File, private val network: Art
         bitmap.recycle()
         return scaled
     }
-
-    private sealed interface ImageResponse {
-        data class Redirect(val location: String) : ImageResponse
-        data class Content(val bitmap: Bitmap, val bytes: ByteArray) : ImageResponse
-    }
 }
 
-private const val MAX_IMAGE_BYTES = 10L * 1024 * 1024
 private const val MAX_SOURCE_PIXELS = 40_000_000L
 private const val MAX_DECODED_EDGE = 2048
-private const val MAX_IMAGE_REDIRECTS = 5
-private val IMAGE_REDIRECTS = setOf(301, 302, 303, 307, 308)

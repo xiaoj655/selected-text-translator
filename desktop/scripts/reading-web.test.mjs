@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import test from 'node:test'
 import { importReadingPage } from '../src/reading-web.js'
 import { createStorage, setCrypto } from '../src/storage.js'
@@ -88,14 +89,34 @@ test('IQS keeps sanitized rich content and resolves media against the final page
     apiKey: KEY,
     fetchImpl: async () => Response.json({ data: {
       ...DATA, redirectedUrl: 'https://articles.publisher.com/read/story',
-      html: `<h2>A useful heading</h2><p>${TEXT}<strong>Keep this emphasis.</strong></p><figure><img src="../diagram.png"><figcaption>A diagram.</figcaption></figure><script>bad()</script>`,
+      html: `<html><head><meta name="referrer" content="same-origin"></head><body><h2>A useful heading</h2><p>${TEXT}<strong>Keep this emphasis.</strong></p><figure><img src="../diagram.png"><figcaption>A diagram.</figcaption></figure><script>bad()</script></body></html>`,
     } }),
   })
   assert.equal(article.url, 'https://articles.publisher.com/read/story')
+  assert.equal(article.mediaReferrer, 'https://articles.publisher.com/')
+  assert.equal(article.mediaReferrerPolicy, 'same-origin')
   assert.match(article.html, /<h2>A useful heading<\/h2>/u)
   assert.match(article.html, /<strong>Keep this emphasis\.<\/strong>/u)
   assert.match(article.html, /url=https%3A%2F%2Farticles\.publisher\.com%2Fdiagram\.png/u)
   assert.doesNotMatch(article.html, /script|bad\(\)/u)
+})
+
+test('direct import uses the final document origin and honors a restrictive publisher header', async () => {
+  const finalUrl = 'https://publisher-site.com/read/story?view=all'
+  const article = await importReadingPage(URL, {
+    openResource: async (url) => {
+      assert.equal(url, URL)
+      const response = Readable.from([Buffer.from(`<html><head><title>A useful report</title>
+        <meta name="referrer" content="unsafe-url"></head><body><article><p>${TEXT}</p>
+        <img src="https://cdn.publisher-site.com/diagram.png"></article></body></html>`)])
+      response.statusCode = 200
+      response.headers = { 'content-type': 'text/html', 'referrer-policy': 'strict-origin, no-referrer' }
+      return { url: new globalThis.URL(finalUrl), response }
+    },
+  })
+  assert.equal(article.url, finalUrl)
+  assert.equal(article.mediaReferrer, 'https://publisher-site.com/')
+  assert.equal(article.mediaReferrerPolicy, 'no-referrer')
 })
 
 test('the saved IQS credential uses the existing encryption and survives storage reload', async () => {

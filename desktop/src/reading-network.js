@@ -5,6 +5,15 @@ import { isIP } from 'node:net'
 import ipaddr from 'ipaddr.js'
 
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
+const REFERRER_POLICIES = new Set(['no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin',
+  'same-origin', 'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url'])
+
+export function readingReferrerPolicy(value) {
+  if (Array.isArray(value)) value = value.join(',')
+  if (typeof value !== 'string') return ''
+  return value.split(',').map((policy) => policy.trim().toLowerCase())
+    .findLast((policy) => REFERRER_POLICIES.has(policy)) || ''
+}
 
 export function publicReadingUrl(value, base, { allowHttp = false } = {}) {
   if (typeof value !== 'string' || value.length > 4096) throw new Error('Invalid public HTTPS URL')
@@ -46,12 +55,15 @@ function requestResource(url, { signal, headers }) {
   })
 }
 
-export async function openReadingResource(value, { signal, headers = {}, requestImpl = requestResource, allowHttp = false } = {}) {
+export async function openReadingResource(value, {
+  signal, headers = {}, headersForUrl, onRedirect, requestImpl = requestResource, allowHttp = false,
+} = {}) {
   let url = publicReadingUrl(String(value), undefined, { allowHttp })
   for (let redirects = 0; redirects <= 5; redirects += 1) {
-    const response = await requestImpl(url, { signal, headers })
+    const response = await requestImpl(url, { signal, headers: headersForUrl?.(url, headers) ?? headers })
     if (!REDIRECT_STATUS.has(response.statusCode) || !response.headers.location) return { url, response }
     response.destroy()
+    onRedirect?.(response.headers)
     url = publicReadingUrl(response.headers.location, url, { allowHttp })
   }
   throw new Error('Too many redirects')

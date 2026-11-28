@@ -3,7 +3,7 @@ import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import { coachError } from './tutor.js'
 import { normalizeReadingContent, plainReadingContent } from './reading-content.js'
-import { openReadingResource, publicReadingUrl } from './reading-network.js'
+import { openReadingResource, publicReadingUrl, readingReferrerPolicy } from './reading-network.js'
 
 const MAX_URL_LENGTH = 4096
 const MAX_HTML_BYTES = 2 * 1024 * 1024
@@ -19,9 +19,9 @@ function articleUrl(value, base, allowHttp = false) {
   catch { throw coachError(INVALID_URL) }
 }
 
-async function fetchPage(url, allowHttp) {
+async function fetchPage(url, allowHttp, openResource) {
   const signal = AbortSignal.timeout(15000)
-  const opened = await openReadingResource(url.href, {
+  const opened = await openResource(url.href, {
     allowHttp, signal, headers: { Accept: 'text/html, application/xhtml+xml', 'User-Agent': 'SelectedTextTranslator/Reader' },
   })
   const { response } = opened
@@ -38,7 +38,7 @@ async function fetchPage(url, allowHttp) {
       if (bytes > MAX_HTML_BYTES) throw coachError('This page is too large to import. Paste the article text instead.')
       chunks.push(chunk)
     }
-    return { url: opened.url, contentType, bytes: Buffer.concat(chunks) }
+    return { url: opened.url, contentType, bytes: Buffer.concat(chunks), referrerPolicy: response.headers['referrer-policy'] }
   } finally {
     response.destroy()
   }
@@ -55,8 +55,21 @@ function decodePage(bytes, contentType) {
   }
 }
 
-function extractArticle(html, url) {
+function mediaSource(url, document, header) {
+  const policies = [readingReferrerPolicy(header)]
+  for (const meta of document?.querySelectorAll('meta[name]') || []) {
+    if (meta.getAttribute('name')?.trim().toLowerCase() === 'referrer') {
+      policies.push(readingReferrerPolicy(meta.getAttribute('content')))
+    }
+  }
+  // The reader only sends origins, and preserves either publisher opt-out.
+  const policy = ['no-referrer', 'same-origin'].find((value) => policies.includes(value)) || policies.findLast(Boolean)
+  return { mediaReferrer: `${url.origin}/`, ...(policy && { mediaReferrerPolicy: policy }) }
+}
+
+function extractArticle(html, url, referrerPolicy) {
   const { document } = parseHTML(html)
+  const source = mediaSource(url, document, referrerPolicy)
   const content = new Readability(document, { maxElemsToParse: 30000, allowedVideoRegex: /https:\/\//iu }).parse()
   const material = normalizeReadingContent(content?.content, { baseUrl: url.href })
   if (material.text.length < 80) throw coachError(NO_ARTICLE)
@@ -64,6 +77,7 @@ function extractArticle(html, url) {
     title: content.title?.trim().slice(0, 300).toWellFormed() || url.hostname,
     source: url.hostname,
     url: url.href,
+    ...source,
     ...material,
     kind: 'web_article',
   }
@@ -116,7 +130,8 @@ async function importIqsPage(url, { apiKey, fetchImpl, allowHttp }) {
       throw coachError('Alibaba Cloud couldn’t open the target page. Try another link or paste the article text.')
     }
     const metadata = data?.metadata || {}
-    const finalUrl = articleUrl(data?.redirectedUrl || metadata.redirectedUrl || metadata.url || url.href, url, allowHttp)
+    const redirectedUrl = data?.redirectedUrl || metadata.redirectedUrl
+    const finalUrl = articleUrl(redirectedUrl || metadata.url || url.href, url, allowHttp)
     let material = normalizeReadingContent(data?.html, { baseUrl: finalUrl.href })
     if (!material.text.trim()) material = plainReadingContent(data?.text)
     if (material.text.length < 80) throw coachError(NO_ARTICLE)
@@ -125,6 +140,7 @@ async function importIqsPage(url, { apiKey, fetchImpl, allowHttp }) {
       title: title || url.hostname,
       source: finalUrl.hostname,
       url: finalUrl.href,
+      ...mediaSource(redirectedUrl ? finalUrl : url, typeof data?.html === 'string' ? parseHTML(data.html).document : null),
       ...material,
       kind: 'web_article',
     }
@@ -136,12 +152,13 @@ async function importIqsPage(url, { apiKey, fetchImpl, allowHttp }) {
   }
 }
 
-export async function importReadingPage(value, { apiKey = '', fetchImpl = globalThis.fetch, allowHttp = false } = {}) {
+export async function importReadingPage(value, { apiKey = '', fetchImpl = globalThis.fetch, allowHttp = false,
+  openResource = openReadingResource } = {}) {
   const inputUrl = articleUrl(value, undefined, allowHttp)
   if (apiKey.trim()) return importIqsPage(inputUrl, { apiKey: apiKey.trim(), fetchImpl, allowHttp })
   try {
-    const { url, contentType, bytes } = await fetchPage(inputUrl, allowHttp)
-    return extractArticle(decodePage(bytes, contentType), url)
+    const { url, contentType, bytes, referrerPolicy } = await fetchPage(inputUrl, allowHttp, openResource)
+    return extractArticle(decodePage(bytes, contentType), url, referrerPolicy)
   } catch (error) {
     if (error.message?.startsWith('[english-coach] ')) throw error
     if (error.code === 'STT_PRIVATE_ADDRESS') throw coachError(INVALID_URL)

@@ -2,6 +2,7 @@ package io.github.selectedtext.translator
 
 import java.net.InetAddress
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -185,6 +186,37 @@ class ArticleImporterTest {
             runBlocking { ArticleImporter(client).fetch("https://news.example.org/article") }
         }
         assertEquals(listOf("https://news.example.org/article"), requests)
+    }
+
+    @Test
+    fun `retains the final document origin and restrictive image policies after a redirect`() = runBlocking {
+        val original = "https://links.example.org/story"
+        val html = """
+            <head><base href="https://assets.example.org/"><meta name="referrer" content="origin"></head>
+            <article>
+              <p>There is enough prose here for the importer to keep both images.</p>
+              <img src="first.png"><img src="second.png" referrerpolicy="no-referrer">
+            </article>
+        """.trimIndent()
+        val client = OkHttpClient.Builder().followRedirects(false).addInterceptor { chain ->
+            val request = chain.request()
+            val response = Response.Builder().request(request).protocol(Protocol.HTTP_1_1).message("Fixture")
+            if (request.url.toString() == original) {
+                response.code(302).header("Location", "https://publisher.example.org/real-story?q=private")
+                    .body("".toResponseBody()).build()
+            } else {
+                response.code(200).header("Referrer-Policy", "same-origin")
+                    .body(html.toResponseBody("text/html".toMediaType())).build()
+            }
+        }.build()
+
+        val article = ArticleImporter(client).fetch(original)
+        assertEquals(original, article.sourceUrl)
+        assertEquals("https://publisher.example.org/", article.mediaSourceOrigin)
+        assertEquals(listOf(
+            ArticleImage("https://assets.example.org/first.png", referrerPolicy = ImageReferrerPolicy.SAME_ORIGIN),
+            ArticleImage("https://assets.example.org/second.png", referrerPolicy = ImageReferrerPolicy.NONE),
+        ), article.blocks.mapNotNull { it.image })
     }
 
     @Test

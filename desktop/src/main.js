@@ -10,12 +10,12 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { coachError, createTutor } from './tutor.js'
-import { createReadingDiscovery } from './reading-sources.js'
+import { createReadingDiscovery, legacyFeedMediaReferrer } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
 import { createReadingHistory } from './reading-history.js'
 import { createElectronReadingResource, publicReadingUrl } from './reading-network.js'
-import { handleReadingMediaRequest } from './reading-media.js'
+import { bindReadingMedia, handleReadingMediaRequest } from './reading-media.js'
 import { synthesizeDashScopeSpeech } from './dashscope-tts.js'
 import { createRequestDebug } from './request-debug.js'
 import { createDesktopUpdater, fetchReleasePage, findDesktopUpdate } from './update.js'
@@ -125,6 +125,12 @@ function installReadingIpc(storage, fetcher) {
     articles.set(article.id, article)
     while (articles.size > 150) articles.delete(articles.keys().next().value)
   }
+  function articleForWindow(article) {
+    if (!article || article.mediaReferrer !== undefined) return bindReadingMedia(article)
+    const legacyReferrer = article.kind === 'feed_article' ? legacyFeedMediaReferrer(article)
+      : article.kind === 'web_article' && URL.parse(article.url)?.hostname === article.source ? article.url : ''
+    return bindReadingMedia(article, legacyReferrer)
+  }
   async function fetchArticle(url, { allowHttp = false } = {}) {
     const saved = await storage.sync.get('desktop_iqs_api_key')
     return importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch, allowHttp })
@@ -133,7 +139,7 @@ function installReadingIpc(storage, fetcher) {
     async 'stt:reading-discover'(category) {
       const result = await readingDiscovery.discover(category)
       for (const article of result.articles) rememberArticle(article)
-      return result
+      return { ...result, articles: result.articles.map(articleForWindow) }
     },
     async 'stt:reading-feed-add'(url) {
       try {
@@ -153,18 +159,18 @@ function installReadingIpc(storage, fetcher) {
       const entry = readingDiscovery.getArticle(id) ?? articles.get(id)
       const article = entry && readingHistory.openFeed(entry)
       if (article) rememberArticle(article)
-      return article ?? null
+      return article ? articleForWindow(article) : null
     },
     async 'stt:reading-import'(url) {
       const article = readingHistory.save(await fetchArticle(url))
       rememberArticle(article)
-      return article
+      return articleForWindow(article)
     },
     async 'stt:reading-reload'(id) {
       const article = await readingHistory.reload(id, (url) => fetchArticle(url, { allowHttp: url.startsWith('http://') }))
       if (!article) throw coachError('This article changed or is no longer in reading history. Open it again to reload.')
       rememberArticle(article)
-      return article
+      return articleForWindow(article)
     },
     'stt:reading-paste'(value) {
       if (typeof value !== 'string' || !value.trim()) throw coachError('Paste some English text to continue.')
@@ -179,7 +185,7 @@ function installReadingIpc(storage, fetcher) {
       const article = readingHistory.restore(id)
       if (!article) throw coachError('This article is no longer in reading history.')
       rememberArticle(article)
-      return article
+      return articleForWindow(article)
     },
     'stt:reading-history-remove'(id) { return readingHistory.remove(id) },
     'stt:reading-history-clear'() { return readingHistory.clear() },

@@ -106,14 +106,18 @@ test('reloading a saved feed article replaces its HTML in place and keeps the re
   const fromWeb = history.save(ARTICLE)
   const before = history.list()
   const html = '<img src="stt-media://asset/?url=https%3A%2F%2Fpublisher.example%2Fchart.png">' + saved.html
+  const fetched = { ...ARTICLE, text: saved.text, html, mediaReferrer: 'https://redirected-publisher.com/story?private=1',
+    mediaReferrerPolicy: 'same-origin' }
   const refreshed = await history.reload(saved.historyId, (requestedUrl) => {
     assert.equal(requestedUrl, url)
-    return { ...ARTICLE, text: saved.text, html }
+    return fetched
   })
   assert.equal(refreshed.historyId, saved.historyId)
   assert.notEqual(refreshed.id, fromWeb.id)
-  assert.deepEqual(await history.reload(saved.historyId, () => ({ ...ARTICLE, text: saved.text, html })), refreshed)
+  assert.deepEqual(await history.reload(saved.historyId, () => fetched), refreshed)
   assert.equal(refreshed.url, url)
+  assert.equal(refreshed.mediaReferrer, 'https://redirected-publisher.com/')
+  assert.equal(refreshed.mediaReferrerPolicy, 'same-origin')
   assert.equal(refreshed.kind, saved.kind)
   assert.equal(refreshed.publishedAt, publishedAt)
   assert.equal(refreshed.html, html)
@@ -121,6 +125,12 @@ test('reloading a saved feed article replaces its HTML in place and keeps the re
   assert.deepEqual(history.list().map(({ id, importedAt, lastOpenedAt }) => ({ id, importedAt, lastOpenedAt })),
     before.map(({ id, importedAt, lastOpenedAt }) => ({ id, importedAt, lastOpenedAt })))
   assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), refreshed)
+}))
+
+test('a saved feed keeps its explicit media opt-out across restart', () => fixture((directory) => {
+  const history = createReadingHistory(directory)
+  const saved = history.openFeed({ ...FEED_ARTICLE, mediaReferrer: '' })
+  assert.equal(createReadingHistory(directory).restore(saved.historyId).mediaReferrer, '')
 }))
 
 test('reloading uses the latest reading anchor and locates it in the new text', () => fixture(async (directory) => {

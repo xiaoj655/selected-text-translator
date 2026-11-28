@@ -1,4 +1,6 @@
-import { openReadingResource, publicReadingUrl } from './reading-network.js'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { parseHTML } from 'linkedom'
+import { openReadingResource, publicReadingUrl, readingReferrerPolicy } from './reading-network.js'
 import { sanitizeReadingSvg } from './reading-svg.js'
 
 const MAX_MEDIA_BYTES = 256 * 1024 * 1024
@@ -6,6 +8,56 @@ const MAX_SVG_BYTES = 2 * 1024 * 1024
 const SVG_TYPE = /^image\/svg\+xml(?:\s*;|$)/iu
 const MEDIA_TYPES = /^(?:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)|video\/(?:mp4|webm|ogg|quicktime|x-m4v)|audio\/(?:mpeg|mp4|ogg|wav|x-wav|webm|flac))(?:\s*;|$)/iu
 const RANGE = /^bytes=(?:\d+-\d*|-\d+)$/u
+const contextKey = randomBytes(32)
+
+function restrictReferrerPolicy(current, next) {
+  if (current === 'no-referrer' || next === 'no-referrer') return 'no-referrer'
+  if (current === 'same-origin' || next === 'same-origin') return 'same-origin'
+  return ''
+}
+
+function signContext(url, context) {
+  return createHmac('sha256', contextKey).update(url).update('\0').update(context).digest()
+}
+
+function readContext(value, url) {
+  if (!value || value.length > 1024) return null
+  const [context, encodedSignature, extra] = value.split('.')
+  if (!context || !encodedSignature || extra !== undefined) return null
+  const signature = Buffer.from(encodedSignature, 'base64url')
+  const expected = signContext(url.href, context)
+  if (signature.length !== expected.length || !timingSafeEqual(signature, expected)) return null
+  const [origin, policy] = JSON.parse(Buffer.from(context, 'base64url').toString())
+  return { origin, policy }
+}
+
+export function bindReadingMedia(article, legacyReferrer = '') {
+  if (!article?.html?.includes('stt-media://asset/')) return article
+  const referrer = article.mediaReferrer ?? legacyReferrer
+  if (!referrer || article.mediaReferrerPolicy === 'no-referrer') return article
+  let source
+  try { source = publicReadingUrl(referrer, undefined, { allowHttp: true }) } catch { return article }
+
+  // Bind the source to each asset in the sanitized markup when sending it to the window.
+  const { document } = parseHTML('<html><body></body></html>')
+  document.body.innerHTML = article.html
+  for (const image of document.body.querySelectorAll('img[src]')) {
+    const policy = restrictReferrerPolicy(article.mediaReferrerPolicy, readingReferrerPolicy(image.getAttribute('referrerpolicy')))
+    if (policy === 'no-referrer') continue
+    const asset = URL.parse(image.getAttribute('src'))
+    if (asset?.protocol !== 'stt-media:' || asset.hostname !== 'asset' || asset.pathname !== '/') continue
+    let target
+    try { target = publicReadingUrl(asset.searchParams.get('url')) } catch { continue }
+    const context = Buffer.from(JSON.stringify([source.origin, policy])).toString('base64url')
+    asset.searchParams.set('context', `${context}.${signContext(target.href, context).toString('base64url')}`)
+    image.src = asset.href
+  }
+  return { ...article, html: document.body.innerHTML }
+}
+
+function permitsReferrer(url, origin, policy) {
+  return url.protocol === 'https:' && policy !== 'no-referrer' && (policy !== 'same-origin' || url.origin === origin)
+}
 
 function mediaError(status) {
   return new Response(null, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -26,8 +78,28 @@ export function createReadingMediaHandler({ openResource = openReadingResource, 
       const headers = { Accept: 'image/*, video/*, audio/*', 'User-Agent': 'SelectedTextTranslator/Reader' }
       if (range) headers.Range = range
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(120000)])
-      const opened = await openResource(url.href, { signal, headers })
+      const context = readContext(resource.searchParams.get('context'), url)
+      let policy = context?.policy
+      const observePolicy = (headers) => { policy = restrictReferrerPolicy(policy, readingReferrerPolicy(headers['referrer-policy'])) }
+      const onRedirect = context ? observePolicy : undefined
+      const opened = await openResource(url.href, { signal, headers, onRedirect })
       response = opened.response
+      if (response.statusCode === 403 && context && opened.url && !signal.aborted) {
+        observePolicy(response.headers)
+        const { origin } = context
+        if (permitsReferrer(opened.url, origin, policy)) {
+          response.destroy()
+          let includeReferrer = true
+          const retry = await openResource(opened.url.href, {
+            signal, headers, onRedirect,
+            headersForUrl(destination, headers) {
+              includeReferrer &&= destination.origin === opened.url.origin && permitsReferrer(destination, origin, policy)
+              return includeReferrer ? { ...headers, Referer: `${origin}/` } : headers
+            },
+          })
+          response = retry.response
+        }
+      }
       if (![200, 206, 416].includes(response.statusCode)) {
         response.destroy()
         return mediaError(502)

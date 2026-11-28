@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.16
+
+- When an article image returns HTTP 403, retry it once with the article's site origin when permitted. This also works for saved articles.
+
 ## 0.2.15
 
 - E Ink mode uses the bottom of the screen for more article text. Use physical page keys or swipe the article to keep reading.

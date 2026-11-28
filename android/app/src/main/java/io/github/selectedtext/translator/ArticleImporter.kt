@@ -96,7 +96,7 @@ internal class ArticleImporter(
             pastedArticle(bytes.toString(type.charset(Charsets.UTF_8) ?: Charsets.UTF_8), url.host)
         } else {
             val document = Jsoup.parse(bytes.inputStream(), type?.charset()?.name(), url.toString())
-            extractArticle(document, url.host)
+            extractArticle(document, url.host, headerPolicy = response.imageReferrerPolicy())
         }
         return Page.Content(article)
     }
@@ -155,7 +155,12 @@ internal fun pastedArticle(text: String, title: String = ""): ReadingArticle {
     return ReadingArticle("", resolvedTitle.take(MAX_TITLE_LENGTH), null, body)
 }
 
-internal fun extractArticle(document: Document, host: String, alreadyExtracted: Boolean = false): ReadingArticle {
+internal fun extractArticle(
+    document: Document,
+    host: String,
+    alreadyExtracted: Boolean = false,
+    headerPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN,
+): ReadingArticle {
     val body = document.body()
     body.select(UNREADABLE_ELEMENTS).remove()
     val main = body.select("main,[role=main]").maxByOrNull(::contentScore) ?: body
@@ -172,10 +177,15 @@ internal fun extractArticle(document: Document, host: String, alreadyExtracted: 
         main.selectFirst("h1")?.text(),
         document.title(),
     ).filterNotNull().map(String::trim).firstOrNull(String::isNotEmpty)?.take(MAX_TITLE_LENGTH) ?: host
-    val blocks = readBlocks(content, title)
+    val blocks = readBlocks(content, title, document.imageReferrerPolicy(headerPolicy))
     if (blocks.filterNot { it.heading }.sumOf { it.text.length } < MIN_READABLE_TEXT) throw noArticleText()
-    return ReadingArticle("", title, null, blocks)
+    return ReadingArticle("", title, null, blocks, mediaSourceOrigin = articleOrigin(document.location()))
 }
+
+internal fun Document.imageReferrerPolicy(headerPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN) =
+    select("meta[name=referrer]").fold(headerPolicy) { policy, meta ->
+        minOf(policy, imageReferrerPolicy(meta.attr("content")))
+    }
 
 private fun psycheArticleBody(body: Element, main: Element): Element? {
     // Psyche uses article tags for recommendations and can preload other stories below the first one.
@@ -193,7 +203,7 @@ private fun contentScore(element: Element): Int {
     return maxOf(prose, element.ownText().length) - links
 }
 
-private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
+private fun readBlocks(content: Element, title: String, documentPolicy: ImageReferrerPolicy): List<ArticleBlock> {
     val output = mutableListOf<ArticleBlock>()
     val text = StringBuilder()
     var heading = false
@@ -213,7 +223,7 @@ private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
             when {
                 node is TextNode -> text.append(node.wholeText)
                 node is Element && node.normalName() == "img" && imageCount < MAX_ARTICLE_IMAGES -> {
-                    readArticleImage(node)?.let { image ->
+                    readArticleImage(node, documentPolicy)?.let { image ->
                         flush()
                         output.add(ArticleBlock("", image = image))
                         imageCount++
@@ -238,7 +248,7 @@ private fun readBlocks(content: Element, title: String): List<ArticleBlock> {
     return output
 }
 
-internal fun readArticleImage(element: Element): ArticleImage? {
+internal fun readArticleImage(element: Element, documentPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN): ArticleImage? {
     val width = element.attr("width").toIntOrNull()?.takeIf { it > 0 }
     val height = element.attr("height").toIntOrNull()?.takeIf { it > 0 }
     if (width == 1 && height == 1) return null
@@ -266,6 +276,7 @@ internal fun readArticleImage(element: Element): ArticleImage? {
         url = url,
         alt = element.attr("alt").trim().take(500).trimEnd { it.isHighSurrogate() },
         aspectRatio = if (width != null && height != null) width.toFloat() / height else null,
+        referrerPolicy = minOf(documentPolicy, imageReferrerPolicy(element.attr("referrerpolicy"))),
     )
 }
 

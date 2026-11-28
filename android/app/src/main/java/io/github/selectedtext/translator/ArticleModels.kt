@@ -4,7 +4,12 @@ import kotlin.math.abs
 
 internal data class ArticleBlock(val text: String, val heading: Boolean = false, val image: ArticleImage? = null)
 
-internal data class ArticleImage(val url: String, val alt: String = "", val aspectRatio: Float? = null)
+internal data class ArticleImage(
+    val url: String,
+    val alt: String = "",
+    val aspectRatio: Float? = null,
+    val referrerPolicy: ImageReferrerPolicy = ImageReferrerPolicy.ORIGIN,
+)
 
 internal data class ArticlePosition(val index: Int = 0, val offset: Int = 0)
 
@@ -15,6 +20,7 @@ internal data class ReadingArticle(
     val blocks: List<ArticleBlock>,
     val position: ArticlePosition = ArticlePosition(),
     val updatedAt: Long = 0,
+    val mediaSourceOrigin: String? = null,
 ) {
     val hasImages = blocks.any { it.image != null }
 }

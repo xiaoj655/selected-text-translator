@@ -164,7 +164,7 @@ export function normalizeReadingContent(html, { baseUrl } = {}) {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       a: ['href', 'title', 'rel', 'data-reading-media-fallback'],
-      img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
+      img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding', 'referrerpolicy'],
       video: ['src', 'poster', 'controls', 'preload', 'data-reading-video'],
       source: ['src', 'type'], th: ['colspan', 'rowspan', 'scope'], td: ['colspan', 'rowspan'],
       col: ['span'], ol: ['start', 'reversed', 'type'], li: ['value'], abbr: ['title'],
