@@ -131,6 +131,7 @@ fun LookupScreen(
     actions: LookupActions,
     external: Boolean,
     reading: @Composable (navigation: @Composable () -> Unit, rail: @Composable () -> Unit) -> Unit,
+    vocabulary: @Composable (Modifier) -> Unit = {},
     readingSettings: (@Composable (Modifier) -> Unit)? = null,
     preferReadingSettings: Boolean = false,
     updateControls: @Composable (compact: Boolean) -> Unit,
@@ -215,6 +216,7 @@ fun LookupScreen(
                             updateControls = updateControls,
                             readingSettings = readingSettings,
                             preferReadingSettings = preferReadingSettings,
+                            vocabulary = vocabulary,
                             workspaceState = workspaceState,
                             navigation = navigation,
                             dualPane = dualPane,
@@ -237,6 +239,7 @@ private fun LookupPanel(
     updateControls: @Composable (compact: Boolean) -> Unit,
     readingSettings: (@Composable (Modifier) -> Unit)? = null,
     preferReadingSettings: Boolean = false,
+    vocabulary: @Composable (Modifier) -> Unit = {},
     navigation: @Composable () -> Unit = {},
     dualPane: Boolean = false,
 ) {
@@ -244,6 +247,7 @@ private fun LookupPanel(
     val title = when (state.page) {
         LookupPage.SETTINGS -> "Settings"
         LookupPage.SAVED -> "Saved expressions"
+        LookupPage.VOCABULARY -> "Vocabulary"
         LookupPage.READING -> "Reading"
         LookupPage.LOOKUP -> if (external) "Translate selection" else "Translate"
     }
@@ -307,6 +311,7 @@ private fun LookupPanel(
                 LookupPage.SAVED -> workspaceState.SaveableStateProvider(LookupPage.SAVED.name) {
                     Expressions(state.saved, actions, pageModifier)
                 }
+                LookupPage.VOCABULARY -> vocabulary(pageModifier)
                 LookupPage.READING -> Unit
             }
             SnackbarHost(snackbar, Modifier.padding(horizontal = 16.dp))
@@ -318,6 +323,7 @@ private fun LookupPanel(
 private val workspaceDestinations = listOf(
     Triple(LookupPage.LOOKUP, "Translate", R.drawable.ic_selected_mark),
     Triple(LookupPage.READING, "Reading", R.drawable.ic_reading),
+    Triple(LookupPage.VOCABULARY, "Vocabulary", R.drawable.ic_vocabulary),
     Triple(LookupPage.SAVED, "Saved", R.drawable.ic_bookmark),
 )
 

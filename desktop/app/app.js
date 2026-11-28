@@ -1320,14 +1320,17 @@ function translatePastedText(text) {
 
 async function recordTutorLookup(entry) {
   if (!entry.lookup || entry.status !== 'done' || (entry.mode === 'guide' && !entry.guide)) return
-  try {
-    await window.sttDesktop.tutor.recordLookup({
-      ...entry.lookup,
-      sourceLanguage: entry.sourceLanguage,
-      guideType: entry.guide?.guideType,
-    })
-    if (state.workspace === 'tutor') void tutor.refresh()
-  } catch { }
+  const tutorApi = window.sttDesktop.tutor
+  const requests = [tutorApi.recordLookup({
+    ...entry.lookup,
+    sourceLanguage: entry.sourceLanguage,
+    guideType: entry.guide?.guideType,
+  })]
+  if (isSingleWordInput(entry.text) && isEnglishSource(entry) && tutorApi.vocabularyLookup) {
+    requests.push(tutorApi.vocabularyLookup({ text: entry.text, lookupId: entry.lookup.id }))
+  }
+  await Promise.allSettled(requests)
+  if (state.workspace === 'tutor') void tutor.refresh()
 }
 
 function scheduleLiveTranslate() {

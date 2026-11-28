@@ -1,6 +1,7 @@
 import { button, coachErrorText, createReviewWorkspace, el, englishText } from './tutor.js'
 import { createReadingLookup } from './reading-lookup.js'
 import { createReadingMaterial, readingFocusText } from './reading-material.js'
+import { createVocabularyWorkspace } from './vocabulary.js'
 
 export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }) {
   const shell = el('div', 'tutor-shell')
@@ -14,44 +15,54 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
   const nav = el('nav', 'tutor-modes')
   nav.setAttribute('aria-label', 'English Coach modes')
   const readingPanel = el('div')
+  const vocabularyPanel = el('div')
   const reviewPanel = el('div')
   readingPanel.id = 'tutor-reading-panel'
+  vocabularyPanel.id = 'tutor-vocabulary-panel'
   reviewPanel.id = 'tutor-review-panel'
-  reviewPanel.hidden = true
 
   const reading = createReadingWorkspace({ rootEl: readingPanel, scroller: rootEl, lookupDock, api: readingApi, onOpenSettings,
-    onLookup: (lookup) => api.recordLookup(lookup) })
+    onLookup: (lookup) => api.recordLookup(lookup),
+    async onVocabularyLookup({ id, text }) {
+      await api.vocabularyLookup({ text, lookupId: id })
+      vocabulary.refresh()
+    } })
+  const vocabulary = createVocabularyWorkspace({ rootEl: vocabularyPanel, api })
   const review = createReviewWorkspace({ rootEl: reviewPanel, api, onOpenSettings })
-  const readingButton = button('Article reading', 'tutor-reading-mode', () => setMode(false))
-  const reviewButton = button('Review', 'tutor-review-mode', () => setMode(true))
-  readingButton.setAttribute('aria-controls', readingPanel.id)
-  readingButton.setAttribute('aria-pressed', 'true')
-  reviewButton.setAttribute('aria-controls', reviewPanel.id)
-  reviewButton.setAttribute('aria-pressed', 'false')
-  nav.append(readingButton, reviewButton)
-  frame.append(title, nav, readingPanel, reviewPanel)
+  const modes = [
+    { workspace: reading, panel: readingPanel, label: 'Article reading', id: 'reading' },
+    { workspace: vocabulary, panel: vocabularyPanel, label: 'Vocabulary', id: 'vocabulary' },
+    { workspace: review, panel: reviewPanel, label: 'Review', id: 'review' },
+  ]
+  let activeMode = modes[0]
+  for (const mode of modes) {
+    mode.button = button(mode.label, `tutor-${mode.id}-mode`, () => setMode(mode))
+    mode.button.setAttribute('aria-controls', mode.panel.id)
+    nav.append(mode.button)
+  }
+  syncModes()
+  frame.append(title, nav, ...modes.map((mode) => mode.panel))
   rootEl.append(frame)
 
-  function setMode(showReview) {
-    if (reviewPanel.hidden === !showReview) return
-    reading.close()
-    readingPanel.hidden = showReview
-    reviewPanel.hidden = !showReview
-    readingButton.setAttribute('aria-pressed', String(!showReview))
-    reviewButton.setAttribute('aria-pressed', String(showReview))
+  function syncModes() {
+    for (const mode of modes) {
+      mode.panel.hidden = mode !== activeMode
+      mode.button.setAttribute('aria-pressed', String(mode === activeMode))
+    }
+  }
+
+  function setMode(mode) {
+    if (mode === activeMode) return
+    activeMode.workspace.close?.()
+    activeMode = mode
+    syncModes()
     rootEl.scrollTop = 0
-    if (showReview) review.open()
-    else reading.open()
+    activeMode.workspace.open()
   }
 
   return {
-    open() {
-      if (reviewPanel.hidden) reading.open()
-      else review.open()
-    },
-    refresh() {
-      if (!reviewPanel.hidden) review.refresh()
-    },
+    open() { activeMode.workspace.open() },
+    refresh() { activeMode.workspace.refresh?.() },
     setArticleAppearance({ font, width, fit, lookupFont }) {
       const anchor = readingAnchor(rootEl)
       shell.style.setProperty('--article-font-size', `${font}px`)
@@ -59,8 +70,8 @@ export function createTutorWorkspace({ rootEl, api, readingApi, onOpenSettings }
       shell.style.setProperty('--reading-lookup-font-size', `${lookupFont}px`)
       if (anchor) rootEl.scrollTop += anchor.range.getBoundingClientRect().top - anchor.top
     },
-    close() { reading.close() },
-    handleResultShortcut: reading.handleResultShortcut,
+    close() { activeMode.workspace.close?.() },
+    handleResultShortcut(key, target) { return activeMode.workspace.handleResultShortcut?.(key, target) ?? false },
   }
 }
 
@@ -114,8 +125,8 @@ function attribution({ source, publishedAt }) {
   return meta
 }
 
-function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSettings, onLookup }) {
-  const lookup = createReadingLookup({ rootEl, scroller, dock: lookupDock, onOpenSettings, onLookup })
+function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSettings, onLookup, onVocabularyLookup }) {
+  const lookup = createReadingLookup({ rootEl, scroller, dock: lookupDock, onOpenSettings, onLookup, onVocabularyLookup })
   const index = el('div')
   const header = el('header', 'reading-header')
   const heading = el('h3', 'reading-heading', 'Choose an article')

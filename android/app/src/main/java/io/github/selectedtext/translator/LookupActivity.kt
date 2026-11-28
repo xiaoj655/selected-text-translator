@@ -41,6 +41,7 @@ private const val OPEN_ARTICLE = "io.github.selectedtext.translator.OPEN_ARTICLE
 class WorkspaceActivity : LookupActivity(external = false) {
     private val updates: AndroidUpdateViewModel by viewModels()
     private val reader: ReaderViewModel by viewModels()
+    private val study: VocabularyViewModel by viewModels()
     private var articlePageTurn: ((Int) -> Unit)? = null
     private val installPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (packageManager.canRequestPackageInstalls()) {
@@ -100,6 +101,12 @@ class WorkspaceActivity : LookupActivity(external = false) {
     }
 
     override val hasReadingSettings = true
+
+    @Composable
+    override fun Vocabulary(speaking: Boolean, modifier: Modifier) {
+        val state by study.state.collectAsStateWithLifecycle()
+        VocabularyScreen(state, study, speaking, ::readVocabularyWord, ::stopSpeech, modifier)
+    }
 
     @Composable
     override fun ReadingSettings(modifier: Modifier) {
@@ -191,6 +198,7 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
                 LookupScreen(
                     state, actions, external,
                     reading = { navigation, rail -> Reading(state.speaking, navigation, rail) },
+                    vocabulary = { modifier -> Vocabulary(state.speaking, modifier) },
                     readingSettings = if (hasReadingSettings) ({ modifier -> ReadingSettings(modifier) }) else null,
                     preferReadingSettings = preferReadingSettings,
                 ) { compact ->
@@ -205,6 +213,9 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
 
     @Composable
     protected open fun Reading(speaking: Boolean, libraryNavigation: @Composable () -> Unit, libraryRail: @Composable () -> Unit) = Unit
+
+    @Composable
+    protected open fun Vocabulary(speaking: Boolean, modifier: Modifier) = Unit
 
     protected open val hasReadingSettings = false
 
@@ -329,6 +340,15 @@ abstract class LookupActivity(private val external: Boolean) : ComponentActivity
     }
 
     protected fun speakOrStop(text: String) = readSpeech(text)
+
+    protected fun readVocabularyWord(word: String) {
+        if (model.state.value.speaking) {
+            stopSpeech()
+            return
+        }
+        model.setSpeaking(true)
+        startSystemSpeech(word, ++speechRevision)
+    }
 
     private fun readSpeech(text: String, preview: SpeechConfig? = null) {
         if (model.state.value.speaking) {

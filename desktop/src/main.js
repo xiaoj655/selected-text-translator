@@ -10,6 +10,8 @@ import { createWindows } from './windows.js'
 import { createTts } from './tts.js'
 import { createSpeechPlayer } from './speech-player.js'
 import { coachError, createTutor } from './tutor.js'
+import { createVocabularyStudy } from './vocabulary-study.js'
+import { listVocabulary } from '../vendor/src/vocabulary-store.js'
 import { createReadingDiscovery, legacyFeedMediaReferrer } from './reading-sources.js'
 import { importReadingPage } from './reading-web.js'
 import { createReadingTutor } from './reading-tutor.js'
@@ -218,9 +220,10 @@ function installReadingIpc(storage, fetcher) {
   }
 }
 
-function installIpc(storage, history, requestDebug) {
+function installIpc(storage, history, requestDebug, userDataDir) {
   const fetchTutor = requestDebug.forKind('tutor')
   const tutor = createTutor({ storage, history, fetcher: fetchTutor })
+  const vocabulary = createVocabularyStudy({ userDataDir, history, getSavedVocabulary: listVocabulary })
   installReadingIpc(storage, fetchTutor)
   ipcMain.handle('stt:history-load', () => history.load())
   ipcMain.handle('stt:history-save', (_event, entries) => history.save(entries))
@@ -239,6 +242,17 @@ function installIpc(storage, history, requestDebug) {
   ipcMain.handle('stt:tutor-lesson', (_event, sourceId) => tutor.startLesson(sourceId))
   ipcMain.handle('stt:tutor-lookup', (_event, lookup) => tutor.recordLookup(lookup))
   ipcMain.handle('stt:tutor-result', (_event, result) => tutor.recordResult(result))
+  const vocabularyHandlers = {
+    'stt:vocabulary-plan': vocabulary.getPlan,
+    'stt:vocabulary-lookup': vocabulary.recordLookup,
+    'stt:vocabulary-rate': vocabulary.rate,
+  }
+  for (const [channel, handle] of Object.entries(vocabularyHandlers)) {
+    ipcMain.handle(channel, (event, input) => {
+      if (!isMainWindowEvent(event)) throw new Error('Open Vocabulary in the main window.')
+      return handle(input)
+    })
+  }
   ipcMain.handle('stt:message', (event, message) => dispatch(message,
     routeDesktopMessageSender(message, windows.senderFor(event.sender), isMainWindowEvent(event))))
   ipcMain.handle('stt:storage', (_event, request) => {
@@ -383,7 +397,7 @@ async function bootstrap() {
   })
   const shim = installMainChrome({ storage, windows, tts, providerFetch: requestDebug.forKind, logger })
   dispatch = shim.dispatch
-  installIpc(storage, history, requestDebug)
+  installIpc(storage, history, requestDebug, userDataDir)
   installRequestDebugIpc(requestDebug)
   const updates = await setupDesktopUpdater()
   installUpdateIpc(updates)

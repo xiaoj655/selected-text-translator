@@ -22,6 +22,7 @@ import { verifyReadingLookupResize } from './reading-lookup-resize.mjs'
 import { verifyReadingSentenceScope } from './reading-sentence.mjs'
 import { verifySettings } from './settings.mjs'
 import { verifyInterfaceZoom, verifyWorkbenchLayout } from './workbench-layout.mjs'
+import { verifyVocabulary } from './vocabulary.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(here, '..', '..')
@@ -254,10 +255,10 @@ export async function runE2E(mode = 'core') {
     }
   }
 
-  async function launchApp() {
+  async function launchApp(profileDir = userDataDir) {
     app = await playwrightElectron.launch({
       executablePath: electronBinary,
-      args: [desktopDir, `--user-data-dir=${userDataDir}`, '--no-sandbox'],
+      args: [desktopDir, `--user-data-dir=${profileDir}`, '--no-sandbox'],
       env: { ...process.env, STT_E2E: '1' },
       timeout: 60000,
     })
@@ -272,21 +273,23 @@ export async function runE2E(mode = 'core') {
     return { mainPage, readingFeeds }
   }
 
-  async function restart() {
+  async function restart(profileDir = userDataDir) {
     await app.close()
-    const { mainPage: page } = await launchApp()
+    const { mainPage: page } = await launchApp(profileDir)
     return { app, page }
   }
 
+  const configure = (page) => setConfig(page, {
+    base_url: mockUrl,
+    api_key: 'e2e-mock-key',
+    model: 'qwen-mt-flash',
+    learning_model: 'qwen3.8-flash',
+    reading_mode: 'translate',
+  })
+
   try {
     const { mainPage, readingFeeds } = await launchApp()
-    await setConfig(mainPage, {
-      base_url: mockUrl,
-      api_key: 'e2e-mock-key',
-      model: 'qwen-mt-flash',
-      learning_model: 'qwen3.8-flash',
-      reading_mode: 'translate',
-    })
+    await configure(mainPage)
 
     await check('boot: real Electron with main window', async () => {
       assert.ok(mainPage.url().includes('index.html'))
@@ -1762,6 +1765,7 @@ export async function runE2E(mode = 'core') {
     if (mode === 'core' || mode === 'all') {
       const page = await verifyInterfaceZoom({ app, page: mainPage, check, openSettings, restart })
       await verifyCustomReadingFeeds({ app, page, check, shot, restart })
+      await verifyVocabulary({ check, restart: () => restart(join(userDataDir, 'vocabulary-test')), configure, shot })
     }
 
     await check('no renderer errors during the whole run', async () => {

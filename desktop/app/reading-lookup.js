@@ -48,7 +48,7 @@ function lookupHeaderButton(label, id, iconPath, onClick) {
   return control
 }
 
-export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup }) {
+export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, onLookup, onVocabularyLookup }) {
   const popover = el('section', 'reading-lookup')
   popover.id = 'reading-lookup'
   popover.tabIndex = -1
@@ -617,6 +617,11 @@ export function createReadingLookup({ rootEl, scroller, dock, onOpenSettings, on
         entry.error = entry.mode === 'guide' ? 'No guidance was generated. Try again.'
           : entry.targetLanguage === ENGLISH_EXPLANATION_TARGET ? 'No English explanation was generated. Try again.'
             : 'No translation was generated. Try again.'
+        if (entry.status === 'done' && entry.canExplainWord && onVocabularyLookup && !entry.vocabularyRecorded) {
+          const current = entry
+          current.vocabularyRecorded = true
+          void onVocabularyLookup(current).catch(() => { current.vocabularyRecorded = false })
+        }
         if (entry.status === 'done' && /\s/u.test(entry.text)) {
           void Promise.resolve(onLookup?.({ id: entry.id, text: entry.text, sourceLanguage: 'english',
             guideType: entry.guide?.guideType, createdAt: entry.createdAt })).catch(() => {})

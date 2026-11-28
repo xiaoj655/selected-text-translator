@@ -9,6 +9,7 @@ on:
     paths:
       - 'android/**'
       - 'src/**'
+      - 'vocabulary/**'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 

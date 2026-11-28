@@ -40,7 +40,7 @@ data class ModelConnectionTest(val busy: Boolean, val message: String? = null, v
 
 data class SavedExpression(val id: String, val source: String, val result: String)
 
-enum class LookupPage { LOOKUP, READING, SETTINGS, SAVED }
+enum class LookupPage { LOOKUP, READING, SETTINGS, SAVED, VOCABULARY }
 
 data class LookupUiState(
     val input: String = "",

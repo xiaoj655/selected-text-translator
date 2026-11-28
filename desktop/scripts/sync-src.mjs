@@ -16,6 +16,9 @@ if (!existsSync(join(repoRoot, 'src', 'content.js'))) {
 rmSync(vendorDir, { recursive: true, force: true })
 mkdirSync(srcTarget, { recursive: true })
 cpSync(join(repoRoot, 'src'), srcTarget, { recursive: true })
+const vocabularyTarget = join(vendorDir, 'vocabulary')
+mkdirSync(vocabularyTarget, { recursive: true })
+cpSync(join(repoRoot, 'vocabulary', 'study-words.json'), join(vocabularyTarget, 'study-words.json'))
 for (const name of auxiliaryHtmlPages) {
   const path = join(srcTarget, name)
   writeFileSync(path, localizeAuxiliaryHtml(name, readFileSync(path, 'utf8')))

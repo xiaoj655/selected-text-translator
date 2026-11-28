@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class LookupViewModel(application: Application, private val restored: SavedStateHandle) : AndroidViewModel(application) {
-    private val store = (application as TranslatorApplication).store
+    private val app = application as TranslatorApplication
+    private val store = app.store
     private val client = TranslationClient(application)
     private val _state = MutableStateFlow(
         LookupUiState(input = restored[INPUT_KEY] ?: "", page = restored[PAGE_KEY] ?: LookupPage.LOOKUP),
@@ -115,6 +116,7 @@ class LookupViewModel(application: Application, private val restored: SavedState
             }
 
             try {
+                val firstResult = results.isEmpty()
                 val result = results[mode] ?: client.lookup(config, text, mode) { partial ->
                     updateRequest(revision) { it.copy(partial = partial) }
                 }
@@ -122,6 +124,9 @@ class LookupViewModel(application: Application, private val restored: SavedState
                 results[mode] = result
                 updateRequest(revision) {
                     it.copy(result = result, partial = "", busy = false, isSaved = containsResult(it.saved, it.input, result))
+                }
+                if (firstResult && _state.value.requestRevision == revision && result.text.isNotBlank()) {
+                    app.vocabulary.recordLookup(text)
                 }
             } catch (error: CancellationException) {
                 throw error

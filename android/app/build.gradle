@@ -14,8 +14,8 @@ android {
         applicationId = 'io.github.selectedtext.translator'
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = '0.2.16'
+        versionCode = 23
+        versionName = '0.2.17'
     }
 
     buildTypes {
@@ -34,6 +34,8 @@ android {
         buildConfig = true
         compose = true
     }
+
+    sourceSets.main.assets.srcDir(rootProject.file('../vocabulary'))
 }
 
 @CacheableTask

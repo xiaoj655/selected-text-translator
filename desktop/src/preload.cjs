@@ -169,6 +169,9 @@ window.sttDesktop = {
     startLesson: (sourceId) => ipcRenderer.invoke('stt:tutor-lesson', sourceId),
     recordLookup: (lookup) => ipcRenderer.invoke('stt:tutor-lookup', lookup),
     recordResult: (result) => ipcRenderer.invoke('stt:tutor-result', result),
+    vocabularyPlan: () => ipcRenderer.invoke('stt:vocabulary-plan'),
+    vocabularyLookup: (lookup) => ipcRenderer.invoke('stt:vocabulary-lookup', lookup),
+    vocabularyRate: (result) => ipcRenderer.invoke('stt:vocabulary-rate', result),
   },
   openBailianConsole: () => ipcRenderer.invoke('stt:open-bailian-console'),
   reading: {

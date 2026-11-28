@@ -406,6 +406,7 @@ internal class ReaderViewModel(
         val cached = cachedMeaning?.takeIf { it.config == store.config.value && it.selection == result.selection }
         if (cached != null) {
             updateResult(revision) { it.copy(meaning = cached.meaning, meaningError = null).withSavedStatus(store.saved.value) }
+            recordWordLookup(revision, result.selection)
             return
         }
         updateResult(revision) { it.copy(meaningBusy = true, meaningError = null) }
@@ -416,6 +417,7 @@ internal class ReaderViewModel(
                 val meaning = client.lookupArticle(config, result.selection)
                 cachedMeaning = CachedMeaning(config, result.selection, meaning)
                 updateResult(revision) { it.copy(meaning = meaning, meaningBusy = false).withSavedStatus(store.saved.value) }
+                recordWordLookup(revision, result.selection)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -436,6 +438,7 @@ internal class ReaderViewModel(
                 store.load()
                 val guide = client.guideArticle(store.config.value, result.selection)
                 updateResult(revision) { it.copy(guide = guide, guideBusy = false) }
+                recordWordLookup(revision, result.selection)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -450,6 +453,12 @@ internal class ReaderViewModel(
         val result = state.value.result ?: return
         if (!result.guided || result.guide == null || result.answerRevealed) return
         updateResult(selectionRevision) { it.copy(answerRevealed = true).withSavedStatus(store.saved.value) }
+    }
+
+    private fun recordWordLookup(revision: Int, selection: ArticleSelection) {
+        if (revision == selectionRevision && selection.kind == ArticleSelectionKind.WORD) {
+            app.vocabulary.recordLookup(selection.text)
+        }
     }
 
     fun analyzeSentence() {

@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.17
+
+- Open **Vocabulary** to learn new English words and review them offline. The app starts with a mix of difficulty levels and adjusts new words based on what you already know.
+- English words you look up or save can influence suggestions. Vocabulary progress is saved on this device.
+
 ## 0.2.16
 
 - When an article image returns HTTP 403, retry it once with the article's site origin when permitted. This also works for saved articles.

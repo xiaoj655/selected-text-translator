@@ -33,6 +33,7 @@ execFileSync(process.execPath, [
   join(root, 'scripts', 'reading-content.test.mjs'), join(root, 'scripts', 'reading-media.test.mjs'),
   join(root, 'scripts', 'reading-selection.test.mjs'),
   join(root, 'scripts', 'reading-history.test.mjs'),
+  join(root, 'scripts', 'vocabulary-study.test.mjs'),
 ], { stdio: 'pipe' })
 
 const appSource = readFileSync(join(root, 'app', 'app.js'), 'utf8')

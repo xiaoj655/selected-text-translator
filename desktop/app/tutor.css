@@ -33,7 +33,7 @@
   padding-block: clamp(28px, 6vh, 60px);
 }
 
-.tutor-modes, #tutor-review-panel, #tutor-reading-panel > :not(.reading-detail), .reading-discussion {
+.tutor-modes, #tutor-review-panel, #tutor-vocabulary-panel, #tutor-reading-panel > :not(.reading-detail), .reading-discussion {
   max-width: 680px;
   margin-inline: auto;
 }
@@ -166,6 +166,50 @@
 
 .tutor-modes button:hover { background: var(--surface); }
 .tutor-modes button[aria-pressed="true"] { color: var(--text); border-block-end-color: var(--accent); font-weight: 600; }
+
+.vocabulary-card { max-width: 560px; }
+.vocabulary-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 32px;
+  margin-block: 24px 8px;
+  padding-block: 16px;
+  border-block: 1px solid var(--border);
+}
+.vocabulary-count { display: flex; flex-direction: column-reverse; gap: 4px; }
+.vocabulary-count dt { font-size: 13px; color: var(--text-2); }
+.vocabulary-count dd { margin: 0; font-size: var(--fs-result); font-weight: 650; }
+.vocabulary-question-head .tutor-step { white-space: normal; }
+.vocabulary-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  margin-block: 10px 26px;
+  border: 0;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.vocabulary-progress::-webkit-progress-bar { background: var(--surface-2); }
+.vocabulary-progress::-webkit-progress-value { background: var(--accent); border-radius: inherit; }
+.vocabulary-word-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.vocabulary-word {
+  min-width: 0;
+  margin: 0;
+  font-weight: 640;
+  font-size: clamp(30px, 6vw, 46px);
+  letter-spacing: -.025em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.vocabulary-word-row button { flex: none; }
+.vocabulary-answer { margin-block-start: 18px; padding-block-start: 10px; border-block-start: 1px solid var(--border); }
+.vocabulary-card .vocabulary-meaning { font-size: var(--fs-result); font-weight: 600; }
+.vocabulary-ratings[hidden], .vocabulary-rating-status:empty, .vocabulary-speech-status:empty { display: none; }
+.vocabulary-ratings button { min-height: 36px; }
+.vocabulary-ratings button[aria-disabled="true"] { opacity: .55; cursor: wait; }
+
 .reading-filters button[aria-pressed="true"] { background: var(--surface-2); border-color: var(--border-strong); font-weight: 600; }
 
 .reading-header {

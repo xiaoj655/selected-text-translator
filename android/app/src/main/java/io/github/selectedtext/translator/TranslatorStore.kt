@@ -23,6 +23,7 @@ import org.json.JSONObject
 
 class TranslatorApplication : Application() {
     internal val store by lazy { TranslatorStore(this) }
+    internal val vocabulary by lazy { VocabularyRepository(this, store) }
     internal val cloudSpeech by lazy { CloudSpeechClient() }
     internal val articleNetwork by lazy { ArticleNetwork(this) }
     internal val articleImages by lazy { ArticleImageLoader(cacheDir, articleNetwork) }
