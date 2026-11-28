@@ -96,6 +96,7 @@ const CATEGORIES = {
   news: 'Data & progress',
   engineering: 'Engineering blogs',
   ideas: 'Essays & ideas',
+  chinese: 'Chinese blogs',
   custom: 'My feeds',
 }
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
@@ -387,8 +388,12 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       open.lang = 'en'
       const meta = attribution(article)
       if (article.feedHasBody) {
-        const words = article.text.match(/\S+/gu)?.length ?? 0
-        meta.append(' · About ', wordCountFormat.format(words), ' words in feed')
+        if (category === 'chinese') {
+          meta.append(' · Full text in feed')
+        } else {
+          const words = article.text.match(/\S+/gu)?.length ?? 0
+          meta.append(' · About ', wordCountFormat.format(words), ' words in feed')
+        }
       } else {
         const availability = article.excerpt ? 'Summary only' : 'Headline only'
         meta.append(' · ', availability, ' · Import for full article')

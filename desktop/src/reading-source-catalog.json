@@ -1,0 +1,37 @@
+[
+  {
+    "id": "bo-ke",
+    "name": "Bo.ke",
+    "url": "https://bo.ke/rss.xml",
+    "group": "chinese"
+  },
+  {
+    "id": "ruanyifeng",
+    "name": "阮一峰的网络日志",
+    "url": "https://www.ruanyifeng.com/blog/atom.xml",
+    "hosts": ["www.ruanyifeng.com"],
+    "upgradeArticleLinks": true,
+    "group": "chinese"
+  },
+  {
+    "id": "sspai",
+    "name": "少数派",
+    "url": "https://sspai.com/feed",
+    "hosts": ["sspai.com"],
+    "group": "chinese"
+  },
+  {
+    "id": "the-conversation",
+    "name": "The Conversation",
+    "url": "https://theconversation.com/global/articles.atom",
+    "hosts": ["theconversation.com"],
+    "group": "ideas"
+  },
+  {
+    "id": "the-public-domain-review",
+    "name": "The Public Domain Review",
+    "url": "https://publicdomainreview.org/rss.xml",
+    "hosts": ["publicdomainreview.org"],
+    "group": "ideas"
+  }
+]

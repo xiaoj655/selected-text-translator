@@ -131,6 +131,25 @@ test('Simon Willison provides reading material in the Atom summary field', async
   assert.equal(result.articles[0].text, 'A first paragraph.\n\nThe article continues.')
 })
 
+test('Bo.ke accepts public publisher links and retains built-in summary behavior', async () => {
+  const source = READING_SOURCES.chinese.find(({ id }) => id === 'bo-ke')
+  const article = (url, summary) => `<item><title>博客文章</title><link>${url}</link><description>${summary}</description></item>`
+  const publisherUrl = 'https://blog.example.org/post'
+  const rss = `<rss><channel>
+    ${article(`${publisherUrl}#intro`, '文章摘要。')}
+    ${article('https://127.0.0.1/post', '本地地址。')}
+    ${article('https://blog.example.org/empty', '')}
+  </channel></rss>`
+  const { articles } = await discoverReadingArticles('chinese', {
+    fetchImpl: async (url) => url === source.url ? new Response(rss) : new Response(null, { status: 503 }),
+  })
+  assert.equal(articles.length, 1)
+  assert.match(articles[0].id, /^[a-f0-9]{64}$/u)
+  assert.equal(articles[0].url, publisherUrl)
+  assert.equal(articles[0].text, '文章摘要。')
+  assert.equal(articles[0].feedHasBody, false)
+})
+
 test('a refresh keeps eight latest articles per source and reuses old entries on partial or total failure', async () => {
   const [ars, verge] = READING_SOURCES.news
   let refreshCount = 0

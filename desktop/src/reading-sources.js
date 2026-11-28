@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
 import catalog from '../vendor/src/reading-source-catalog.json' with { type: 'json' }
+import desktopSources from './reading-source-catalog.json' with { type: 'json' }
 import { normalizeReadingContent } from './reading-content.js'
 import { openReadingResource, publicReadingUrl } from './reading-network.js'
 
-export const READING_SOURCES = Object.groupBy(catalog.builtIn, ({ group }) => group)
+export const READING_SOURCES = Object.groupBy([...catalog.builtIn, ...desktopSources], ({ group }) => group)
 
 const MAX_FEED_BYTES = 2 * 1024 * 1024
 const REQUEST_TIMEOUT_MS = 8000
@@ -141,6 +142,7 @@ function readArticleUrl(entry, source) {
   try {
     if (!source.hosts) return publicReadingUrl(link, source.url, { allowHttp: source.allowHttp }).href
     const url = new URL(link.trim(), source.url)
+    if (source.upgradeArticleLinks && url.protocol === 'http:') url.protocol = 'https:'
     if (url.protocol !== 'https:' || url.port || url.username || url.password || !source.hosts.includes(url.hostname)) return ''
     url.hash = ''
     return url.href
@@ -149,7 +151,7 @@ function readArticleUrl(entry, source) {
   }
 }
 
-function readArticle(entry, source) {
+function readArticle(entry, source, builtIn) {
   const url = readArticleUrl(entry, source)
   const title = htmlToText(entry.fields.get('title') ?? '').replace(/\s+/g, ' ').slice(0, 300)
   if (!url || !title) return null
@@ -159,20 +161,20 @@ function readArticle(entry, source) {
   const summary = htmlToText(summaryHtml).replace(/\s+/g, ' ')
   const body = htmlToText(bodyHtml).replace(/\s+/g, ' ')
   let excerpt = summary || body
-  if (!excerpt && source.hosts) return null
+  if (!excerpt && builtIn) return null
   const options = { baseUrl: url }
   const bodyContent = body.length > summary.length ? normalizeReadingContent(bodyHtml, options) : null
   const useBody = bodyContent && bodyContent.text.replace(/\s+/g, ' ').trim().length > summary.length
   let material = useBody ? bodyContent : normalizeReadingContent(summaryHtml, options)
   if (!material.text.trim()) {
-    if (source.hosts) return null
+    if (builtIn) return null
     material = { text: '', html: '' }
     excerpt = ''
   }
   const date = Date.parse(entry.fields.get('pubDate') ?? entry.fields.get('published') ?? entry.fields.get('updated'))
   const hash = createHash('sha256').update(url).digest('hex')
   return {
-    id: source.hosts ? hash : `custom-feed-${hash}`,
+    id: builtIn ? hash : `custom-feed-${hash}`,
     title,
     source: source.name,
     publishedAt: Number.isFinite(date) ? new Date(date).toISOString() : '',
@@ -202,11 +204,11 @@ async function readFeedBytes(body) {
   return Buffer.concat(chunks)
 }
 
-function readFeedArticles(xml, source) {
+function readFeedArticles(xml, source, { builtIn = false } = {}) {
   const articles = new Map()
   for (const entry of readFeedEntries(xml)) {
     try {
-      const article = readArticle(entry, source)
+      const article = readArticle(entry, source, builtIn)
       if (article && !articles.has(article.id)) articles.set(article.id, article)
     } catch {
       // A broken article need not make the publisher's entire feed unavailable.
@@ -226,7 +228,7 @@ async function loadSource(source, fetchImpl) {
     await response.body?.cancel()
     throw new Error(`Feed HTTP ${response.status}`)
   }
-  const articles = readFeedArticles((await readFeedBytes(response.body)).toString('utf8'), source)
+  const articles = readFeedArticles((await readFeedBytes(response.body)).toString('utf8'), source, { builtIn: true })
   if (!articles.length) throw new Error('No readable articles')
   return articles
 }

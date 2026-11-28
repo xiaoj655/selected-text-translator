@@ -1,5 +1,10 @@
 # 桌面端更新记录
 
+## 0.9.101 · 2026-11-28
+
+- English Coach 新增「Chinese blogs」分类，内置 Bo.ke、阮一峰的网络日志和少数派。Bo.ke 可以打开各博客原文，阮一峰的周刊可以直接阅读订阅里的全文。
+- 「Essays & ideas」新增 The Conversation 和 The Public Domain Review，提供通俗研究解读和艺术文化随笔。
+
 ## 0.9.100 · 2026-11-28
 
 - English Coach 记住单词查词框上次选择的翻译、英文释义或引导模式。切词或重启后会沿用该模式，划选短语或句子时使用长选区的查词偏好。

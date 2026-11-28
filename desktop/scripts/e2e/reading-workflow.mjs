@@ -15,6 +15,12 @@ const IDEAS = {
   title: 'How software teams remember decisions',
   text: 'An architecture decision record can make trade-offs visible to people joining a project. It ages well when it names the assumptions behind the decision and sets a date for revisiting them.',
 }
+const CHINESE = [
+  { title: '独立博客的阅读笔记', text: '一篇关于写作和阅读的笔记。', url: 'https://blog.example.org/reading-notes' },
+  { title: '科技爱好者周刊', text: '本周导读。', body: '周刊第一段是技术观察。最后一段是本期结语。',
+    url: 'http://www.ruanyifeng.com/blog/weekly.html' },
+  { title: '数字生活的新习惯', text: '从整理阅读列表开始。' },
+]
 const PASTED_TEXT = 'A slow database query can hide behind a fast cache. When the cache expires, requests arrive together and the same query can overwhelm the database.'
 const INTRO = 'The article follows battery materials from mining to refining and manufacturing. Refining is the step to watch: mining more material will not help if refineries cannot process it quickly enough.'
 const QUESTION = 'Why can battery materials run short even if mines produce enough?'
@@ -55,12 +61,11 @@ export async function installReadingFeeds(app) {
     for (const [index, source] of sources.entries()) {
       const suffix = ['', ': a second perspective'][index] ?? `: ${source.name}`
       const article = {
-        ...pages[category],
+        ...(category === 'chinese' ? CHINESE[index] : { ...pages[category], title: pages[category].title + suffix }),
         source: source.name,
-        title: pages[category].title + suffix,
         publishedAt: new Date(Math.floor(Date.now() / 1000) * 1000 - (index + 1) * 3600000).toISOString(),
-        url: `https://${source.hosts[0]}/articles/reading-workflow-fixture-${index}`,
       }
+      article.url ??= `https://${source.hosts[0]}/articles/reading-workflow-fixture-${index}`
       if (index === 0) articles[category] = article
       const entries = [category === 'engineering' && index === 0 ? { ...article, body: ENGINEERING_BODY } : article]
       if (category === 'engineering' && index === 2) {
@@ -172,6 +177,19 @@ export async function verifyReadingWorkflow({ page, mock, check, shot, readingFe
       await page.getByText(`Showing previous results from ${missingFeed}.`, { exact: false }).waitFor()
       await recoveredArticle.click()
       await detail.getByRole('heading', { name: recoveredTitle, exact: true }).waitFor()
+      await page.locator('#reading-back').click()
+      await page.getByRole('button', { name: 'Chinese blogs', exact: true }).click()
+      await articleRow(CHINESE[0].title).getByText('Summary only · Import for full article', { exact: false }).waitFor()
+      await articleRow(CHINESE[1].title).getByText('Full text in feed', { exact: false }).waitFor()
+      await articleRow(CHINESE[2].title).getByText('少数派', { exact: true }).waitFor()
+      await shot?.(page, 'main-tutor-reading-chinese-blogs')
+      await selectArticle(CHINESE[0].title)
+      await detail.getByRole('heading', { name: CHINESE[0].title }).waitFor()
+      assert.equal(await detail.locator('#reading-original').getAttribute('href'), CHINESE[0].url)
+      await page.locator('#reading-back').click()
+      await selectArticle(CHINESE[1].title)
+      await detail.getByText(CHINESE[1].body, { exact: true }).waitFor()
+      assert.equal(await detail.locator('#reading-original').getAttribute('href'), 'https://www.ruanyifeng.com/blog/weekly.html')
       await page.locator('#reading-back').click()
       await page.locator('#reading-category-news').click()
       await selectArticle(NEWS.title)
