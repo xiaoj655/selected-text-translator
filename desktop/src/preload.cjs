@@ -178,6 +178,7 @@ window.sttDesktop = {
     removeFeed: (id) => ipcRenderer.invoke('stt:reading-feed-remove', id),
     openFeed: (id) => ipcRenderer.invoke('stt:reading-feed-open', id),
     importPage: (url) => ipcRenderer.invoke('stt:reading-import', url),
+    reloadArticle: (id) => ipcRenderer.invoke('stt:reading-reload', id),
     paste: (text) => ipcRenderer.invoke('stt:reading-paste', text),
     history: () => ipcRenderer.invoke('stt:reading-history'),
     restore: (id) => ipcRenderer.invoke('stt:reading-restore', id),

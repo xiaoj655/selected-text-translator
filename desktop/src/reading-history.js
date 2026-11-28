@@ -21,6 +21,18 @@ function position(value) {
     progress: Math.max(0, Math.min(1, Number(value.progress) || 0)) }
 }
 
+function relocatePosition(saved, before, after) {
+  if (!saved?.offset || before === after) return saved
+  const oldOffset = Math.min(saved.offset, before.length)
+  const start = Math.max(0, oldOffset - 48)
+  const quote = before.slice(start, oldOffset + 48)
+  const match = after.indexOf(quote)
+  const offset = match >= 0 && after.indexOf(quote, match + 1) < 0
+    ? match + oldOffset - start
+    : Math.round(oldOffset / before.length * after.length)
+  return { ...saved, offset, progress: offset / after.length }
+}
+
 function cleanArticle(value) {
   if (!value || typeof value.text !== 'string' || !value.text.trim()) return null
   const kind = ['pasted_text', 'feed_article'].includes(value.kind) ? value.kind : 'web_article'
@@ -37,6 +49,10 @@ function cleanArticle(value) {
   if (typeof value.html === 'string') article.html = value.html
   if (typeof value.publishedAt === 'string') article.publishedAt = value.publishedAt.slice(0, 100)
   return Buffer.byteLength(JSON.stringify(article)) <= MAX_ARTICLE_BYTES ? article : null
+}
+
+function historyBytes(entries) {
+  return entries.reduce((total, entry) => total + Buffer.byteLength(JSON.stringify(entry)), 0)
 }
 
 export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
@@ -74,20 +90,32 @@ export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
     return entries
   }
 
-  function write(filePath, data) {
+  function stage(filePath, data) {
     mkdirSync(userDataDir, { recursive: true })
     const temporary = `${filePath}.tmp`
     writeFileSync(temporary, JSON.stringify(data))
-    renameSync(temporary, filePath)
+    return temporary
+  }
+
+  function write(filePath, data) {
+    renameSync(stage(filePath, data), filePath)
   }
 
   function persist(next, savedPositions = positions) {
     const retainedPositions = Object.fromEntries(next.filter((entry) => savedPositions[entry.id])
       .map((entry) => [entry.id, savedPositions[entry.id]]))
     // Positions are small and change often; article snapshots only change when
-    // importing, opening, or removing an article. This also migrates old data.
-    write(positionsFile, retainedPositions)
-    write(file, next)
+    // importing, reloading, opening, or removing an article. Stage both
+    // writes before replacing either file so a staging failure leaves both intact.
+    const historyFile = stage(file, next)
+    const pendingPositions = stage(positionsFile, retainedPositions)
+    renameSync(pendingPositions, positionsFile)
+    try {
+      renameSync(historyFile, file)
+    } catch (error) {
+      try { write(positionsFile, positions) } catch { /* Preserve the original write error. */ }
+      throw error
+    }
     entries = next
     positions = retainedPositions
   }
@@ -106,11 +134,31 @@ export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
     const current = load().find((entry) => entry.id === id)
     const entry = { id, article, importedAt: current?.importedAt || now(), lastOpenedAt: now() }
     const next = [entry, ...load().filter((item) => item.id !== id)].slice(0, MAX_ENTRIES)
-    let bytes = next.reduce((total, item) => total + Buffer.byteLength(JSON.stringify(item)), 0)
+    let bytes = historyBytes(next)
     while (bytes > MAX_HISTORY_BYTES && next.length > 1) bytes -= Buffer.byteLength(JSON.stringify(next.pop()))
     const savedPositions = { ...positions }
     if (current?.article.text !== article.text) delete savedPositions[id]
     persist(next, savedPositions)
+    return articleFor(entry)
+  }
+
+  async function reload(id, fetchArticle) {
+    const previous = load().find((entry) => entry.id === id)?.article
+    if (!previous?.url) return null
+    const fetched = await fetchArticle(previous.url)
+    const current = load().find((entry) => entry.id === id)
+    if (current?.article !== previous) return null
+    const article = cleanArticle({ ...fetched, url: previous.url, kind: previous.kind, publishedAt: previous.publishedAt })
+    if (!article) throw new Error('Couldn’t save the reloaded article.')
+    const content = JSON.stringify({ ...article, id: '' })
+    if (content === JSON.stringify({ ...previous, id: '' })) return articleFor(current)
+    // Separate saved articles can now redirect to the same page.
+    article.id = createHash('sha256').update(id).update('\0').update(content).digest('hex')
+    const entry = { ...current, article }
+    const next = load().map((item) => item === current ? entry : item)
+    if (historyBytes(next) > MAX_HISTORY_BYTES) throw new Error('Couldn’t save the reloaded article.')
+    const updatedPosition = relocatePosition(positions[id], previous.text, article.text)
+    persist(next, { ...positions, [id]: updatedPosition })
     return articleFor(entry)
   }
 
@@ -130,6 +178,7 @@ export function createReadingHistory(userDataDir, { now = Date.now } = {}) {
       }))
     },
     save,
+    reload,
     restore,
     openFeed(value) {
       const url = canonicalUrl(value?.url, true)

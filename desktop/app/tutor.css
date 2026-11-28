@@ -210,7 +210,12 @@
 .reading-article-title { font-size: calc(var(--fs-result) + 1px); font-weight: 600; line-height: 1.45; }
 .reading-article-title:hover, .reading-back:hover { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
 .reading-back { color: var(--text-2); margin-block-end: 12px; }
-.reading-original { color: var(--text); text-underline-offset: 3px; }
+.reading-article-tools { column-gap: 12px; margin-block: 10px; }
+.reading-article-tools .reading-meta { margin: 0; }
+#reading-reload-status:empty { display: none; }
+.reading-original, .reading-reload-action { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.reading-reload-action { border: 0; background: transparent; padding: 2px 0; }
+.reading-reload-action:hover { background: transparent; text-decoration-thickness: 2px; }
 .reading-preview {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: var(--article-font-size, 18px);

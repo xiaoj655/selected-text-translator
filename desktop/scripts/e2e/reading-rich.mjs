@@ -3,19 +3,22 @@ import { isArticleExplanation } from './mock-api.mjs'
 
 const ARTICLE_URL = 'https://reader.example.org/articles/rich-fixture'
 const IMAGE_RETRY_ARTICLE_URL = `${ARTICLE_URL}?image-retry`
+const RELOAD_ARTICLE_URL = `${ARTICLE_URL}?reload`
 const AUTO_RETRY_IMAGE = 'https://reader.example.org/assets/retry-once.png?variant=night%20view&rev=2'
 const MANUAL_RETRY_IMAGE = 'https://reader.example.org/assets/retry-twice.png?variant=night%20view&rev=2'
+const RELOAD_IMAGE = 'https://reader.example.org/assets/reload-chart.png'
 const TITLE = 'Reading the complete calibration report'
 const INLINE_SELECTION = 'record the interview and keep a release note'
 const FOCUS_TEXT = 'The iridescence filter is adjusted only after the observatory cools down. Its delayed calibration compensates for a temperature shift that appears late in the experiment. The operators compare the final spectrum against an independent reference before accepting it.'
 const TAIL_CONTEXT = 'The last rehearsal reached the remote observatory. We will record the final calibration after sunset. Its result confirms the late-stage correction.'
+const REVISED_TAIL = 'The revised report includes the final calibration notes.'
 const COACH_REPLY = 'This paragraph explains why the operators wait for the observatory to cool before calibrating the filter.'
 
 // Small, real PNG and VP8/WebM fixtures keep media checks entirely offline.
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAeAAAAB4CAIAAACl9LZYAAAACXBIWXMAAAABAAAAAQBPJcTWAAACHUlEQVR4nO3coU1EQRhGUQg4BC2+Bl4FT69fsg1seQgECCQJBokc8l825zQwX0bcjJr717f3OwB6HqcHAPA7gQaIEmiAKIEGiBJogCiBBogSaIAogQYWO12u0xMWO/Zt5FyBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJo+OEHCWoEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqg/73Ph+fpCYs9fX1MT4AEgf73zueX6QmLHfs2PQESBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGiBBogSqABogQaIEqgAaIEGiBKoAGixgJ9ulynjv4jx75NTwBuihc0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRAlEADRAk0QJRAA0QJNECUQANECTRA1Figj32bOvrGuMlV3OQqbnIVL2iAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAKIEGiBJogCiBBogSaIAogQaIEmiAqG/mvRi7zROJ6gAAAABJRU5ErkJggg=='
 const WEBM = 'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwH/////////EU2bdKtNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHLTbuMU6uEElTDZ1OsggEY7AEAAAAAAABoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmpSrXsYMPQkBNgIxMYXZmNjIuMy4xMDBXQYxMYXZmNjIuMy4xMDAWVK5ryK4BAAAAAAAAP9eBAXPFiDVPrcx+awennIEAIrWcg3VuZIiBAIaFVl9WUDiDgQEj44OEBfXhAOCQsIFguoFAmoECVbCEVbmBARJUw2fXc3OfY8CAZ8iZRaOHRU5DT0RFUkSHjExhdmY2Mi4zLjEwMHNzsmPAi2PFiDVPrcx+awenZ8ihRaOHRU5DT0RFUkSHlExhdmM2Mi4xMS4xMDAgbGlidnB4H0O2dUCg54EAo7uBAACAsAMAnQEqYABAAABHCIWFiIWEiAICAnWqAgaf586dOnTp06dOnTfA/uQBf7gzPq7HD+5sc4tkMKOWgQBkANEBAAEQEAAYABhYL/QACIUoAKOWgQDIANEBAAEQEAAYABhYL/QACIUoAKOWgQEsANEBAAEQEAAYABhYL/QACIUoAKOWgQGQANEBAAEQEAAYABhYL/QACIUoAA=='
 
-function articleHtml({ imageRetry = false } = {}) {
+function articleHtml({ imageRetry = false, reloadImage = false, tail = TAIL_CONTEXT } = {}) {
   const paragraphs = Array.from({ length: 74 }, (_value, index) => index === 60
     ? `<p>${FOCUS_TEXT}</p>`
     : `<p>Observation ${index + 1} explains how the engineering team checks a complete sequence of measurements. Each experiment uses the same reference instrument so that a change in the environment can be distinguished from a change in the equipment. The team reviews the evidence before continuing.</p>`).join('')
@@ -23,6 +26,7 @@ function articleHtml({ imageRetry = false } = {}) {
     <h1>${TITLE}</h1><h2>A readable release report</h2>
     <p>Before the inline example. We will <strong>record the interview</strong> and keep a <a href="../notes/details">release note</a> for the team. After the inline example.</p>
     <p>The next paragraph explains why the measurements matter. The team checks them before a release.</p>
+    ${reloadImage ? `<figure><img src="${RELOAD_IMAGE}" width="480" height="120" alt="Rehearsal calibration chart"><figcaption>The calibration results from the remote observatory.</figcaption></figure>` : ''}
     <figure><img data-src="../assets/chart.png" src="../assets/placeholder.png" width="480" height="120" alt="Calibration chart"><figcaption>Figure 1. Measurements rise after calibration.</figcaption></figure>
     ${imageRetry ? `<figure><img src="${AUTO_RETRY_IMAGE}" width="480" height="120" alt="Night calibration chart"><figcaption>Figure 2. The night measurements follow the same pattern.</figcaption></figure>
     <figure><img src="${MANUAL_RETRY_IMAGE}" width="480" height="120" alt="Independent calibration chart"><figcaption>Figure 3. An independent instrument confirms the result.</figcaption></figure>` : ''}
@@ -36,7 +40,7 @@ function articleHtml({ imageRetry = false } = {}) {
     <iframe src="https://www.youtube.com/embed/rich-fixture" title="Original demonstration"></iframe>
     <p>Untrusted markup is removed while the article remains readable: <a href="javascript:window.richInjected=true">an unsafe link</a><img src="javascript:window.richInjected=true" alt="Unsafe image"><span onclick="window.richInjected=true">plain inline text</span>.</p>
     <script>window.richInjected=true</script><style>body{display:none}</style><form><input value="untrusted"></form>
-    ${paragraphs}<h2>The final observation</h2><p>${TAIL_CONTEXT}</p>
+    ${paragraphs}<h2>The final observation</h2><p>${tail}</p>
   </article></body></html>`
 }
 
@@ -110,7 +114,8 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
     await app.evaluate(({ shell }, { articles, failedImageRequests, png, webm }) => {
       const https = process.getBuiltinModule('node:https')
       const { Readable } = process.getBuiltinModule('node:stream')
-      globalThis.__richReadingFixture = { get: https.get, openExternal: shell.openExternal, requests: [], opened: [] }
+      const fixture = { get: https.get, openExternal: shell.openExternal, articles, articleErrors: {}, requests: [], opened: [] }
+      globalThis.__richReadingFixture = fixture
       shell.openExternal = async (target) => { globalThis.__richReadingFixture.opened.push(target) }
       https.get = (target, options, callback) => {
         const href = typeof target === 'string' ? target : target.href
@@ -133,7 +138,7 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
         const type = html ? 'text/html; charset=utf-8' : path.endsWith('.png') ? 'image/png' : 'video/webm'
         const total = body.length
         const headers = { 'content-type': type, 'content-length': String(total), 'accept-ranges': 'bytes' }
-        let statusCode = 200
+        let statusCode = fixture.articleErrors[href] || 200
         const match = /^bytes=(\d+)-(\d*)$/u.exec(range)
         if (match) {
           const start = Number(match[1])
@@ -148,8 +153,9 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
         return response
       }
     }, {
-      articles: { [ARTICLE_URL]: articleHtml(), [IMAGE_RETRY_ARTICLE_URL]: articleHtml({ imageRetry: true }) },
-      failedImageRequests: { [AUTO_RETRY_IMAGE]: 1, [MANUAL_RETRY_IMAGE]: 2 },
+      articles: { [ARTICLE_URL]: articleHtml(), [IMAGE_RETRY_ARTICLE_URL]: articleHtml({ imageRetry: true }),
+        [RELOAD_ARTICLE_URL]: articleHtml({ reloadImage: true }) },
+      failedImageRequests: { [AUTO_RETRY_IMAGE]: 1, [MANUAL_RETRY_IMAGE]: 2, [RELOAD_IMAGE]: 2 },
       png: PNG,
       webm: WEBM,
     })
@@ -273,6 +279,64 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
       assert.equal(await material.textContent(), originalText)
     })
 
+    await check('rich article: reload fetches fresh content and images while preserving the reading position', async () => {
+      const before = mock.requests.length
+      const material = await openFixture(RELOAD_ARTICLE_URL)
+      const reload = page.getByRole('button', { name: 'Reload article', exact: true })
+      const status = page.locator('#reading-reload-status')
+      assert.ok(await reload.isVisible())
+      assert.ok(await page.locator('#reading-original').isVisible())
+      const saved = await page.evaluate(async (url) => (await window.sttDesktop.reading.history())
+        .find((article) => article.url === url), RELOAD_ARTICLE_URL)
+      assert.ok(saved?.id)
+
+      const figure = material.locator('figure').filter({ has: page.locator('img[alt="Rehearsal calibration chart"]') })
+      const image = figure.locator('img')
+      await figure.scrollIntoViewIfNeeded()
+      const retryImage = figure.getByRole('button', { name: 'Retry image', exact: true })
+      await retryImage.waitFor({ state: 'visible' })
+      await page.locator('#tutor-workspace').evaluate((node) => { node.scrollTop = 0 })
+      await shot?.(page, 'main-tutor-reload-article')
+
+      const passage = material.locator('p').filter({ hasText: FOCUS_TEXT })
+      await passage.evaluate((node) => node.scrollIntoView({ block: 'center' }))
+      await page.waitForFunction(async (id) => (await window.sttDesktop.reading.history())
+        .find((article) => article.id === id)?.progress > 0.5, saved.id, { timeout: 5000 })
+      const passageTop = (await passage.boundingBox()).y
+      await app.evaluate((_electron, { url, html }) => { globalThis.__richReadingFixture.articles[url] = html },
+        { url: RELOAD_ARTICLE_URL, html: articleHtml({ reloadImage: true, tail: REVISED_TAIL }) })
+
+      // Activate without Playwright scrolling the article back to its header first.
+      await reload.evaluate((node) => node.click())
+      await status.getByText('Article reloaded.', { exact: true }).waitFor({ state: 'attached' })
+      await material.getByText(REVISED_TAIL, { exact: true }).waitFor()
+      const reloadedTop = (await passage.boundingBox()).y
+      assert.ok(Math.abs(reloadedTop - passageTop) < 50,
+        `reload moved the reading passage from ${passageTop}px to ${reloadedTop}px`)
+
+      await image.scrollIntoViewIfNeeded()
+      await image.evaluate((node) => node.decode())
+      assert.ok(await image.evaluate((node) => node.naturalWidth > 0))
+      await retryImage.waitFor({ state: 'hidden' })
+
+      await app.evaluate((_electron, url) => { globalThis.__richReadingFixture.articleErrors[url] = 503 }, RELOAD_ARTICLE_URL)
+      await reload.click()
+      await status.getByText(/Couldn’t reload the article|HTTP 503/u).waitFor()
+      assert.ok(await reload.isEnabled())
+      assert.ok((await material.textContent()).includes(REVISED_TAIL))
+      const persisted = await page.evaluate(async (url) => {
+        const matching = (await window.sttDesktop.reading.history()).filter((article) => article.url === url)
+        return { matching, article: await window.sttDesktop.reading.restore(matching[0]?.id) }
+      }, RELOAD_ARTICLE_URL)
+      assert.deepEqual(persisted.matching.map(({ id, importedAt }) => ({ id, importedAt })),
+        [{ id: saved.id, importedAt: saved.importedAt }])
+      assert.ok(persisted.article.text.includes(REVISED_TAIL))
+      const requests = await app.evaluate(() => globalThis.__richReadingFixture.requests.map(({ url }) => url))
+      assert.equal(requests.filter((url) => url === RELOAD_ARTICLE_URL).length, 3)
+      assert.equal(requests.filter((url) => url === RELOAD_IMAGE).length, 3)
+      assert.equal(mock.requests.length, before, 'reloading an article must not call a model')
+    })
+
     await check('rich article: cross-tag selections and sentence context at the end', async () => {
       const material = await openFixture()
       await selectText(page, INLINE_SELECTION)
@@ -331,6 +395,7 @@ export async function verifyRichReading({ app, page, mock, check, shot }) {
       const before = mock.requests.length
       await page.locator('#reading-paste-open').click()
       assert.equal(await page.locator('#reading-detail .reading-preview').textContent(), text)
+      assert.equal(await page.locator('#reading-reload').count(), 0)
       assert.equal(mock.requests.length, before, 'opening pasted text must not call a model')
       await page.locator('#reading-start').click()
       await page.locator('#reading-thread').getByText(COACH_REPLY, { exact: true }).waitFor()

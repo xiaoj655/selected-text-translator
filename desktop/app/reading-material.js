@@ -9,7 +9,7 @@ function mediaLink(url, label) {
   return link
 }
 
-function addImageRecovery(image, articleUrl) {
+function addImageRecovery(image, articleUrl, reloadToken) {
   const anchor = image.closest('a[href]') || image
   if (!image.src.startsWith('stt-media://asset/')) {
     if (!articleUrl) return
@@ -31,12 +31,16 @@ function addImageRecovery(image, articleUrl) {
   anchor.after(actions)
 
   const source = new URL(image.src)
+  function fetchImage(token) {
+    // Bypass Chromium's cached image result without changing the publisher URL.
+    source.searchParams.set('retry', token)
+    image.src = source.href
+  }
+
   function retryImage() {
     retry.disabled = true
     retry.setAttribute('aria-label', 'Retrying…')
-    // Bypass Chromium's cached image result without changing the publisher URL.
-    source.searchParams.set('retry', crypto.randomUUID())
-    image.src = source.href
+    fetchImage(crypto.randomUUID())
   }
 
   function showRetry() {
@@ -56,10 +60,11 @@ function addImageRecovery(image, articleUrl) {
   })
   image.addEventListener('load', () => { actions.hidden = true })
   retry.addEventListener('click', retryImage)
+  if (reloadToken) fetchImage(reloadToken)
 }
 
 // HTML is normalized and sanitized in the main process before crossing IPC.
-export function createReadingMaterial(article, { openLink, onError } = {}) {
+export function createReadingMaterial(article, { openLink, onError, reloadImages = false } = {}) {
   const material = englishText('div', 'reading-preview', '')
   if (article.html) {
     material.classList.add('reading-rich')
@@ -68,8 +73,9 @@ export function createReadingMaterial(article, { openLink, onError } = {}) {
     material.textContent = article.text || article.excerpt || ''
   }
 
+  const reloadToken = reloadImages ? crypto.randomUUID() : ''
   for (const image of material.querySelectorAll('img')) {
-    addImageRecovery(image, article.url)
+    addImageRecovery(image, article.url, reloadToken)
   }
   for (const video of material.querySelectorAll('video')) {
     video.controls = true

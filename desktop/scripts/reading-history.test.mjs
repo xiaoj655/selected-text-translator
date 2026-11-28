@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createReadingHistory } from '../src/reading-history.js'
 
-function fixture(run) {
+async function fixture(run) {
   const directory = mkdtempSync(join(tmpdir(), 'stt-reading-history-'))
-  try { run(directory) } finally { rmSync(directory, { recursive: true, force: true }) }
+  try { await run(directory) } finally { rmSync(directory, { recursive: true, force: true }) }
 }
 
 const ARTICLE = { id: 'content-version-1', kind: 'web_article', title: 'A complete article', source: 'publisher.example',
@@ -93,6 +93,92 @@ test('importing a full web article upgrades the feed snapshot and rejects writes
   assert.equal(history.savePosition(feed.historyId, position, feed.id), false)
   assert.equal(history.list().length, 1)
   assert.deepEqual(history.openFeed(FEED_ARTICLE), fromWeb)
+}))
+
+test('reloading a saved feed article replaces its HTML in place and keeps the reading position', () => fixture(async (directory) => {
+  let clock = 100
+  const history = createReadingHistory(directory, { now: () => clock++ })
+  const url = 'http://publisher.example/story'
+  const publishedAt = '2026-11-28T09:00:00.000Z'
+  const saved = history.openFeed({ ...FEED_ARTICLE, url, publishedAt })
+  const position = { offset: 10, top: 12, progress: 0.25 }
+  history.savePosition(saved.historyId, position, saved.id)
+  const fromWeb = history.save(ARTICLE)
+  const before = history.list()
+  const html = '<img src="stt-media://asset/?url=https%3A%2F%2Fpublisher.example%2Fchart.png">' + saved.html
+  const refreshed = await history.reload(saved.historyId, (requestedUrl) => {
+    assert.equal(requestedUrl, url)
+    return { ...ARTICLE, text: saved.text, html }
+  })
+  assert.equal(refreshed.historyId, saved.historyId)
+  assert.notEqual(refreshed.id, fromWeb.id)
+  assert.deepEqual(await history.reload(saved.historyId, () => ({ ...ARTICLE, text: saved.text, html })), refreshed)
+  assert.equal(refreshed.url, url)
+  assert.equal(refreshed.kind, saved.kind)
+  assert.equal(refreshed.publishedAt, publishedAt)
+  assert.equal(refreshed.html, html)
+  assert.deepEqual(refreshed.readingPosition, position)
+  assert.deepEqual(history.list().map(({ id, importedAt, lastOpenedAt }) => ({ id, importedAt, lastOpenedAt })),
+    before.map(({ id, importedAt, lastOpenedAt }) => ({ id, importedAt, lastOpenedAt })))
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), refreshed)
+}))
+
+test('reloading uses the latest reading anchor and locates it in the new text', () => fixture(async (directory) => {
+  const history = createReadingHistory(directory)
+  const anchor = 'The publisher included a uniquely identifying passage at this point in the article.'
+  const text = `${ARTICLE.text}${anchor}${ARTICLE.text}`
+  const saved = history.save({ ...ARTICLE, text })
+  const response = Promise.withResolvers()
+  const reloading = history.reload(saved.historyId, () => response.promise)
+  const offset = text.indexOf(anchor) + 18
+  const position = { offset, top: 12, progress: offset / text.length }
+  history.savePosition(saved.historyId, position, saved.id)
+  const prefix = 'New introduction at the start of the article. '
+  const updatedText = `${prefix}${text}`
+  response.resolve({ ...ARTICLE, id: 'content-version-2', text: updatedText })
+  const refreshed = await reloading
+  assert.deepEqual(refreshed.readingPosition, { ...position, offset: offset + prefix.length,
+    progress: (offset + prefix.length) / updatedText.length })
+  assert.equal(history.savePosition(saved.historyId, position, saved.id), false)
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), refreshed)
+}))
+
+test('failed or stale reloads preserve existing snapshots and cannot recreate deleted entries', () => fixture(async (directory) => {
+  const history = createReadingHistory(directory)
+  const saved = history.openFeed(FEED_ARTICLE)
+  const position = { offset: 10, top: 12, progress: 0.25 }
+  history.savePosition(saved.historyId, position, saved.id)
+  await assert.rejects(history.reload(saved.historyId, () => { throw new Error('Source unavailable') }), /Source unavailable/u)
+  await assert.rejects(history.reload(saved.historyId, () => ({ ...ARTICLE, text: '' })), /Couldn’t save/u)
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), { ...saved, readingPosition: position })
+
+  const pendingImport = Promise.withResolvers()
+  const reloadDuringImport = history.reload(saved.historyId, () => pendingImport.promise)
+  const imported = history.save(ARTICLE)
+  pendingImport.resolve({ ...ARTICLE, id: 'stale-preview', text: 'Old content from the source.' })
+  assert.equal(await reloadDuringImport, null)
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), imported)
+
+  const pendingRemoval = Promise.withResolvers()
+  const reloadDuringRemoval = history.reload(saved.historyId, () => pendingRemoval.promise)
+  history.remove(saved.historyId)
+  pendingRemoval.resolve(ARTICLE)
+  assert.equal(await reloadDuringRemoval, null)
+  assert.deepEqual(createReadingHistory(directory).list(), [])
+}))
+
+test('a failed reload snapshot write preserves the stored article and position', () => fixture(async (directory) => {
+  const history = createReadingHistory(directory)
+  const saved = history.save(ARTICLE)
+  const position = { offset: 110, top: 12, progress: 0.25 }
+  history.savePosition(saved.historyId, position, saved.id)
+  const blocked = join(directory, 'reading-history.json.tmp')
+  mkdirSync(blocked)
+  await assert.rejects(history.reload(saved.historyId, () => ({ ...ARTICLE, text: 'A shorter updated article.' })), { code: 'EISDIR' })
+  assert.equal(history.list()[0].progress, position.progress)
+  assert.deepEqual(JSON.parse(readFileSync(join(directory, 'reading-positions.json'), 'utf8'))[saved.historyId], position)
+  rmSync(blocked, { recursive: true })
+  assert.deepEqual(createReadingHistory(directory).restore(saved.historyId), { ...saved, readingPosition: position })
 }))
 
 test('pasted text is saved and repeated visits sort by most recently opened', () => fixture((directory) => {

@@ -215,7 +215,7 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     clearTimeout(positionTimer)
     const state = panelStates.get(activePanel)
     if (!state?.article.historyId || !state.position) return
-    void api.savePosition({ id: state.article.historyId, articleId: state.article.id, position: state.position }).catch(() => {})
+    return api.savePosition({ id: state.article.historyId, articleId: state.article.id, position: state.position }).catch(() => {})
   }
 
   function restorePosition(panel) {
@@ -228,15 +228,22 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       const material = panel.querySelector('.reading-preview')
       if (!material || !position) return
       const walker = document.createTreeWalker(material, NodeFilter.SHOW_TEXT)
+      const range = document.createRange()
       let offset = position.offset
+      let boundary
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         if (offset > node.length) { offset -= node.length; continue }
-        const range = document.createRange()
         range.setStart(node, offset)
         range.collapse(true)
-        scroller.scrollTop += range.getBoundingClientRect().top - scroller.getBoundingClientRect().top - position.top
-        break
+        const bounds = range.getBoundingClientRect()
+        if (bounds.height) {
+          boundary = bounds
+          if (offset < node.length) break
+        }
+        // A text offset at a node boundary can fall on collapsed whitespace.
+        offset = 0
       }
+      if (boundary) scroller.scrollTop += boundary.top - scroller.getBoundingClientRect().top - position.top
     }
     apply()
     requestAnimationFrame(() => {
@@ -683,21 +690,34 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     title.tabIndex = -1
     panel.append(backButton(origin), title)
     let original
+    let reload
+    let reloadStatus
+    let credit
+    let material
+    let importFull
     if (article.url) {
       original = el('a', 'reading-original', 'Open original ↗')
       original.id = 'reading-original'
       original.href = article.url
       original.addEventListener('auxclick', (event) => event.preventDefault())
-      const meta = attribution(article)
-      meta.append(' · ', original)
-      panel.append(meta)
+      credit = attribution(article)
+      const tools = el('div', 'reading-tools reading-meta reading-article-tools')
+      tools.append(credit, original)
+      if (article.historyId) {
+        reload = button('Reload article', 'reading-reload', () => void reloadArticle(), 'reading-reload-action')
+        reloadStatus = el('span')
+        reloadStatus.id = 'reading-reload-status'
+        reloadStatus.setAttribute('role', 'status')
+        tools.append(reload, reloadStatus)
+      }
+      panel.append(tools)
     }
     if (saveError) panel.append(el('p', 'reading-meta', saveError))
     const excerpt = article.excerpt || article.text
     const materialOptions = { openLink: (url) => api.openLink(url),
       onError: () => { status.textContent = 'Couldn’t open the link. Try the original article.' } }
     if (article.kind === 'web_article' || article.kind === 'pasted_text' || article.kind === 'feed_article' || article.html) {
-      const material = createReadingMaterial(article, materialOptions)
+      material = createReadingMaterial(article, materialOptions)
       lookup.bindMaterial(material, article)
       panel.append(material)
     } else if (excerpt) {
@@ -719,16 +739,20 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
       panel.append(el('p', 'reading-meta', 'This feed only provides a headline. Open the original or paste a passage to read here.'))
     }
     if (article.url && article.kind !== 'web_article') {
-      const importFull = button('Import full article', 'reading-import-full', async () => {
+      importFull = button('Import full article', 'reading-import-full', async () => {
         if (importFull.disabled) return
         importFull.disabled = true
+        if (reload) reload.disabled = true
         importStatus.textContent = 'Importing article…'
         try {
           const full = await api.importPage(article.url)
           importCompleted(full, panel, origin)
         } catch (error) {
           importStatus.textContent = coachErrorText(error, 'Couldn’t import the full article. Open the original to continue.')
-        } finally { importFull.disabled = false }
+        } finally {
+          importFull.disabled = false
+          if (reload) reload.disabled = false
+        }
       })
       const importStatus = el('span', 'reading-meta')
       const importTools = el('div', 'reading-tools')
@@ -767,6 +791,47 @@ function createReadingWorkspace({ rootEl, scroller, lookupDock, api, onOpenSetti
     if (excerpt) discussion.append(start, suggestions, form)
     else discussion.append(pasteExcerpt)
     panel.append(discussion)
+
+    async function reloadArticle() {
+      if (reload.disabled) return
+      rememberPosition()
+      reload.disabled = true
+      if (importFull) importFull.disabled = true
+      reloadStatus.textContent = 'Reloading article…'
+      try {
+        await savePosition()
+        const refreshed = await api.reloadArticle(article.historyId)
+        if (sessions.get(article.id) !== panel) return
+        const visible = activePanel === panel && !panel.closest('[hidden]')
+        if (visible) {
+          rememberPosition()
+          lookup.close()
+        }
+        const saved = panelStates.get(panel)
+        if (article.text !== refreshed.text) saved.position = refreshed.readingPosition
+        forgetSessions(article.historyId)
+        article = saved.article = refreshed
+        sessions.set(article.id, panel)
+        title.textContent = article.title
+        original.href = article.url
+        credit.replaceChildren(...attribution(article).childNodes)
+        const refreshedMaterial = createReadingMaterial(article, { ...materialOptions, reloadImages: true })
+        lookup.bindMaterial(refreshedMaterial, article)
+        for (const video of material.querySelectorAll('video')) video.pause()
+        material.replaceWith(refreshedMaterial)
+        material = refreshedMaterial
+        reloadStatus.textContent = 'Article reloaded.'
+        if (visible) {
+          restorePosition(panel)
+          void savePosition()
+        }
+      } catch (error) {
+        reloadStatus.textContent = coachErrorText(error, 'Couldn’t reload the article. Try again.')
+      } finally {
+        reload.disabled = false
+        if (importFull) importFull.disabled = false
+      }
+    }
 
     function appendTurn({ role, text, quote }) {
       const entry = el('div', 'reading-turn')

@@ -125,6 +125,10 @@ function installReadingIpc(storage, fetcher) {
     articles.set(article.id, article)
     while (articles.size > 150) articles.delete(articles.keys().next().value)
   }
+  async function fetchArticle(url, { allowHttp = false } = {}) {
+    const saved = await storage.sync.get('desktop_iqs_api_key')
+    return importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch, allowHttp })
+  }
   const handlers = {
     async 'stt:reading-discover'(category) {
       const result = await readingDiscovery.discover(category)
@@ -152,9 +156,13 @@ function installReadingIpc(storage, fetcher) {
       return article ?? null
     },
     async 'stt:reading-import'(url) {
-      const saved = await storage.sync.get('desktop_iqs_api_key')
-      const imported = await importReadingPage(url, { apiKey: saved.desktop_iqs_api_key || '', fetchImpl: net.fetch })
-      const article = readingHistory.save(imported)
+      const article = readingHistory.save(await fetchArticle(url))
+      rememberArticle(article)
+      return article
+    },
+    async 'stt:reading-reload'(id) {
+      const article = await readingHistory.reload(id, (url) => fetchArticle(url, { allowHttp: url.startsWith('http://') }))
+      if (!article) throw coachError('This article changed or is no longer in reading history. Open it again to reload.')
       rememberArticle(article)
       return article
     },

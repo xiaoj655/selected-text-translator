@@ -11,18 +11,18 @@ const IQS_SCRAPE_URL = 'https://cloud-iqs.aliyuncs.com/readpage/scrape'
 const INVALID_URL = 'Enter a public HTTPS article link.'
 const NO_ARTICLE = 'Couldn’t find article text on this page. Open it in your browser and paste the text.'
 
-function articleUrl(value, base) {
+function articleUrl(value, base, allowHttp = false) {
   if (typeof value !== 'string' || value.length > MAX_URL_LENGTH) throw coachError(INVALID_URL)
   const link = value.trim()
   const markdownUrl = /^\[[^\]\n]*\]\((https:\/\/[^\s]+)\)$/u.exec(link)?.[1]
-  try { return publicReadingUrl(markdownUrl || link.replace(/^<(https:\/\/[^\s]+)>$/u, '$1'), base) }
+  try { return publicReadingUrl(markdownUrl || link.replace(/^<(https:\/\/[^\s]+)>$/u, '$1'), base, { allowHttp }) }
   catch { throw coachError(INVALID_URL) }
 }
 
-async function fetchPage(url) {
+async function fetchPage(url, allowHttp) {
   const signal = AbortSignal.timeout(15000)
   const opened = await openReadingResource(url.href, {
-    signal, headers: { Accept: 'text/html, application/xhtml+xml', 'User-Agent': 'SelectedTextTranslator/Reader' },
+    allowHttp, signal, headers: { Accept: 'text/html, application/xhtml+xml', 'User-Agent': 'SelectedTextTranslator/Reader' },
   })
   const { response } = opened
   try {
@@ -85,7 +85,7 @@ function iqsError(status, code) {
   return coachError(`Alibaba Cloud webpage parsing failed (HTTP ${status}). Check your IQS key and service status, then try again.`)
 }
 
-async function importIqsPage(url, { apiKey, fetchImpl }) {
+async function importIqsPage(url, { apiKey, fetchImpl, allowHttp }) {
   const signal = AbortSignal.timeout(60000)
   try {
     const response = await fetchImpl(IQS_SCRAPE_URL, {
@@ -116,7 +116,7 @@ async function importIqsPage(url, { apiKey, fetchImpl }) {
       throw coachError('Alibaba Cloud couldn’t open the target page. Try another link or paste the article text.')
     }
     const metadata = data?.metadata || {}
-    const finalUrl = articleUrl(data?.redirectedUrl || metadata.redirectedUrl || metadata.url || url.href, url)
+    const finalUrl = articleUrl(data?.redirectedUrl || metadata.redirectedUrl || metadata.url || url.href, url, allowHttp)
     let material = normalizeReadingContent(data?.html, { baseUrl: finalUrl.href })
     if (!material.text.trim()) material = plainReadingContent(data?.text)
     if (material.text.length < 80) throw coachError(NO_ARTICLE)
@@ -136,11 +136,11 @@ async function importIqsPage(url, { apiKey, fetchImpl }) {
   }
 }
 
-export async function importReadingPage(value, { apiKey = '', fetchImpl = globalThis.fetch } = {}) {
-  const inputUrl = articleUrl(value)
-  if (apiKey.trim()) return importIqsPage(inputUrl, { apiKey: apiKey.trim(), fetchImpl })
+export async function importReadingPage(value, { apiKey = '', fetchImpl = globalThis.fetch, allowHttp = false } = {}) {
+  const inputUrl = articleUrl(value, undefined, allowHttp)
+  if (apiKey.trim()) return importIqsPage(inputUrl, { apiKey: apiKey.trim(), fetchImpl, allowHttp })
   try {
-    const { url, contentType, bytes } = await fetchPage(inputUrl)
+    const { url, contentType, bytes } = await fetchPage(inputUrl, allowHttp)
     return extractArticle(decodePage(bytes, contentType), url)
   } catch (error) {
     if (error.message?.startsWith('[english-coach] ')) throw error
