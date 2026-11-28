@@ -33,6 +33,7 @@ internal data class ReaderUiState(
     val iqsSettingsError: Boolean = false,
     val pastedDraft: String = "",
     val fontSize: Int = defaultReaderFontSize,
+    val eInkMode: Boolean = false,
     val feeds: List<FeedSource> = emptyList(),
     val optionalFeeds: List<FeedSource> = emptyList(),
     val feedArticles: List<FeedArticle> = emptyList(),
@@ -83,6 +84,7 @@ internal class ReaderViewModel(
     private val state = MutableStateFlow(ReaderUiState(
         fontSize = preferences.getInt(FONT_SIZE_KEY, defaultReaderFontSize)
             .takeIf(readerFontSizes::contains) ?: defaultReaderFontSize,
+        eInkMode = preferences.getBoolean(E_INK_MODE_KEY, false),
     ))
     val uiState = state.asStateFlow()
 
@@ -263,6 +265,11 @@ internal class ReaderViewModel(
         if (size !in readerFontSizes) return
         preferences.edit { putInt(FONT_SIZE_KEY, size) }
         state.update { it.copy(fontSize = size) }
+    }
+
+    fun setEInkMode(enabled: Boolean) {
+        preferences.edit { putBoolean(E_INK_MODE_KEY, enabled) }
+        state.update { it.copy(eInkMode = enabled) }
     }
 
     fun saveIqsKey(value: String) {
@@ -512,5 +519,6 @@ internal class ReaderViewModel(
     private companion object {
         const val ARTICLE_KEY = "readingArticleId"
         const val FONT_SIZE_KEY = "font-size"
+        const val E_INK_MODE_KEY = "e-ink-mode"
     }
 }

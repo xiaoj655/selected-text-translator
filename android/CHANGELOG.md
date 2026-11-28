@@ -1,5 +1,10 @@
 # Android 更新日志
 
+## 0.2.13
+
+- Turn on **Aa → E Ink mode** in an article for instant Previous screen and Next screen controls. The reader remembers the mode and your place in each article.
+- E Ink mode uses static image loading indicators and opens the article menu without animation. Article scrolling skips the edge stretch and scrollbar fade.
+
 ## 0.2.12
 
 - Enable Alibaba Cloud read-aloud in **Settings → Speech**. Choose a preset or enter a custom voice ID, then preview it in Settings. The app uses Android speech if cloud audio is unavailable.

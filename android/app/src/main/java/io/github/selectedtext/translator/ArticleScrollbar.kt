@@ -88,16 +88,20 @@ internal fun rememberArticleScrollMetrics(
 }
 
 @Composable
-internal fun Modifier.articleScrollbar(list: LazyListState, metrics: State<ArticleScrollMetrics?>): Modifier {
+internal fun Modifier.articleScrollbar(
+    list: LazyListState,
+    metrics: State<ArticleScrollMetrics?>,
+    eInkMode: Boolean,
+): Modifier {
     val opacity = remember(list) { Animatable(0f) }
     val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
-    LaunchedEffect(list) {
+    LaunchedEffect(list, eInkMode) {
         snapshotFlow { list.isScrollInProgress }.collectLatest { scrolling ->
             if (scrolling) {
                 opacity.snapTo(1f)
             } else if (opacity.value > 0f) {
                 delay(400)
-                opacity.animateTo(0f, tween(durationMillis = 250))
+                if (eInkMode) opacity.snapTo(0f) else opacity.animateTo(0f, tween(durationMillis = 250))
             }
         }
     }

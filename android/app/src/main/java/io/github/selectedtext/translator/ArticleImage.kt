@@ -62,7 +62,7 @@ internal fun articleImageHeight(widthPx: Int, aspectRatio: Float?): Int {
 }
 
 @Composable
-internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
+internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?, eInkMode: Boolean) {
     val loader = (LocalContext.current.applicationContext as TranslatorApplication).articleImages
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
@@ -113,6 +113,12 @@ internal fun ArticleImageContent(image: ArticleImage, sourceUrl: String?) {
                         }
                         TextButton(onClick = { retry++ }) { Text("Retry image") }
                     }
+                } else if (eInkMode) {
+                    Text(
+                        "Loading image…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 } else {
                     CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }

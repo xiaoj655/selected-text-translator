@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -45,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -56,6 +59,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -72,6 +76,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -81,9 +89,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import java.net.URI
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ReaderScreen(
@@ -133,7 +150,7 @@ internal fun ReaderScreen(
         }
     } else {
         key(article.id, article.hasImages) {
-            ArticleContent(article, state.result, state.fontSize, reader, speaking, speak, stopSpeech, onSettings, back,
+            ArticleContent(article, state.result, state.fontSize, state.eInkMode, reader, speaking, speak, stopSpeech, onSettings, back,
                 state.reloadingArticle, state.articleReloadError)
         }
     }
@@ -378,6 +395,7 @@ private fun ArticleContent(
     article: ReadingArticle,
     result: ReaderResult?,
     fontSize: Int,
+    eInkMode: Boolean,
     reader: ReaderViewModel,
     speaking: Boolean,
     speak: (String) -> Unit,
@@ -432,7 +450,8 @@ private fun ArticleContent(
         val sideResult = maxWidth >= 900.dp && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val resultWidth = if (sideResult) (maxWidth * 0.34f).coerceIn(304.dp, 360.dp) else 0.dp
         val bodyWidth = minOf(664.dp, maxWidth - resultWidth)
-        val resultHeight = minOf(320.dp, maxHeight * 0.42f)
+        val articleHeight = maxHeight
+        val resultHeight = minOf(320.dp, articleHeight * 0.42f)
         val bodyWidthPx = with(LocalDensity.current) { bodyWidth.roundToPx() }
         // A taller viewport can temporarily clamp the first visible paragraph near the end.
         // Start each new viewport from the last position reached by scrolling.
@@ -495,7 +514,20 @@ private fun ArticleContent(
                     TextButton(onClick = { optionsOpen = true }, contentPadding = PaddingValues(horizontal = 6.dp)) {
                         Text("Aa", style = MaterialTheme.typography.titleMedium)
                     }
-                    DropdownMenu(expanded = optionsOpen, onDismissRequest = { optionsOpen = false }) {
+                    ArticleOptionsMenu(optionsOpen, eInkMode, articleHeight, onDismissRequest = { optionsOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("E Ink mode") },
+                            trailingIcon = { Switch(checked = eInkMode, onCheckedChange = null) },
+                            modifier = Modifier.semantics {
+                                role = Role.Switch
+                                toggleableState = ToggleableState(eInkMode)
+                            },
+                            onClick = {
+                                optionsOpen = false
+                                reader.setEInkMode(!eInkMode)
+                            },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         readerFontSizes.forEach { size ->
                             DropdownMenuItem(
                                 text = { Text("$size sp", fontWeight = if (size == fontSize) FontWeight.Bold else FontWeight.Normal) },
@@ -525,15 +557,27 @@ private fun ArticleContent(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (reloading) {
+                if (eInkMode) {
+                    Text(
+                        "Reloading article…",
+                        Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
             reloadError?.let { ReaderError(it, Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             Row(Modifier.weight(1f)) {
                 Column(Modifier.width(bodyWidth).fillMaxSize()) {
                     LazyColumn(
-                        Modifier.weight(1f).fillMaxWidth().articleScrollbar(list, scrollMetrics),
+                        Modifier.weight(1f).fillMaxWidth().articleScrollbar(list, scrollMetrics, eInkMode),
                         state = list,
                         contentPadding = articleContentPadding,
                         verticalArrangement = Arrangement.spacedBy(articleItemSpacing),
+                        overscrollEffect = if (eInkMode) null else rememberOverscrollEffect(),
                     ) {
                         item(key = "title") {
                             Column(verticalArrangement = Arrangement.spacedBy(articleTitleSpacing)) {
@@ -544,7 +588,7 @@ private fun ArticleContent(
                         itemsIndexed(article.blocks, key = { index, _ -> index }) { index, block ->
                             val image = block.image
                             if (image != null) {
-                                ArticleImageContent(image, article.sourceUrl)
+                                ArticleImageContent(image, article.sourceUrl, eInkMode)
                                 return@itemsIndexed
                             }
                             val paragraphResult = result?.takeIf { it.blockIndex == index }
@@ -579,6 +623,12 @@ private fun ArticleContent(
                                     }
                                 },
                             )
+                        }
+                    }
+                    if (eInkMode) {
+                        val overlap = with(LocalDensity.current) { 2 * bodyStyle.lineHeight.toPx() }
+                        ArticleScreenControls(list, overlap) {
+                            reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
                         }
                     }
                     phrase?.let { selection ->
@@ -619,6 +669,79 @@ private fun ArticleContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ArticleOptionsMenu(
+    expanded: Boolean,
+    eInkMode: Boolean,
+    articleHeight: Dp,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (!eInkMode) {
+        DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, content = content)
+    } else if (expanded) {
+        Popup(
+            popupPositionProvider = ArticleMenuPosition,
+            onDismissRequest = onDismissRequest,
+            properties = PopupProperties(focusable = true),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.extraSmall,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shadowElevation = 3.dp,
+            ) {
+                Column(
+                    Modifier.widthIn(max = 280.dp)
+                        .heightIn(max = (articleHeight - 56.dp).coerceAtLeast(1.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp),
+                    content = content,
+                )
+            }
+        }
+    }
+}
+
+private object ArticleMenuPosition : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.right - popupContentSize.width else anchorBounds.left
+        return IntOffset(
+            x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+            anchorBounds.bottom.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
+        )
+    }
+}
+
+@Composable
+private fun ArticleScreenControls(list: LazyListState, overlap: Float, savePosition: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    fun turnPage(direction: Int) {
+        scope.launch {
+            val height = list.layoutInfo.viewportSize.height
+            val distance = (height - overlap).coerceAtLeast(height / 2f)
+            if (list.scrollBy(direction * distance) != 0f) savePosition()
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        TextButton(
+            onClick = { turnPage(-1) },
+            modifier = Modifier.weight(1f),
+            enabled = list.canScrollBackward,
+        ) { Text("Previous screen") }
+        TextButton(
+            onClick = { turnPage(1) },
+            modifier = Modifier.weight(1f),
+            enabled = list.canScrollForward,
+        ) { Text("Next screen") }
     }
 }
 
