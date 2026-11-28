@@ -1,5 +1,9 @@
 # Android 更新日志
 
+## 0.2.14
+
+- In an article with E Ink mode enabled, use Page Up or Volume Up for the previous screen and Page Down or Volume Down for the next screen. This also supports e-reader side buttons that send these events.
+
 ## 0.2.13
 
 - Turn on **Aa → E Ink mode** in an article for instant Previous screen and Next screen controls. The reader remembers the mode and your place in each article.

@@ -112,6 +112,7 @@ internal fun ReaderScreen(
     paste: () -> String?,
     onSettings: () -> Unit,
     onReadingSettings: () -> Unit,
+    setPageTurnHandler: (((Int) -> Unit)?) -> Unit,
     libraryNavigation: @Composable () -> Unit,
     libraryRail: @Composable () -> Unit = {},
 ) {
@@ -151,7 +152,7 @@ internal fun ReaderScreen(
     } else {
         key(article.id, article.hasImages) {
             ArticleContent(article, state.result, state.fontSize, state.eInkMode, reader, speaking, speak, stopSpeech, onSettings, back,
-                state.reloadingArticle, state.articleReloadError)
+                state.reloadingArticle, state.articleReloadError, setPageTurnHandler)
         }
     }
     if (adding) {
@@ -404,6 +405,7 @@ private fun ArticleContent(
     back: () -> Unit,
     reloading: Boolean,
     reloadError: String?,
+    setPageTurnHandler: (((Int) -> Unit)?) -> Unit,
 ) {
     var mode by rememberSaveable { mutableStateOf(ArticleSelectionKind.WORD) }
     var guided by rememberSaveable { mutableStateOf(false) }
@@ -627,7 +629,7 @@ private fun ArticleContent(
                     }
                     if (eInkMode) {
                         val overlap = with(LocalDensity.current) { 2 * bodyStyle.lineHeight.toPx() }
-                        ArticleScreenControls(list, overlap) {
+                        ArticleScreenControls(list, overlap, setPageTurnHandler) {
                             reader.savePosition(article, ArticlePosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset))
                         }
                     }
@@ -721,7 +723,12 @@ private object ArticleMenuPosition : PopupPositionProvider {
 }
 
 @Composable
-private fun ArticleScreenControls(list: LazyListState, overlap: Float, savePosition: () -> Unit) {
+private fun ArticleScreenControls(
+    list: LazyListState,
+    overlap: Float,
+    setPageTurnHandler: (((Int) -> Unit)?) -> Unit,
+    savePosition: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     fun turnPage(direction: Int) {
         scope.launch {
@@ -729,6 +736,11 @@ private fun ArticleScreenControls(list: LazyListState, overlap: Float, savePosit
             val distance = (height - overlap).coerceAtLeast(height / 2f)
             if (list.scrollBy(direction * distance) != 0f) savePosition()
         }
+    }
+    val currentTurnPage by rememberUpdatedState(::turnPage)
+    DisposableEffect(setPageTurnHandler) {
+        setPageTurnHandler { currentTurnPage(it) }
+        onDispose { setPageTurnHandler(null) }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {

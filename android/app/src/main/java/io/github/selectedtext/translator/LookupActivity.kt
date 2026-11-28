@@ -13,6 +13,8 @@ import android.os.Looper
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.view.KeyEvent
+import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
@@ -39,6 +41,7 @@ private const val OPEN_ARTICLE = "io.github.selectedtext.translator.OPEN_ARTICLE
 class WorkspaceActivity : LookupActivity(external = false) {
     private val updates: AndroidUpdateViewModel by viewModels()
     private val reader: ReaderViewModel by viewModels()
+    private var articlePageTurn: ((Int) -> Unit)? = null
     private val installPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (packageManager.canRequestPackageInstalls()) {
             installDownloadedUpdate()
@@ -54,6 +57,20 @@ class WorkspaceActivity : LookupActivity(external = false) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val windowCallback = window.callback
+        window.callback = object : Window.Callback by windowCallback {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                val turnPage = articlePageTurn ?: return windowCallback.dispatchKeyEvent(event)
+                val direction = when (event.keyCode) {
+                    KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_VOLUME_UP -> -1
+                    KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN -> 1
+                    else -> return windowCallback.dispatchKeyEvent(event)
+                }
+                // Android can consume the first Page Up/Down key-down when leaving touch mode.
+                if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) turnPage(direction)
+                return true
+            }
+        }
         if (savedInstanceState == null) openSharedArticle(intent)
     }
 
@@ -76,6 +93,7 @@ class WorkspaceActivity : LookupActivity(external = false) {
             state, reader, speaking, ::speakOrStop, ::stopSpeech, ::clipboardText,
             onSettings = { openSettings() },
             onReadingSettings = { openSettings(reading = true) },
+            setPageTurnHandler = { articlePageTurn = it },
             libraryNavigation = libraryNavigation,
             libraryRail = libraryRail,
         )
